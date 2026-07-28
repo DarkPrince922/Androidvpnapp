@@ -74,17 +74,18 @@ class SubscriptionRepository(
     suspend fun fetchServers(forceRefresh: Boolean = false): Pair<List<ProxyProfile>, SubscriptionUserInfo?> =
         withContext(Dispatchers.IO) {
             if (!forceRefresh) {
-                loadCached()?.let { return@withContext it }
+                cachedServers()?.let { return@withContext it }
             }
             try {
                 fetchFromNetwork()
             } catch (e: Exception) {
                 // сеть/сервер недоступны — работаем с сохранённой копией подписки
-                loadCached() ?: throw e
+                cachedServers() ?: throw e
             }
         }
 
-    private suspend fun loadCached(): Pair<List<ProxyProfile>, SubscriptionUserInfo?>? {
+    /** Сохранённая копия подписки (без сети). */
+    suspend fun cachedServers(): Pair<List<ProxyProfile>, SubscriptionUserInfo?>? {
         val cached = prefs.serversRawFlow.first()
         if (cached.isNullOrBlank()) return null
         val profiles = LinkParser.parseSubscriptionContent(cached)

@@ -36,8 +36,6 @@ class XVpnService : VpnService() {
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "vpn_state"
 
-        @Volatile private var coreEnvInitialized = false
-
         fun start(context: Context, profile: ProxyProfile) {
             // профиль (возможно, с большим raw-конфигом) передаём через файл,
             // а не через Intent — у экстра есть жёсткий лимит размера
@@ -89,10 +87,7 @@ class XVpnService : VpnService() {
         VpnStateStore.setState(VpnState.CONNECTING)
         VpnStateStore.setActiveProfile(profile.name)
         try {
-            if (!coreEnvInitialized) {
-                Libv2ray.initCoreEnv(filesDir.absolutePath, "")
-                coreEnvInitialized = true
-            }
+            CoreEnv.ensure(this)
 
             // 1. Запускаем ядро Xray с SOCKS-инбаундом
             val config = XrayConfigBuilder.build(profile)

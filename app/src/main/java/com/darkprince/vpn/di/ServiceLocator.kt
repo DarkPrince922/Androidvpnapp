@@ -8,6 +8,8 @@ import com.darkprince.vpn.data.repo.BalanceRepository
 import com.darkprince.vpn.data.repo.SubscriptionRepository
 
 object ServiceLocator {
+    lateinit var appContext: Context
+        private set
     lateinit var prefs: AppPrefs
         private set
     lateinit var apiClient: ApiClient
@@ -21,6 +23,7 @@ object ServiceLocator {
 
     fun init(context: Context) {
         if (this::prefs.isInitialized) return
+        appContext = context.applicationContext
         prefs = AppPrefs(context.applicationContext)
         prefs.warmUp()
         apiClient = ApiClient(prefs)
