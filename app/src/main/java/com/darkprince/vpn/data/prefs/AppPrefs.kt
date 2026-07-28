@@ -42,13 +42,17 @@ class AppPrefs(private val context: Context) {
 
     fun warmUp() = runBlocking {
         val p = context.dataStore.data.first()
-        cachedBaseUrl = p[Keys.BASE_URL] ?: ""
+        // если адрес ещё не сохранён — берём вшитый в сборку адрес кабинета
+        cachedBaseUrl = p[Keys.BASE_URL]
+            ?: com.darkprince.vpn.BuildConfig.DEFAULT_API_BASE_URL.trimEnd('/')
         cachedAccessToken = p[Keys.ACCESS_TOKEN]
         cachedRefreshToken = p[Keys.REFRESH_TOKEN]
         cachedAccessExpiresAt = p[Keys.ACCESS_EXPIRES_AT] ?: 0L
     }
 
-    val baseUrlFlow: Flow<String> = context.dataStore.data.map { it[Keys.BASE_URL] ?: "" }
+    val baseUrlFlow: Flow<String> = context.dataStore.data.map {
+        it[Keys.BASE_URL] ?: com.darkprince.vpn.BuildConfig.DEFAULT_API_BASE_URL.trimEnd('/')
+    }
     val accessTokenFlow: Flow<String?> = context.dataStore.data.map { it[Keys.ACCESS_TOKEN] }
     val userJsonFlow: Flow<String?> = context.dataStore.data.map { it[Keys.USER_JSON] }
     val subscriptionUrlFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SUB_URL] }
