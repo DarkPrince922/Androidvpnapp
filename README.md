@@ -1,0 +1,117 @@
+# DarkPrince VPN — Android-клиент для Remnawave + Bedolaga
+
+Android-приложение VPN, полностью совместимое с панелью
+[Remnawave](https://remna.st) и ботом
+[Bedolaga](https://github.com/BEDOLAGA-DEV/remnawave-bedolaga-telegram-bot):
+существующие клиенты входят через Telegram (тот же аккаунт, что и в боте),
+новые — регистрируются по e-mail. Баланс, тарифы и оплата — те же, что в
+кабинете: приложение работает напрямую с **Cabinet API** бота.
+
+## Возможности
+
+- **Авторизация через Telegram** — deep-link `t.me/<бот>?start=webauth_…`,
+  как в веб-кабинете Bedolaga (нужен бот **v3.33.0+** с `CABINET_ENABLED=true`).
+- **Вход и регистрация по e-mail** (`/cabinet/auth/email/*`), восстановление
+  пароля.
+- **Подписка Remnawave**: приложение получает `subscription_url` из кабинета,
+  скачивает подписку и парсит серверы **VLESS (Reality/TLS), VMess, Trojan,
+  Shadowsocks**; сети tcp / ws / grpc / httpupgrade / xhttp.
+- **VPN-подключение**: ядро Xray (libv2ray из
+  [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite)) +
+  [hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel)
+  (TUN → SOCKS), схема как в v2rayNG. Статистика трафика в реальном времени.
+- **Оплата внутри приложения как в кабинете**: баланс, способы оплаты из
+  `/cabinet/balance/payment-methods`, создание платежа
+  (`/cabinet/balance/topup`) с открытием платёжной страницы (ЮKassa,
+  CryptoBot, Stars и т.д. — что включено в боте), история операций, проверка
+  платежа.
+- **Тарифы**: покупка (`purchase-tariff`), продление (`renew`), пробный
+  период (`trial`).
+
+## Требования на стороне сервера
+
+В `.env` бота Bedolaga:
+
+```env
+CABINET_ENABLED=true
+CABINET_JWT_SECRET=<openssl rand -hex 32>
+CABINET_ALLOWED_ORIGINS=...
+```
+
+Cabinet API должен быть доступен извне (тот же адрес, что использует
+веб-кабинет, например `https://cabinet.example.com/api`). Именно этот адрес
+пользователь вводит при первом запуске приложения (или задайте его по
+умолчанию в `app/build.gradle.kts` → `DEFAULT_API_BASE_URL`).
+
+## Сборка
+
+### Вариант 1: GitHub Actions (проще всего)
+
+Workflow `.github/workflows/build.yml` при каждом пуше сам скачивает ядро,
+собирает нативную библиотеку и публикует готовые APK в артефактах сборки.
+
+### Вариант 2: локально
+
+1. Android Studio (SDK 35) + Android NDK.
+2. Скачайте ядро Xray:
+   ```bash
+   bash scripts/download-libv2ray.sh          # -> app/libs/libv2ray.aar
+   ```
+3. Соберите мост TUN→SOCKS:
+   ```bash
+   export NDK_HOME=$ANDROID_HOME/ndk/<версия>
+   bash scripts/compile-hevtun.sh             # -> app/src/main/jniLibs/*
+   ```
+4. `./gradlew assembleDebug` или сборка из Android Studio.
+
+Для release-подписи добавьте свой keystore в конфигурацию `signingConfigs`.
+
+## Архитектура
+
+```
+app/src/main/java/com/darkprince/vpn/
+├── data/
+│   ├── api/        Retrofit-клиент Cabinet API (auth, subscription, balance)
+│   ├── prefs/      DataStore: адрес кабинета, JWT-токены, кэш серверов
+│   └── repo/       AuthRepository (Telegram deep-link + email),
+│                   SubscriptionRepository (подписка Remnawave, тарифы),
+│                   BalanceRepository (баланс, оплата)
+├── core/
+│   ├── parser/     Парсер ссылок vless/vmess/trojan/ss из подписки
+│   └── xray/       Генератор JSON-конфига Xray
+├── vpn/            XVpnService (VpnService), TProxyService (JNI hev),
+│                   VpnStateStore (состояние/трафик)
+└── ui/             Jetpack Compose: Setup, Login (Telegram/Email),
+                    Home, Servers, Plans, Balance, Settings
+```
+
+### Как работает авторизация через Telegram
+
+1. `POST /cabinet/auth/deeplink/request` → `{token, bot_username}`.
+2. Приложение открывает `tg://resolve?domain=<бот>&start=webauth_<token>`.
+3. Пользователь жмёт **Start** в боте.
+4. Приложение опрашивает `POST /cabinet/auth/deeplink/poll` (202 — ждём,
+   200 — получены `access_token`/`refresh_token`).
+
+### Как работает подключение
+
+1. `GET /cabinet/subscription/connection-link` → `subscription_url` (Remnawave).
+2. Подписка скачивается с User-Agent v2rayNG → base64-список ссылок.
+3. Выбранный сервер превращается в конфиг Xray (SOCKS-инбаунд на 10808).
+4. `VpnService` поднимает TUN, весь трафик через hev-socks5-tunnel уходит в
+   SOCKS ядра Xray. Приложение исключает само себя из VPN
+   (`addDisallowedApplication`), чтобы не было петли.
+
+## Брендинг
+
+- Имя приложения: `app/src/main/res/values/strings.xml` → `app_name`.
+- Иконка/цвета: `res/drawable/ic_launcher_foreground.xml`,
+  `ui/theme/Theme.kt`.
+- ApplicationId: `app/build.gradle.kts`.
+
+## Лицензии
+
+Приложение использует libv2ray (AndroidLibXrayLite, LGPL), Xray-core
+(MPL-2.0) и hev-socks5-tunnel (GPL-3.0 для несвободного использования —
+см. лицензию проекта). При распространении соблюдайте условия лицензий
+этих компонентов.

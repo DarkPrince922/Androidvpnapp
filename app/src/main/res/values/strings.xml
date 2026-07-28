@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DarkPrince VPN</string>
+
+    <string name="setup_title">Подключение к сервису</string>
+    <string name="setup_hint">Адрес кабинета (например https://cabinet.example.com/api)</string>
+    <string name="setup_continue">Продолжить</string>
+    <string name="setup_error">Не удалось подключиться. Проверьте адрес.</string>
+
+    <string name="login_title">Вход</string>
+    <string name="login_telegram">Войти через Telegram</string>
+    <string name="login_telegram_waiting">Откройте Telegram и нажмите «Start», ждём подтверждения…</string>
+    <string name="login_email_tab">Почта</string>
+    <string name="login_telegram_tab">Telegram</string>
+    <string name="email">E-mail</string>
+    <string name="password">Пароль</string>
+    <string name="sign_in">Войти</string>
+    <string name="sign_up">Зарегистрироваться</string>
+    <string name="no_account">Нет аккаунта? Зарегистрируйтесь</string>
+    <string name="have_account">Уже есть аккаунт? Войти</string>
+    <string name="forgot_password">Забыли пароль?</string>
+    <string name="reset_sent">Если такой e-mail зарегистрирован, мы отправили письмо для сброса пароля.</string>
+    <string name="register_check_email">Регистрация принята. Подтвердите e-mail по ссылке из письма, затем войдите.</string>
+
+    <string name="home_connect">Подключить</string>
+    <string name="home_disconnect">Отключить</string>
+    <string name="home_connecting">Подключение…</string>
+    <string name="home_connected">Подключено</string>
+    <string name="home_disconnected">Отключено</string>
+    <string name="home_no_subscription">Нет активной подписки</string>
+    <string name="home_days_left">Осталось дней: %1$d</string>
+    <string name="home_traffic">Трафик: %1$s из %2$s</string>
+    <string name="home_traffic_unlimited">Трафик: %1$s (безлимит)</string>
+
+    <string name="servers_title">Серверы</string>
+    <string name="servers_refresh">Обновить список</string>
+    <string name="servers_empty">Список серверов пуст. Проверьте подписку.</string>
+
+    <string name="balance_title">Баланс и оплата</string>
+    <string name="balance_current">Баланс: %1$s</string>
+    <string name="balance_topup">Пополнить</string>
+    <string name="balance_amount_hint">Сумма, ₽</string>
+    <string name="balance_history">История операций</string>
+    <string name="balance_pay">Перейти к оплате</string>
+    <string name="balance_check_payment">Проверить оплату</string>
+
+    <string name="plans_title">Тарифы</string>
+    <string name="plans_buy">Купить</string>
+    <string name="plans_renew">Продлить</string>
+    <string name="plans_trial">Активировать пробный период</string>
+
+    <string name="settings_title">Настройки</string>
+    <string name="settings_logout">Выйти из аккаунта</string>
+    <string name="settings_account">Аккаунт</string>
+    <string name="settings_api_url">Адрес кабинета</string>
+
+    <string name="notification_channel_vpn">VPN</string>
+    <string name="error_generic">Произошла ошибка. Попробуйте ещё раз.</string>
+</resources>

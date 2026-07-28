@@ -1,0 +1,15 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Нативные артефакты — скачиваются/собираются скриптами из scripts/
+app/libs/*.aar
+app/src/main/jniLibs/
+third_party/
