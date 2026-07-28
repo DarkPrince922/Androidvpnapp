@@ -12,6 +12,7 @@ import android.os.ParcelFileDescriptor
 import com.darkprince.vpn.R
 import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.core.xray.XrayConfigBuilder
+import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -129,6 +130,7 @@ class XVpnService : VpnService() {
             TProxyService.TProxyStartService(configFile.absolutePath, fd.fd)
 
             VpnStateStore.setState(VpnState.CONNECTED)
+            ServiceLocator.apiClient.onNetworkChanged()
             startStatsLoop(profile)
         } catch (e: Throwable) {
             VpnStateStore.setState(VpnState.ERROR, e.message)
@@ -179,6 +181,10 @@ class XVpnService : VpnService() {
         }
         VpnStateStore.setActiveProfile(null)
         VpnStateStore.setStats(TrafficStats())
+        try {
+            ServiceLocator.apiClient.onNetworkChanged()
+        } catch (_: Exception) {
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }

@@ -3,7 +3,10 @@ package com.darkprince.vpn.data.api
 import com.darkprince.vpn.data.api.dto.RefreshRequest
 import com.darkprince.vpn.data.prefs.AppPrefs
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
+import okhttp3.Authenticator
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -63,13 +66,29 @@ class ApiClient(private val prefs: AppPrefs) {
         return token
     }
 
-    /** Обновляет пару токенов; возвращает новый access-токен или null. */
-    suspend fun refreshTokens(): String? {
+    private val refreshMutex = Mutex()
+    @Volatile private var lastRefreshAt = 0L
+
+    /**
+     * Обновляет пару токенов; возвращает актуальный access-токен или null.
+     * Bedolaga ротирует refresh-токен при каждом обновлении, поэтому
+     * обновление строго одиночное (Mutex) — параллельные запросы ждут и
+     * забирают результат первого, а не затирают сессию друг друга.
+     */
+    suspend fun refreshTokens(force: Boolean = false): String? = refreshMutex.withLock {
+        val current = prefs.cachedAccessToken
+        val stillValid = current != null &&
+            prefs.cachedAccessExpiresAt > System.currentTimeMillis() + 60_000
+        // пока мы ждали Mutex, токен мог обновить другой запрос
+        if (current != null && (stillValid && !force || System.currentTimeMillis() - lastRefreshAt < 10_000)) {
+            return current
+        }
         val refresh = prefs.cachedRefreshToken ?: return null
-        return try {
+        try {
             val response = refreshApi.refresh(RefreshRequest(refresh))
             if (response.accessToken != null) {
                 prefs.setTokens(response.accessToken, response.refreshToken ?: refresh, response.expiresIn)
+                lastRefreshAt = System.currentTimeMillis()
                 response.accessToken
             } else null
         } catch (e: retrofit2.HttpException) {
@@ -81,9 +100,27 @@ class ApiClient(private val prefs: AppPrefs) {
         }
     }
 
+    /** На 401 обновляем токен и повторяем запрос один раз. */
+    private val tokenAuthenticator = Authenticator { _, response ->
+        if (response.request.header("Authorization") == null) return@Authenticator null
+        val attempts = generateSequence(response) { it.priorResponse }.count()
+        if (attempts >= 2) return@Authenticator null
+        val newToken = runBlocking { refreshTokens(force = true) } ?: return@Authenticator null
+        response.request.newBuilder()
+            .header("Authorization", "Bearer $newToken")
+            .build()
+    }
+
+    /** Сброс keep-alive соединений после смены сети (поднятие/остановка VPN). */
+    fun onNetworkChanged() {
+        okHttp.connectionPool.evictAll()
+        plainOkHttp.connectionPool.evictAll()
+    }
+
     val okHttp: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(baseUrlInterceptor)
         .addInterceptor(authInterceptor)
+        .authenticator(tokenAuthenticator)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
