@@ -157,10 +157,17 @@ private fun AppRoot(
                         NavigationBarItem(
                             selected = currentRoute == item.route,
                             onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo("home") { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                if (item.route == "home") {
+                                    // «Главная» всегда возвращает на корневой экран
+                                    if (!navController.popBackStack("home", inclusive = false)) {
+                                        navController.navigate("home") { launchSingleTop = true }
+                                    }
+                                } else {
+                                    navController.navigate(item.route) {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             },
                             icon = { Icon(item.icon, contentDescription = item.label) },

@@ -109,6 +109,15 @@ data class PurchaseTariffRequest(
 @Serializable
 data class RenewRequest(@SerialName("period_days") val periodDays: Int)
 
+@Serializable
+data class DevicesPurchaseRequest(val devices: Int)
+
+@Serializable
+data class ReduceDevicesRequest(@SerialName("new_device_limit") val newDeviceLimit: Int)
+
+@Serializable
+data class TrafficPurchaseRequest(val gb: Int)
+
 // ---------- Balance / payments ----------
 
 @Serializable

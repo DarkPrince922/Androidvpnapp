@@ -65,6 +65,38 @@ fun PlansScreen(viewModel: PlansViewModel) {
             }
         }
 
+        state.devices?.let { devices ->
+            item {
+                DevicesCard(
+                    devices = devices,
+                    purchasing = state.purchasing,
+                    onBuy = { viewModel.buyDevices(it) },
+                    onReduce = { viewModel.reduceDevices(it) },
+                )
+            }
+        }
+
+        if (state.trafficPackages.isNotEmpty()) {
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Докупить трафик", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        state.trafficPackages.forEach { pkg ->
+                            OutlinedButton(
+                                onClick = { viewModel.buyTraffic(pkg.gb) },
+                                enabled = !state.purchasing,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("+${pkg.gb} ГБ — ${formatKopeks(pkg.priceKopeks)}")
+                            }
+                            Spacer(Modifier.height(6.dp))
+                        }
+                    }
+                }
+            }
+        }
+
         if (state.renewalOptions.isNotEmpty()) {
             item {
                 Card(Modifier.fillMaxWidth()) {
@@ -91,6 +123,72 @@ fun PlansScreen(viewModel: PlansViewModel) {
         }
         state.info?.let { info ->
             item { Text(info, color = MaterialTheme.colorScheme.primary) }
+        }
+    }
+}
+
+@Composable
+private fun DevicesCard(
+    devices: com.darkprince.vpn.data.repo.DevicesInfo,
+    purchasing: Boolean,
+    onBuy: (Int) -> Unit,
+    onReduce: (Int) -> Unit,
+) {
+    var count by remember { mutableStateOf(1) }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Устройства", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                devices.deviceLimit?.let {
+                    Text("Лимит: $it", style = MaterialTheme.typography.bodyMedium)
+                }
+                devices.connectedCount?.let {
+                    Text("Подключено: $it", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+
+            // счётчик количества
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                OutlinedButton(onClick = { if (count > 1) count-- }) { Text("−") }
+                Text("$count", style = MaterialTheme.typography.titleMedium)
+                OutlinedButton(onClick = { count++ }) { Text("+") }
+            }
+            Spacer(Modifier.height(12.dp))
+
+            if (devices.purchaseAvailable) {
+                val price = devices.pricePerDeviceKopeks
+                Button(
+                    onClick = { onBuy(count) },
+                    enabled = !purchasing,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (price != null) "Докупить $count шт. за ${formatKopeks(price * count)}"
+                        else "Докупить $count шт."
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            if (devices.reduceAvailable) {
+                val limit = devices.deviceLimit
+                val newLimit = limit?.let { (it - count).coerceAtLeast(1) }
+                OutlinedButton(
+                    onClick = { newLimit?.let(onReduce) },
+                    enabled = !purchasing && newLimit != null && limit != null && newLimit < limit,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (newLimit != null) "Уменьшить лимит до $newLimit"
+                        else "Уменьшить лимит"
+                    )
+                }
+            }
         }
     }
 }

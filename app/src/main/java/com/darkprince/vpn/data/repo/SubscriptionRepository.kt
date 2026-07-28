@@ -3,9 +3,12 @@ package com.darkprince.vpn.data.repo
 import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.core.parser.LinkParser
 import com.darkprince.vpn.data.api.ApiClient
+import com.darkprince.vpn.data.api.dto.DevicesPurchaseRequest
 import com.darkprince.vpn.data.api.dto.PurchaseTariffRequest
+import com.darkprince.vpn.data.api.dto.ReduceDevicesRequest
 import com.darkprince.vpn.data.api.dto.RenewRequest
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
+import com.darkprince.vpn.data.api.dto.TrafficPurchaseRequest
 import com.darkprince.vpn.data.prefs.AppPrefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -19,6 +22,7 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import okhttp3.Request
@@ -240,4 +244,103 @@ class SubscriptionRepository(
     } catch (e: Exception) {
         e.userMessage()
     }
+
+    // --- Устройства ---
+
+    /** Сводка по устройствам: лимит, подключено, цена докупки, возможность уменьшения. */
+    suspend fun devicesInfo(): DevicesInfo {
+        var limit: Int? = null
+        var connected: Int? = null
+        try {
+            val devices = api.devices()
+            limit = devices.intOf("device_limit")
+            connected = devices.intOf("total") ?: (devices["devices"] as? JsonArray)?.size
+        } catch (_: Exception) {
+        }
+        var pricePerDevice: Long? = null
+        var maxLimit: Int? = null
+        var purchaseAvailable = false
+        try {
+            val price = api.devicePrice()
+            purchaseAvailable = price.boolOf("available") ?: true
+            pricePerDevice = price.longOf("price_per_device_kopeks")
+            maxLimit = price.intOf("max_device_limit")
+            if (limit == null) limit = price.intOf("current_device_limit")
+        } catch (_: Exception) {
+        }
+        var reduceAvailable = false
+        try {
+            val reduction = api.deviceReductionInfo()
+            reduceAvailable = reduction.boolOf("available") ?: false
+            if (limit == null) limit = reduction.intOf("current_device_limit")
+            if (connected == null) connected = reduction.intOf("connected_devices_count")
+        } catch (_: Exception) {
+        }
+        return DevicesInfo(
+            deviceLimit = limit,
+            connectedCount = connected,
+            pricePerDeviceKopeks = pricePerDevice,
+            maxDeviceLimit = maxLimit,
+            purchaseAvailable = purchaseAvailable && pricePerDevice != null,
+            reduceAvailable = reduceAvailable,
+        )
+    }
+
+    suspend fun buyDevices(count: Int): String? = try {
+        api.purchaseDevices(DevicesPurchaseRequest(count))
+        null
+    } catch (e: Exception) {
+        e.userMessage()
+    }
+
+    suspend fun reduceDevices(newLimit: Int): String? = try {
+        api.reduceDevices(ReduceDevicesRequest(newLimit))
+        null
+    } catch (e: Exception) {
+        e.userMessage()
+    }
+
+    // --- Трафик ---
+
+    /** Пакеты докупки трафика: [{gb, price_kopeks}]. */
+    suspend fun trafficPackages(): List<TrafficPackage> {
+        val root = api.trafficPackages()
+        val array = when (root) {
+            is JsonArray -> root
+            is JsonObject -> root["packages"]?.jsonArray
+                ?: root["items"]?.jsonArray
+                ?: root["traffic_packages"]?.jsonArray
+                ?: return emptyList()
+            else -> return emptyList()
+        }
+        return array.mapNotNull { item ->
+            val obj = item as? JsonObject ?: return@mapNotNull null
+            val gb = obj.intOf("gb") ?: obj.intOf("traffic_gb") ?: return@mapNotNull null
+            val price = obj.longOf("price_kopeks") ?: obj.longOf("price") ?: return@mapNotNull null
+            TrafficPackage(gb, price)
+        }.sortedBy { it.gb }
+    }
+
+    suspend fun buyTraffic(gb: Int): String? = try {
+        api.purchaseTraffic(TrafficPurchaseRequest(gb))
+        null
+    } catch (e: Exception) {
+        e.userMessage()
+    }
 }
+
+data class DevicesInfo(
+    val deviceLimit: Int?,
+    val connectedCount: Int?,
+    val pricePerDeviceKopeks: Long?,
+    val maxDeviceLimit: Int?,
+    val purchaseAvailable: Boolean,
+    val reduceAvailable: Boolean,
+)
+
+data class TrafficPackage(val gb: Int, val priceKopeks: Long)
+
+private fun JsonObject.intOf(key: String): Int? = this[key]?.jsonPrimitive?.intOrNull
+private fun JsonObject.longOf(key: String): Long? = this[key]?.jsonPrimitive?.longOrNull
+private fun JsonObject.boolOf(key: String): Boolean? =
+    (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull

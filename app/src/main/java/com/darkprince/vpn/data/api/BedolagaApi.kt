@@ -10,10 +10,13 @@ import com.darkprince.vpn.data.api.dto.EmailRegisterRequest
 import com.darkprince.vpn.data.api.dto.ForgotPasswordRequest
 import com.darkprince.vpn.data.api.dto.LogoutRequest
 import com.darkprince.vpn.data.api.dto.PaymentMethodDto
+import com.darkprince.vpn.data.api.dto.DevicesPurchaseRequest
 import com.darkprince.vpn.data.api.dto.PurchaseTariffRequest
 import com.darkprince.vpn.data.api.dto.RawJson
+import com.darkprince.vpn.data.api.dto.ReduceDevicesRequest
 import com.darkprince.vpn.data.api.dto.RefreshRequest
 import com.darkprince.vpn.data.api.dto.RenewRequest
+import com.darkprince.vpn.data.api.dto.TrafficPurchaseRequest
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
 import com.darkprince.vpn.data.api.dto.TopupRequest
 import com.darkprince.vpn.data.api.dto.TopupResponse
@@ -80,6 +83,29 @@ interface BedolagaApi {
 
     @POST("cabinet/subscription/purchase-tariff")
     suspend fun purchaseTariff(@Body body: PurchaseTariffRequest): RawJson
+
+    // --- Устройства и трафик ---
+
+    @GET("cabinet/subscription/devices")
+    suspend fun devices(): RawJson
+
+    @GET("cabinet/subscription/devices/price")
+    suspend fun devicePrice(@Query("devices") devices: Int = 1): RawJson
+
+    @POST("cabinet/subscription/devices/purchase")
+    suspend fun purchaseDevices(@Body body: DevicesPurchaseRequest): RawJson
+
+    @GET("cabinet/subscription/devices/reduction-info")
+    suspend fun deviceReductionInfo(): RawJson
+
+    @POST("cabinet/subscription/devices/reduce")
+    suspend fun reduceDevices(@Body body: ReduceDevicesRequest): RawJson
+
+    @GET("cabinet/subscription/traffic-packages")
+    suspend fun trafficPackages(): JsonElement
+
+    @POST("cabinet/subscription/traffic")
+    suspend fun purchaseTraffic(@Body body: TrafficPurchaseRequest): RawJson
 
     @GET("cabinet/subscription/renewal-options")
     suspend fun renewalOptions(): JsonElement
