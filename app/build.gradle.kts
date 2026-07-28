@@ -18,7 +18,7 @@ android {
 
         // Адрес Cabinet API бота Bedolaga (можно оставить пустым — тогда
         // приложение спросит адрес при первом запуске).
-        buildConfigField("String", "DEFAULT_API_BASE_URL", "\"\"")
+        buildConfigField("String", "DEFAULT_API_BASE_URL", "\"https://cabinet.darkprincepanel.ru/api\"")
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
