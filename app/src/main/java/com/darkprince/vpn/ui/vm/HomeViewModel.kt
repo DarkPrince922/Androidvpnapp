@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
+import com.darkprince.vpn.data.repo.SubscriptionUserInfo
 import com.darkprince.vpn.data.repo.userMessage
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.vpn.TrafficStats
@@ -16,6 +17,7 @@ import kotlinx.coroutines.launch
 
 data class HomeUiState(
     val subscription: SubscriptionStatusResponse? = null,
+    val subUserInfo: SubscriptionUserInfo? = null,
     val servers: List<ProxyProfile> = emptyList(),
     val selectedServer: Int = 0,
     val loading: Boolean = false,
@@ -47,15 +49,16 @@ class HomeViewModel : ViewModel() {
                 error = e.userMessage()
                 null
             }
-            val servers = try {
-                subRepo.fetchServers(forceRefresh = forceServers).first
+            val (servers, userInfo) = try {
+                subRepo.fetchServers(forceRefresh = forceServers)
             } catch (e: Exception) {
                 if (sub != null && error == null) error = e.userMessage()
-                emptyList()
+                emptyList<ProxyProfile>() to null
             }
             val selected = prefs.selectedServerFlow.first().coerceIn(0, (servers.size - 1).coerceAtLeast(0))
             _state.value = HomeUiState(
                 subscription = sub,
+                subUserInfo = userInfo,
                 servers = servers,
                 selectedServer = selected,
                 loading = false,

@@ -32,4 +32,10 @@ data class ProxyProfile(
     val grpcMultiMode: Boolean = false,
     val headerType: String? = null,    // tcp http-обфускация
     val vmessSecurity: String = "auto",
+    /**
+     * Полный конфиг Xray из подписки (формат Xray JSON / Happ). Если задан,
+     * используется как есть — с роутингом, правилами и балансировщиками
+     * панели; приложение только подменяет inbounds на свой SOCKS.
+     */
+    val rawConfig: String? = null,
 )

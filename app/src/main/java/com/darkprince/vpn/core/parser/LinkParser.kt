@@ -20,6 +20,11 @@ object LinkParser {
 
     fun parseSubscriptionContent(content: String): List<ProxyProfile> {
         val text = content.trim()
+        // Формат Xray JSON (Happ): массив полных конфигов или один конфиг
+        if (text.startsWith("[") || text.startsWith("{")) {
+            val fromJson = parseXrayJsonSubscription(text)
+            if (fromJson.isNotEmpty()) return fromJson
+        }
         val decoded = if (text.startsWith("vless://") || text.startsWith("vmess://") ||
             text.startsWith("trojan://") || text.startsWith("ss://")
         ) {
@@ -27,10 +32,70 @@ object LinkParser {
         } else {
             tryBase64(text) ?: text
         }
+        val trimmedDecoded = decoded.trim()
+        if (trimmedDecoded.startsWith("[") || trimmedDecoded.startsWith("{")) {
+            val fromJson = parseXrayJsonSubscription(trimmedDecoded)
+            if (fromJson.isNotEmpty()) return fromJson
+        }
         return decoded.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .mapNotNull { parseLink(it) }
+    }
+
+    /**
+     * Подписка в формате Xray JSON: каждый элемент — полный конфиг Xray
+     * (remarks, outbounds, routing, balancers…). Конфиг сохраняется целиком
+     * в rawConfig, имя берётся из remarks, адрес/протокол — из первого
+     * прокси-аутбаунда (для отображения в списке).
+     */
+    private fun parseXrayJsonSubscription(text: String): List<ProxyProfile> = try {
+        val root = json.parseToJsonElement(text)
+        val configs = when (root) {
+            is kotlinx.serialization.json.JsonArray -> root.mapNotNull { it as? kotlinx.serialization.json.JsonObject }
+            is kotlinx.serialization.json.JsonObject ->
+                if (root.containsKey("outbounds")) listOf(root) else emptyList()
+            else -> emptyList()
+        }
+        configs.mapIndexedNotNull { index, config ->
+            val outbounds = config["outbounds"] as? kotlinx.serialization.json.JsonArray
+                ?: return@mapIndexedNotNull null
+            var protocol = Protocol.VLESS
+            var address = ""
+            var port = 443
+            for (outbound in outbounds) {
+                val obj = outbound as? kotlinx.serialization.json.JsonObject ?: continue
+                val proto = obj["protocol"]?.jsonPrimitive?.contentOrNull ?: continue
+                val parsed = when (proto) {
+                    "vless" -> Protocol.VLESS
+                    "vmess" -> Protocol.VMESS
+                    "trojan" -> Protocol.TROJAN
+                    "shadowsocks" -> Protocol.SHADOWSOCKS
+                    else -> null
+                } ?: continue
+                protocol = parsed
+                val settings = obj["settings"] as? kotlinx.serialization.json.JsonObject
+                val server = (settings?.get("vnext") as? kotlinx.serialization.json.JsonArray)?.firstOrNull()
+                    ?: (settings?.get("servers") as? kotlinx.serialization.json.JsonArray)?.firstOrNull()
+                (server as? kotlinx.serialization.json.JsonObject)?.let { s ->
+                    address = s["address"]?.jsonPrimitive?.contentOrNull ?: address
+                    port = s["port"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: port
+                }
+                break
+            }
+            val name = config["remarks"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                ?: address.ifBlank { "Конфиг ${index + 1}" }
+            ProxyProfile(
+                protocol = protocol,
+                name = name,
+                address = address.ifBlank { "-" },
+                port = port,
+                userId = "",
+                rawConfig = config.toString(),
+            )
+        }
+    } catch (_: Exception) {
+        emptyList()
     }
 
     private fun tryBase64(text: String): String? = try {

@@ -35,11 +35,12 @@ data class TariffOffer(
 
 data class PeriodPrice(val days: Int, val priceKopeks: Long)
 
+@kotlinx.serialization.Serializable
 data class SubscriptionUserInfo(
-    val uploadBytes: Long?,
-    val downloadBytes: Long?,
-    val totalBytes: Long?,
-    val expireUnix: Long?,
+    val uploadBytes: Long? = null,
+    val downloadBytes: Long? = null,
+    val totalBytes: Long? = null,
+    val expireUnix: Long? = null,
 )
 
 class SubscriptionRepository(
@@ -76,7 +77,16 @@ class SubscriptionRepository(
                 val cached = prefs.serversRawFlow.first()
                 if (!cached.isNullOrBlank()) {
                     val profiles = LinkParser.parseSubscriptionContent(cached)
-                    if (profiles.isNotEmpty()) return@withContext profiles to null
+                    if (profiles.isNotEmpty()) {
+                        val storedInfo = prefs.subUserInfoFlow.first()?.let {
+                            try {
+                                client.json.decodeFromString(SubscriptionUserInfo.serializer(), it)
+                            } catch (_: Exception) {
+                                null
+                            }
+                        }
+                        return@withContext profiles to storedInfo
+                    }
                 }
             }
             val url = resolveSubscriptionUrl()
@@ -94,6 +104,11 @@ class SubscriptionRepository(
                 val userInfo = response.header("subscription-userinfo")?.let(::parseUserInfo)
                 val profiles = LinkParser.parseSubscriptionContent(body)
                 if (profiles.isNotEmpty()) prefs.setServersRaw(body)
+                if (userInfo != null) {
+                    prefs.setSubUserInfo(
+                        client.json.encodeToString(SubscriptionUserInfo.serializer(), userInfo)
+                    )
+                }
                 profiles to userInfo
             }
         }

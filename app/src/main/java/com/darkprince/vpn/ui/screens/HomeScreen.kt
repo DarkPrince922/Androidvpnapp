@@ -132,34 +132,52 @@ fun HomeScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Статус подписки
+        // Статус подписки: поля кабинета, при их отсутствии — данные из
+        // заголовка subscription-userinfo самой подписки Remnawave
         val sub = state.subscription
+        val userInfo = state.subUserInfo
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("Подписка", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
-                when {
-                    state.loading && sub == null -> Text("Загрузка…")
-                    sub == null -> Text("Нет активной подписки")
-                    else -> {
-                        sub.tariffName?.let {
-                            Text(it, style = MaterialTheme.typography.titleMedium)
-                        }
-                        sub.daysLeft?.let { Text("Осталось дней: $it") }
-                        val used = sub.trafficUsedGb
-                        val limit = sub.trafficLimitGb
-                        if (used != null) {
-                            val usedText = String.format(Locale.getDefault(), "%.1f ГБ", used)
-                            if (limit != null && limit > 0) {
-                                Text(
-                                    "Трафик: $usedText из ${
-                                        String.format(Locale.getDefault(), "%.0f ГБ", limit)
-                                    }"
-                                )
-                            } else {
-                                Text("Трафик: $usedText (безлимит)")
-                            }
-                        }
+                var shownAnything = false
+                sub?.tariffName?.let {
+                    Text(it, style = MaterialTheme.typography.titleMedium)
+                    shownAnything = true
+                }
+                val daysLeft = sub?.daysLeft
+                    ?: userInfo?.expireUnix?.takeIf { it > 0 }?.let {
+                        ((it * 1000 - System.currentTimeMillis()) / 86_400_000L).toInt().coerceAtLeast(0)
+                    }
+                daysLeft?.let {
+                    Text("Осталось дней: $it")
+                    shownAnything = true
+                }
+                val usedGb = sub?.trafficUsedGb
+                    ?: userInfo?.let { info ->
+                        val total = (info.uploadBytes ?: 0) + (info.downloadBytes ?: 0)
+                        if (total > 0 || info.totalBytes != null) total / 1_073_741_824.0 else null
+                    }
+                val limitGb = sub?.trafficLimitGb
+                    ?: userInfo?.totalBytes?.takeIf { it > 0 }?.let { it / 1_073_741_824.0 }
+                if (usedGb != null) {
+                    val usedText = String.format(Locale.getDefault(), "%.1f ГБ", usedGb)
+                    if (limitGb != null && limitGb > 0) {
+                        Text(
+                            "Трафик: $usedText из ${
+                                String.format(Locale.getDefault(), "%.0f ГБ", limitGb)
+                            }"
+                        )
+                    } else {
+                        Text("Трафик: $usedText (безлимит)")
+                    }
+                    shownAnything = true
+                }
+                if (!shownAnything) {
+                    when {
+                        state.loading -> Text("Загрузка…")
+                        state.servers.isEmpty() -> Text("Нет активной подписки")
+                        else -> Text("Подписка активна")
                     }
                 }
             }

@@ -28,6 +28,7 @@ class AppPrefs(private val context: Context) {
         val USER_JSON = stringPreferencesKey("user_json")
         val SUB_URL = stringPreferencesKey("subscription_url")
         val SERVERS_RAW = stringPreferencesKey("servers_raw")
+        val SUB_USERINFO = stringPreferencesKey("sub_userinfo")
         val SELECTED_SERVER = intPreferencesKey("selected_server")
     }
 
@@ -57,6 +58,7 @@ class AppPrefs(private val context: Context) {
     val userJsonFlow: Flow<String?> = context.dataStore.data.map { it[Keys.USER_JSON] }
     val subscriptionUrlFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SUB_URL] }
     val serversRawFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SERVERS_RAW] }
+    val subUserInfoFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SUB_USERINFO] }
     val selectedServerFlow: Flow<Int> = context.dataStore.data.map { it[Keys.SELECTED_SERVER] ?: 0 }
 
     suspend fun setBaseUrl(url: String) {
@@ -94,6 +96,12 @@ class AppPrefs(private val context: Context) {
     suspend fun setServersRaw(raw: String?) {
         context.dataStore.edit { p ->
             if (raw == null) p.remove(Keys.SERVERS_RAW) else p[Keys.SERVERS_RAW] = raw
+        }
+    }
+
+    suspend fun setSubUserInfo(json: String?) {
+        context.dataStore.edit { p ->
+            if (json == null) p.remove(Keys.SUB_USERINFO) else p[Keys.SUB_USERINFO] = json
         }
     }
 

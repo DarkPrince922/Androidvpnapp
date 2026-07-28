@@ -31,7 +31,7 @@ class XVpnService : VpnService() {
     companion object {
         const val ACTION_START = "com.darkprince.vpn.START"
         const val ACTION_STOP = "com.darkprince.vpn.STOP"
-        const val EXTRA_PROFILE_JSON = "profile_json"
+        private const val PROFILE_FILE = "active_profile.json"
 
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "vpn_state"
@@ -39,9 +39,11 @@ class XVpnService : VpnService() {
         @Volatile private var coreEnvInitialized = false
 
         fun start(context: Context, profile: ProxyProfile) {
-            val intent = Intent(context, XVpnService::class.java)
-                .setAction(ACTION_START)
-                .putExtra(EXTRA_PROFILE_JSON, Json.encodeToString(ProxyProfile.serializer(), profile))
+            // профиль (возможно, с большим raw-конфигом) передаём через файл,
+            // а не через Intent — у экстра есть жёсткий лимит размера
+            File(context.filesDir, PROFILE_FILE)
+                .writeText(Json.encodeToString(ProxyProfile.serializer(), profile))
+            val intent = Intent(context, XVpnService::class.java).setAction(ACTION_START)
             context.startForegroundService(intent)
         }
 
@@ -69,12 +71,8 @@ class XVpnService : VpnService() {
                 return START_NOT_STICKY
             }
             ACTION_START -> {
-                val profileJson = intent.getStringExtra(EXTRA_PROFILE_JSON)
-                if (profileJson == null) {
-                    stopSelf()
-                    return START_NOT_STICKY
-                }
                 val profile = try {
+                    val profileJson = File(filesDir, PROFILE_FILE).readText()
                     Json.decodeFromString(ProxyProfile.serializer(), profileJson)
                 } catch (_: Exception) {
                     stopSelf()
@@ -136,23 +134,26 @@ class XVpnService : VpnService() {
             TProxyService.TProxyStartService(configFile.absolutePath, fd.fd)
 
             VpnStateStore.setState(VpnState.CONNECTED)
-            startStatsLoop()
+            startStatsLoop(profile)
         } catch (e: Throwable) {
             VpnStateStore.setState(VpnState.ERROR, e.message)
             stopVpn()
         }
     }
 
-    private fun startStatsLoop() {
+    private fun startStatsLoop(profile: ProxyProfile) {
         statsJob?.cancel()
+        val tags = XrayConfigBuilder.statsTags(profile)
         statsJob = scope.launch {
             var up = 0L
             var down = 0L
             while (isActive) {
                 val controller = coreController ?: break
                 try {
-                    up += controller.queryStats("proxy", "uplink")
-                    down += controller.queryStats("proxy", "downlink")
+                    for (tag in tags) {
+                        up += controller.queryStats(tag, "uplink")
+                        down += controller.queryStats(tag, "downlink")
+                    }
                     VpnStateStore.setStats(TrafficStats(uplinkBytes = up, downlinkBytes = down))
                 } catch (_: Exception) {
                 }

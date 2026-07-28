@@ -22,6 +22,77 @@ object XrayConfigBuilder {
     private val json = Json { prettyPrint = false }
 
     fun build(profile: ProxyProfile): String {
+        profile.rawConfig?.let { return buildFromRawConfig(it) }
+        return buildFromParsedProfile(profile)
+    }
+
+    /**
+     * Подписка в формате Xray JSON: конфиг панели используется как есть
+     * (роутинг, правила, балансировщики сохраняются). Подменяем только
+     * inbounds на локальный SOCKS и включаем статистику, если её нет.
+     */
+    private fun buildFromRawConfig(raw: String): String {
+        val original = json.parseToJsonElement(raw).jsonObject
+        val merged = buildJsonObject {
+            for ((key, value) in original) {
+                if (key == "inbounds") continue
+                put(key, value)
+            }
+            putJsonArray("inbounds") { add(socksInbound()) }
+            if ("stats" !in original) putJsonObject("stats") { }
+            if ("policy" !in original) {
+                putJsonObject("policy") {
+                    putJsonObject("system") {
+                        put("statsOutboundUplink", true)
+                        put("statsOutboundDownlink", true)
+                    }
+                }
+            }
+            if ("log" !in original) {
+                putJsonObject("log") { put("loglevel", "warning") }
+            }
+        }
+        return json.encodeToString(JsonObject.serializer(), merged)
+    }
+
+    /** Теги прокси-аутбаундов конфига — для опроса статистики трафика. */
+    fun statsTags(profile: ProxyProfile): List<String> {
+        val raw = profile.rawConfig ?: return listOf("proxy")
+        return try {
+            val outbounds = json.parseToJsonElement(raw).jsonObject["outbounds"]
+                ?: return listOf("proxy")
+            val skip = setOf("freedom", "blackhole", "dns", "loopback")
+            (outbounds as? kotlinx.serialization.json.JsonArray)
+                ?.mapNotNull { it as? JsonObject }
+                ?.filter { (it["protocol"] as? kotlinx.serialization.json.JsonPrimitive)?.content !in skip }
+                ?.mapNotNull { (it["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                ?.ifEmpty { listOf("proxy") }
+                ?: listOf("proxy")
+        } catch (_: Exception) {
+            listOf("proxy")
+        }
+    }
+
+    private fun socksInbound(): JsonObject = buildJsonObject {
+        put("tag", "socks")
+        put("listen", "127.0.0.1")
+        put("port", SOCKS_PORT)
+        put("protocol", "socks")
+        putJsonObject("settings") {
+            put("auth", "noauth")
+            put("udp", true)
+        }
+        putJsonObject("sniffing") {
+            put("enabled", true)
+            putJsonArray("destOverride") {
+                add("http")
+                add("tls")
+            }
+            put("routeOnly", false)
+        }
+    }
+
+    private fun buildFromParsedProfile(profile: ProxyProfile): String {
         val config = buildJsonObject {
             putJsonObject("log") { put("loglevel", "warning") }
             putJsonObject("stats") { }
@@ -45,26 +116,7 @@ object XrayConfigBuilder {
                     add("8.8.8.8")
                 }
             }
-            putJsonArray("inbounds") {
-                add(buildJsonObject {
-                    put("tag", "socks")
-                    put("listen", "127.0.0.1")
-                    put("port", SOCKS_PORT)
-                    put("protocol", "socks")
-                    putJsonObject("settings") {
-                        put("auth", "noauth")
-                        put("udp", true)
-                    }
-                    putJsonObject("sniffing") {
-                        put("enabled", true)
-                        putJsonArray("destOverride") {
-                            add("http")
-                            add("tls")
-                        }
-                        put("routeOnly", false)
-                    }
-                })
-            }
+            putJsonArray("inbounds") { add(socksInbound()) }
             putJsonArray("outbounds") {
                 add(buildOutbound(profile))
                 add(buildJsonObject {
