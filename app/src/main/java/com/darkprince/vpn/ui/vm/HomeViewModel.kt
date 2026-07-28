@@ -36,7 +36,9 @@ class HomeViewModel : ViewModel() {
     val vpnError: StateFlow<String?> = VpnStateStore.lastError
 
     init {
-        refresh()
+        // при запуске сразу тянем свежую подписку; без сети fetchServers
+        // сам откатится на сохранённую копию
+        refresh(forceServers = true)
     }
 
     fun refresh(forceServers: Boolean = false) {

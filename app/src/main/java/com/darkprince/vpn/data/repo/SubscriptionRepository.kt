@@ -74,44 +74,55 @@ class SubscriptionRepository(
     suspend fun fetchServers(forceRefresh: Boolean = false): Pair<List<ProxyProfile>, SubscriptionUserInfo?> =
         withContext(Dispatchers.IO) {
             if (!forceRefresh) {
-                val cached = prefs.serversRawFlow.first()
-                if (!cached.isNullOrBlank()) {
-                    val profiles = LinkParser.parseSubscriptionContent(cached)
-                    if (profiles.isNotEmpty()) {
-                        val storedInfo = prefs.subUserInfoFlow.first()?.let {
-                            try {
-                                client.json.decodeFromString(SubscriptionUserInfo.serializer(), it)
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
-                        return@withContext profiles to storedInfo
-                    }
-                }
+                loadCached()?.let { return@withContext it }
             }
-            val url = resolveSubscriptionUrl()
-                ?: throw IllegalStateException("Нет активной подписки")
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", "v2rayNG/1.10.7")
-                .header("Accept", "text/plain")
-                .build()
-            client.plainOkHttp.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("Подписка недоступна (HTTP ${response.code})")
-                }
-                val body = response.body?.string().orEmpty()
-                val userInfo = response.header("subscription-userinfo")?.let(::parseUserInfo)
-                val profiles = LinkParser.parseSubscriptionContent(body)
-                if (profiles.isNotEmpty()) prefs.setServersRaw(body)
-                if (userInfo != null) {
-                    prefs.setSubUserInfo(
-                        client.json.encodeToString(SubscriptionUserInfo.serializer(), userInfo)
-                    )
-                }
-                profiles to userInfo
+            try {
+                fetchFromNetwork()
+            } catch (e: Exception) {
+                // сеть/сервер недоступны — работаем с сохранённой копией подписки
+                loadCached() ?: throw e
             }
         }
+
+    private suspend fun loadCached(): Pair<List<ProxyProfile>, SubscriptionUserInfo?>? {
+        val cached = prefs.serversRawFlow.first()
+        if (cached.isNullOrBlank()) return null
+        val profiles = LinkParser.parseSubscriptionContent(cached)
+        if (profiles.isEmpty()) return null
+        val storedInfo = prefs.subUserInfoFlow.first()?.let {
+            try {
+                client.json.decodeFromString(SubscriptionUserInfo.serializer(), it)
+            } catch (_: Exception) {
+                null
+            }
+        }
+        return profiles to storedInfo
+    }
+
+    private suspend fun fetchFromNetwork(): Pair<List<ProxyProfile>, SubscriptionUserInfo?> {
+        val url = resolveSubscriptionUrl()
+            ?: throw IllegalStateException("Нет активной подписки")
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "v2rayNG/1.10.7")
+            .header("Accept", "text/plain")
+            .build()
+        return client.plainOkHttp.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Подписка недоступна (HTTP ${response.code})")
+            }
+            val body = response.body?.string().orEmpty()
+            val userInfo = response.header("subscription-userinfo")?.let(::parseUserInfo)
+            val profiles = LinkParser.parseSubscriptionContent(body)
+            if (profiles.isNotEmpty()) prefs.setServersRaw(body)
+            if (userInfo != null) {
+                prefs.setSubUserInfo(
+                    client.json.encodeToString(SubscriptionUserInfo.serializer(), userInfo)
+                )
+            }
+            profiles to userInfo
+        }
+    }
 
     private fun parseUserInfo(header: String): SubscriptionUserInfo {
         val map = header.split(';')
