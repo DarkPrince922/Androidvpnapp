@@ -64,20 +64,44 @@ jobs:
           fi
           echo "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
 
-          # Проверяем пароли сразу: иначе ошибка вылезет только через
-          # несколько минут, на этапе подписи APK.
-          if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" \
-                -storepass "$KEYSTORE_PASSWORD" >/dev/null 2>&1; then
-            echo "::error::Неверный KEYSTORE_PASSWORD или повреждён KEYSTORE_BASE64"
-            exit 1
-          fi
-          if ! keytool -certreq -alias "$KEY_ALIAS" -keystore "$RUNNER_TEMP/release.jks" \
-                -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" >/dev/null 2>&1; then
-            echo "::error::Неверный KEY_PASSWORD или KEY_ALIAS — ключ не открывается"
+          # Проверяем сразу: иначе ошибка вылезет только через несколько
+          # минут, на этапе подписи APK. keytool для этого не годится — в
+          # PKCS12 он игнорирует пароль ключа, поэтому читаем ключ напрямую.
+          cat > "$RUNNER_TEMP/KeystoreCheck.java" <<'JAVA'
+          import java.io.FileInputStream;
+          import java.security.KeyStore;
+
+          public class KeystoreCheck {
+              public static void main(String[] args) throws Exception {
+                  KeyStore ks = KeyStore.getInstance("PKCS12");
+                  try (FileInputStream in = new FileInputStream(args[0])) {
+                      ks.load(in, args[1].toCharArray());
+                  }
+                  if (!ks.containsAlias(args[2])) {
+                      System.out.println("NO_ALIAS");
+                      System.exit(1);
+                  }
+                  for (int i = 3; i < args.length; i++) {
+                      try {
+                          if (ks.getKey(args[2], args[i].toCharArray()) != null) {
+                              System.out.println("OK");
+                              return;
+                          }
+                      } catch (Exception ignored) { }
+                  }
+                  System.out.println("NO_KEY_PASSWORD");
+                  System.exit(1);
+              }
+          }
+          JAVA
+          sed -i 's/^          //' "$RUNNER_TEMP/KeystoreCheck.java"
+          if ! java "$RUNNER_TEMP/KeystoreCheck.java" "$RUNNER_TEMP/release.jks" \
+                "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" "$KEYSTORE_PASSWORD"; then
+            echo "::error::Ключ не открывается: проверьте KEYSTORE_PASSWORD, KEY_ALIAS и KEY_PASSWORD"
             exit 1
           fi
           echo "path=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
-          echo "Keystore проверен: пароли и алиас верные"
+          echo "Keystore проверен: ключ читается"
 
       - name: Собрать release APK
         env:

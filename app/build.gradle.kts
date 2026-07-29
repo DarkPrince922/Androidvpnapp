@@ -5,12 +5,43 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+import java.security.KeyStore
+
 // Версия и подпись берутся из окружения (задаются CI при релизе по тегу),
 // иначе — значения по умолчанию для локальной сборки.
 val appVersionName: String = System.getenv("RELEASE_VERSION") ?: "1.0.0"
 val appVersionCode: Int = System.getenv("RELEASE_VERSION_CODE")?.toIntOrNull() ?: 1
 val keystorePath: String? = System.getenv("KEYSTORE_PATH")
 val hasKeystore: Boolean = !keystorePath.isNullOrBlank() && file(keystorePath).exists()
+
+/**
+ * Подбирает пароль, которым реально открывается ключ. Хранилища PKCS12 (формат
+ * по умолчанию у keytool) не поддерживают отдельный пароль ключа — там он равен
+ * паролю хранилища, даже если при генерации указывали другой. Проверяем оба
+ * варианта, чтобы подпись не падала из-за несоответствия.
+ */
+fun resolveKeyPassword(store: File, storePass: String?, alias: String?, keyPass: String?): String? {
+    if (storePass == null || alias.isNullOrBlank()) return keyPass ?: storePass
+    val candidates = listOfNotNull(keyPass?.takeIf { it.isNotBlank() }, storePass).distinct()
+    for (type in listOf("PKCS12", "JKS")) {
+        val ks = try {
+            KeyStore.getInstance(type).also { ks ->
+                store.inputStream().use { ks.load(it, storePass.toCharArray()) }
+            }
+        } catch (_: Exception) {
+            continue
+        }
+        for (candidate in candidates) {
+            val ok = try {
+                ks.getKey(alias, candidate.toCharArray()) != null
+            } catch (_: Exception) {
+                false
+            }
+            if (ok) return candidate
+        }
+    }
+    return keyPass ?: storePass
+}
 
 android {
     namespace = "com.darkprince.vpn"
@@ -35,12 +66,15 @@ android {
     signingConfigs {
         create("release") {
             if (hasKeystore) {
-                storeFile = file(keystorePath!!)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS")
-                // у многих хранилищ пароль ключа совпадает с паролем хранилища
-                keyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
-                    ?: System.getenv("KEYSTORE_PASSWORD")
+                val store = file(keystorePath!!)
+                val storePass = System.getenv("KEYSTORE_PASSWORD")
+                val alias = System.getenv("KEY_ALIAS")
+                storeFile = store
+                storePassword = storePass
+                keyAlias = alias
+                keyPassword = resolveKeyPassword(
+                    store, storePass, alias, System.getenv("KEY_PASSWORD")
+                )
                 enableV1Signing = true
                 enableV2Signing = true
             }
