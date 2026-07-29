@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.core.xray.XrayConfigBuilder
+import com.darkprince.vpn.data.api.dto.SubscriptionListItem
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
 import com.darkprince.vpn.data.repo.SubscriptionUserInfo
 import com.darkprince.vpn.data.repo.userMessage
@@ -34,7 +35,14 @@ data class HomeUiState(
     val error: String? = null,
     val pings: Map<Int, Long> = emptyMap(),
     val pinging: Boolean = false,
-)
+    /** Подписки пользователя; переключатель показываем, когда их больше одной. */
+    val subscriptions: List<SubscriptionListItem> = emptyList(),
+    val selectedSubscriptionId: Long? = null,
+) {
+    val selectedSubscription: SubscriptionListItem?
+        get() = subscriptions.firstOrNull { it.id == selectedSubscriptionId }
+            ?: subscriptions.firstOrNull()
+}
 
 class HomeViewModel : ViewModel() {
     private val subRepo = ServiceLocator.subscriptionRepository
@@ -67,6 +75,15 @@ class HomeViewModel : ViewModel() {
 
             // 2) фоном обновляем из сети
             var error: String? = null
+            val subs = subRepo.subscriptions()
+            var selectedId = prefs.selectedSubscriptionFlow.first()
+            if (subs.isNotEmpty() && subs.none { it.id == selectedId }) {
+                // выбранной подписки больше нет — берём активную, иначе первую
+                selectedId = (subs.firstOrNull { it.isActive } ?: subs.first()).id
+                prefs.setSelectedSubscription(selectedId)
+            }
+            _state.value = _state.value.copy(subscriptions = subs, selectedSubscriptionId = selectedId)
+
             val sub = try {
                 subRepo.status()
             } catch (e: Exception) {
@@ -92,7 +109,26 @@ class HomeViewModel : ViewModel() {
                 selectedServer = selected,
                 loading = false,
                 error = error,
+                subscriptions = subs,
+                selectedSubscriptionId = selectedId,
             )
+        }
+    }
+
+    /** Переключение между подписками: серверы перезагружаются под выбранную. */
+    fun selectSubscription(id: Long) {
+        if (id == _state.value.selectedSubscriptionId) return
+        viewModelScope.launch {
+            val wasConnected = VpnStateStore.state.value == VpnState.CONNECTED
+            if (wasConnected) XVpnService.stop(ServiceLocator.appContext)
+            subRepo.selectSubscription(id)
+            _state.value = _state.value.copy(
+                selectedSubscriptionId = id,
+                servers = emptyList(),
+                selectedServer = 0,
+                pings = emptyMap(),
+            )
+            refresh(forceServers = true)
         }
     }
 

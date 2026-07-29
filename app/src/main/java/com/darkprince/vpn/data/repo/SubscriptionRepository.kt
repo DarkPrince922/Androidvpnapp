@@ -7,6 +7,7 @@ import com.darkprince.vpn.data.api.dto.DevicesPurchaseRequest
 import com.darkprince.vpn.data.api.dto.PurchaseTariffRequest
 import com.darkprince.vpn.data.api.dto.ReduceDevicesRequest
 import com.darkprince.vpn.data.api.dto.RenewRequest
+import com.darkprince.vpn.data.api.dto.SubscriptionListItem
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
 import com.darkprince.vpn.data.api.dto.TrafficPurchaseRequest
 import com.darkprince.vpn.data.prefs.AppPrefs
@@ -55,8 +56,34 @@ class SubscriptionRepository(
 
     suspend fun status(): SubscriptionStatusResponse = api.subscription()
 
-    /** Ссылка на подписку Remnawave (через кабинет, с запасным полем из статуса). */
+    /** Список подписок пользователя; пусто, если мультитариф выключен. */
+    suspend fun subscriptions(): List<SubscriptionListItem> = try {
+        api.subscriptions().subscriptions
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    suspend fun selectSubscription(id: Long?) {
+        prefs.setSelectedSubscription(id)
+        // список серверов принадлежит конкретной подписке — сбрасываем кэш
+        prefs.setServersRaw(null)
+        prefs.setSubscriptionUrl(null)
+        prefs.setSelectedServer(0)
+    }
+
+    /**
+     * Ссылка на подписку Remnawave. При нескольких подписках берём ссылку
+     * выбранной (она приходит прямо в списке), иначе — через кабинет.
+     */
     suspend fun resolveSubscriptionUrl(): String? {
+        val selectedId = prefs.selectedSubscriptionFlow.first()
+        if (selectedId != null) {
+            val fromList = subscriptions().firstOrNull { it.id == selectedId }?.subscriptionUrl
+            if (fromList != null) {
+                prefs.setSubscriptionUrl(fromList)
+                return fromList
+            }
+        }
         val fromLink = try {
             api.connectionLink().subscriptionUrl
         } catch (_: Exception) {
@@ -107,10 +134,17 @@ class SubscriptionRepository(
     private suspend fun fetchFromNetwork(): Pair<List<ProxyProfile>, SubscriptionUserInfo?> {
         val url = resolveSubscriptionUrl()
             ?: throw IllegalStateException("Нет активной подписки")
+        // HWID-заголовки нужны Remnawave, чтобы считать устройства и
+        // применять лимит из тарифа; без x-hwid панель с включённым лимитом
+        // отдаёт 404.
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", "v2rayNG/1.10.7")
             .header("Accept", "text/plain")
+            .header("x-hwid", prefs.cachedHwid)
+            .header("x-device-os", "Android")
+            .header("x-ver-os", android.os.Build.VERSION.RELEASE ?: "")
+            .header("x-device-model", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".trim())
             .build()
         return client.plainOkHttp.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {

@@ -15,7 +15,14 @@ Android-приложение VPN, полностью совместимое с �
   пароля.
 - **Подписка Remnawave**: приложение получает `subscription_url` из кабинета,
   скачивает подписку и парсит серверы **VLESS (Reality/TLS), VMess, Trojan,
-  Shadowsocks**; сети tcp / ws / grpc / httpupgrade / xhttp.
+  Shadowsocks**; сети tcp / ws / grpc / httpupgrade / xhttp. Поддерживается и
+  формат Xray JSON (полные конфиги панели с роутингом и балансировщиками).
+- **Учёт устройств**: при загрузке подписки передаются `x-hwid` и сведения об
+  устройстве, поэтому в Remnawave работает лимит устройств из тарифа, а в
+  панели видно, с каких телефонов используется подписка.
+- **Несколько подписок**: если в боте включён мультитариф, на главном экране
+  появляется переключатель между подписками — серверы перезагружаются под
+  выбранную.
 - **VPN-подключение**: ядро Xray (libv2ray из
   [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite)) +
   [hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel)

@@ -85,6 +85,34 @@ data class SubscriptionStatusResponse(
 )
 
 @Serializable
+data class SubscriptionListItem(
+    val id: Long,
+    val status: String? = null,
+    @SerialName("tariff_id") val tariffId: Long? = null,
+    @SerialName("tariff_name") val tariffName: String? = null,
+    @SerialName("traffic_limit_gb") val trafficLimitGb: Double? = null,
+    @SerialName("traffic_used_gb") val trafficUsedGb: Double? = null,
+    @SerialName("device_limit") val deviceLimit: Int? = null,
+    @SerialName("end_date") val endDate: String? = null,
+    @SerialName("subscription_url") val subscriptionUrl: String? = null,
+    @SerialName("is_trial") val isTrial: Boolean? = null,
+    @SerialName("autopay_enabled") val autopayEnabled: Boolean? = null,
+) {
+    val displayName: String
+        get() = tariffName?.takeIf { it.isNotBlank() }
+            ?: if (isTrial == true) "Пробная подписка" else "Подписка #$id"
+
+    val isActive: Boolean
+        get() = status?.lowercase() in setOf("active", "trial", "активна")
+}
+
+@Serializable
+data class SubscriptionsListResponse(
+    val subscriptions: List<SubscriptionListItem> = emptyList(),
+    @SerialName("multi_tariff_enabled") val multiTariffEnabled: Boolean = false,
+)
+
+@Serializable
 data class ConnectionLinkResponse(
     @SerialName("subscription_url") val subscriptionUrl: String? = null,
     @SerialName("happ_scheme_link") val happSchemeLink: String? = null,

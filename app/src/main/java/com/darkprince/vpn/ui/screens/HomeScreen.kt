@@ -14,16 +14,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -114,6 +120,57 @@ fun HomeScreen(
         }
 
         Spacer(Modifier.height(24.dp))
+
+        // Переключатель подписок — только когда их несколько
+        if (state.subscriptions.size > 1) {
+            var menuOpen by remember { mutableStateOf(false) }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { menuOpen = true },
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        Text("Подписка", style = MaterialTheme.typography.labelMedium)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            state.selectedSubscription?.displayName ?: "Выберите подписку",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    Icon(Icons.Default.ExpandMore, contentDescription = "Сменить подписку")
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    state.subscriptions.forEach { sub ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(sub.displayName)
+                                    val details = listOfNotNull(
+                                        sub.endDate?.take(10),
+                                        if (sub.isActive) null else "неактивна",
+                                    ).joinToString(" · ")
+                                    if (details.isNotBlank()) {
+                                        Text(details, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            },
+                            onClick = {
+                                menuOpen = false
+                                viewModel.selectSubscription(sub.id)
+                            },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
 
         // Выбранный сервер
         val selected = state.servers.getOrNull(state.selectedServer)

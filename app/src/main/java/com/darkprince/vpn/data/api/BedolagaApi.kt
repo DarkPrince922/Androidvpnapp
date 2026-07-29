@@ -21,6 +21,7 @@ import com.darkprince.vpn.data.api.dto.RefreshRequest
 import com.darkprince.vpn.data.api.dto.RenewRequest
 import com.darkprince.vpn.data.api.dto.TrafficPurchaseRequest
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
+import com.darkprince.vpn.data.api.dto.SubscriptionsListResponse
 import com.darkprince.vpn.data.api.dto.TopupRequest
 import com.darkprince.vpn.data.api.dto.TopupResponse
 import com.darkprince.vpn.data.api.dto.TransactionsResponse
@@ -68,6 +69,10 @@ interface BedolagaApi {
     suspend fun me(): UserDto
 
     // --- Подписка ---
+
+    /** Список подписок пользователя (мультитариф). */
+    @GET("cabinet/subscriptions")
+    suspend fun subscriptions(): SubscriptionsListResponse
 
     @GET("cabinet/subscription")
     suspend fun subscription(): SubscriptionStatusResponse

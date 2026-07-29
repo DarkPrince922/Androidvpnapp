@@ -31,9 +31,13 @@ class AppPrefs(private val context: Context) {
         val SUB_USERINFO = stringPreferencesKey("sub_userinfo")
         val SELECTED_SERVER = intPreferencesKey("selected_server")
         val LAST_EXPIRY_NOTIFY_DAY = stringPreferencesKey("last_expiry_notify_day")
+        val HWID = stringPreferencesKey("hwid")
+        val SELECTED_SUBSCRIPTION = longPreferencesKey("selected_subscription")
     }
 
     @Volatile var cachedBaseUrl: String = ""
+        private set
+    @Volatile var cachedHwid: String = ""
         private set
     @Volatile var cachedAccessToken: String? = null
         private set
@@ -50,6 +54,19 @@ class AppPrefs(private val context: Context) {
         cachedAccessToken = p[Keys.ACCESS_TOKEN]
         cachedRefreshToken = p[Keys.REFRESH_TOKEN]
         cachedAccessExpiresAt = p[Keys.ACCESS_EXPIRES_AT] ?: 0L
+        // идентификатор устройства для учёта в панели: один на установку
+        cachedHwid = p[Keys.HWID] ?: java.util.UUID.randomUUID().toString().also { generated ->
+            context.dataStore.edit { it[Keys.HWID] = generated }
+        }
+    }
+
+    val selectedSubscriptionFlow: Flow<Long?> =
+        context.dataStore.data.map { it[Keys.SELECTED_SUBSCRIPTION] }
+
+    suspend fun setSelectedSubscription(id: Long?) {
+        context.dataStore.edit { p ->
+            if (id == null) p.remove(Keys.SELECTED_SUBSCRIPTION) else p[Keys.SELECTED_SUBSCRIPTION] = id
+        }
     }
 
     val baseUrlFlow: Flow<String> = context.dataStore.data.map {
