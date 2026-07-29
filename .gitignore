@@ -12,4 +12,5 @@ captures/
 # Нативные артефакты — скачиваются/собираются скриптами из scripts/
 app/libs/*.aar
 app/src/main/jniLibs/
+app/src/main/assets/*.dat
 third_party/

@@ -21,6 +21,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
@@ -53,6 +55,7 @@ class XVpnService : VpnService() {
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val vpnMutex = Mutex()
     private var statsJob: Job? = null
     private var tunFd: ParcelFileDescriptor? = null
     private var coreController: CoreController? = null
@@ -66,7 +69,7 @@ class XVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                stopVpn()
+                scope.launch { vpnMutex.withLock { stopVpn() } }
                 return START_NOT_STICKY
             }
             ACTION_START -> {
@@ -78,7 +81,9 @@ class XVpnService : VpnService() {
                     return START_NOT_STICKY
                 }
                 startForeground(NOTIFICATION_ID, buildNotification(profile.name))
-                scope.launch { startVpn(profile) }
+                // повторный START на работающем сервисе = смена сервера:
+                // старый туннель гасится и сразу поднимается новый
+                scope.launch { vpnMutex.withLock { startVpn(profile) } }
             }
         }
         return START_STICKY
@@ -87,6 +92,7 @@ class XVpnService : VpnService() {
     private fun startVpn(profile: ProxyProfile) {
         VpnStateStore.setState(VpnState.CONNECTING)
         VpnStateStore.setActiveProfile(profile.name)
+        teardown()
         try {
             CoreEnv.ensure(this)
 
@@ -159,9 +165,11 @@ class XVpnService : VpnService() {
         }
     }
 
-    private fun stopVpn() {
+    /** Гасит ядро и туннель, не трогая состояние сервиса (для смены сервера). */
+    private fun teardown() {
         statsJob?.cancel()
         statsJob = null
+        if (coreController == null && tunFd == null) return
         try {
             TProxyService.TProxyStopService()
         } catch (_: Throwable) {
@@ -176,6 +184,10 @@ class XVpnService : VpnService() {
         } catch (_: Exception) {
         }
         tunFd = null
+    }
+
+    private fun stopVpn() {
+        teardown()
         if (VpnStateStore.state.value != VpnState.ERROR) {
             VpnStateStore.setState(VpnState.DISCONNECTED)
         }
@@ -190,7 +202,7 @@ class XVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        stopVpn()
+        scope.launch { vpnMutex.withLock { stopVpn() } }
     }
 
     override fun onDestroy() {

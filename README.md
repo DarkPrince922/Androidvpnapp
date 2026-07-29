@@ -53,9 +53,10 @@ Workflow `.github/workflows/build.yml` при каждом пуше сам ск�
 ### Вариант 2: локально
 
 1. Android Studio (SDK 35) + Android NDK.
-2. Скачайте ядро Xray:
+2. Скачайте ядро Xray и геоданные:
    ```bash
    bash scripts/download-libv2ray.sh          # -> app/libs/libv2ray.aar
+   bash scripts/download-geodata.sh           # -> app/src/main/assets/geo*.dat
    ```
 3. Соберите мост TUN→SOCKS:
    ```bash

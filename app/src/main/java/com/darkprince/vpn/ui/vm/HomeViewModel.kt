@@ -12,6 +12,7 @@ import com.darkprince.vpn.vpn.CoreEnv
 import com.darkprince.vpn.vpn.TrafficStats
 import com.darkprince.vpn.vpn.VpnState
 import com.darkprince.vpn.vpn.VpnStateStore
+import com.darkprince.vpn.vpn.XVpnService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,6 +100,13 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             prefs.setSelectedServer(index)
             _state.value = _state.value.copy(selectedServer = index)
+            // при активном VPN сразу переключаемся на выбранный сервер
+            val profile = _state.value.servers.getOrNull(index)
+            val vpnActive = VpnStateStore.state.value == VpnState.CONNECTED ||
+                VpnStateStore.state.value == VpnState.CONNECTING
+            if (profile != null && vpnActive) {
+                XVpnService.start(ServiceLocator.appContext, profile)
+            }
         }
     }
 

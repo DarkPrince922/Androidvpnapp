@@ -23,6 +23,9 @@ jobs:
       - name: Download libv2ray.aar (Xray core)
         run: bash scripts/download-libv2ray.sh
 
+      - name: Download geodata (geoip/geosite)
+        run: bash scripts/download-geodata.sh
+
       - name: Build hev-socks5-tunnel (TUN -> SOCKS)
         run: |
           export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
