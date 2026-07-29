@@ -89,6 +89,8 @@ fun HomeScreen(
                 },
             contentAlignment = Alignment.Center,
         ) {
+            // на золотой кнопке тёмная иконка читается лучше белой
+            val iconTint = if (vpnState == VpnState.CONNECTED) Color(0xFF14100A) else Color.White
             if (vpnState == VpnState.CONNECTING) {
                 CircularProgressIndicator(color = Color.White)
             } else {
@@ -96,7 +98,7 @@ fun HomeScreen(
                     Icons.Default.PowerSettingsNew,
                     contentDescription = null,
                     modifier = Modifier.size(72.dp),
-                    tint = Color.White,
+                    tint = iconTint,
                 )
             }
         }
