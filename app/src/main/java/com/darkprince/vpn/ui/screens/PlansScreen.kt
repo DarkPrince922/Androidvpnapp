@@ -72,9 +72,17 @@ fun PlansScreen(viewModel: PlansViewModel) {
         }
 
         items(state.tariffs) { tariff ->
-            TariffCard(tariff, purchasing = state.purchasing) { period ->
-                viewModel.purchase(tariff, period)
-            }
+            val owned = state.isOwned(tariff.id)
+            TariffCard(
+                tariff = tariff,
+                purchasing = state.purchasing,
+                owned = owned,
+                currentDeviceLimit = state.currentDeviceLimit.takeIf { owned },
+                renewalPriceFor = { days -> state.renewalPrice(days) },
+                onAction = { period ->
+                    if (owned) viewModel.renew(period) else viewModel.purchase(tariff, period)
+                },
+            )
         }
 
         state.devices?.let { devices ->
@@ -101,27 +109,6 @@ fun PlansScreen(viewModel: PlansViewModel) {
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text("+${pkg.gb} ГБ — ${formatKopeks(pkg.priceKopeks)}")
-                            }
-                            Spacer(Modifier.height(6.dp))
-                        }
-                    }
-                }
-            }
-        }
-
-        if (state.renewalOptions.isNotEmpty()) {
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Продление подписки", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
-                        state.renewalOptions.forEach { option ->
-                            OutlinedButton(
-                                onClick = { viewModel.renew(option) },
-                                enabled = !state.purchasing,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("${option.days} дн. — ${formatKopeks(option.priceKopeks)}")
                             }
                             Spacer(Modifier.height(6.dp))
                         }
@@ -209,13 +196,29 @@ private fun DevicesCard(
 private fun TariffCard(
     tariff: TariffOffer,
     purchasing: Boolean,
-    onBuy: (com.darkprince.vpn.data.repo.PeriodPrice) -> Unit,
+    owned: Boolean,
+    currentDeviceLimit: Int?,
+    renewalPriceFor: (Int) -> Long?,
+    onAction: (com.darkprince.vpn.data.repo.PeriodPrice) -> Unit,
 ) {
     var selectedPeriod by remember(tariff.id) { mutableStateOf(tariff.periods.firstOrNull()) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Text(tariff.name, style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text(tariff.name, style = MaterialTheme.typography.titleMedium)
+                if (owned) {
+                    Text(
+                        "Ваш тариф",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
             tariff.description?.let {
                 Spacer(Modifier.height(4.dp))
                 Text(it, style = MaterialTheme.typography.bodySmall)
@@ -228,8 +231,16 @@ private fun TariffCard(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                tariff.deviceLimit?.let {
-                    Text("Устройств: $it", style = MaterialTheme.typography.bodySmall)
+                // у купленного тарифа показываем действующий лимит: он может
+                // быть больше тарифного, если устройства докупались
+                val devices = currentDeviceLimit ?: tariff.deviceLimit
+                devices?.let {
+                    val extra = tariff.deviceLimit?.takeIf { base -> it > base }
+                    Text(
+                        if (extra != null) "Устройств: $it (в тарифе $extra)"
+                        else "Устройств: $it",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -244,15 +255,16 @@ private fun TariffCard(
             }
             Spacer(Modifier.height(12.dp))
             val period = selectedPeriod
+            val price = period?.let {
+                if (owned) renewalPriceFor(it.days) ?: it.priceKopeks else it.priceKopeks
+            }
             Button(
-                onClick = { period?.let(onBuy) },
+                onClick = { period?.let(onAction) },
                 enabled = !purchasing && period != null,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(
-                    if (period != null) "Купить за ${formatKopeks(period.priceKopeks)}"
-                    else "Купить"
-                )
+                val verb = if (owned) "Продлить" else "Купить"
+                Text(if (price != null) "$verb за ${formatKopeks(price)}" else verb)
             }
         }
     }

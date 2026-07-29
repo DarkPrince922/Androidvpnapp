@@ -24,7 +24,16 @@ data class PlansUiState(
     val purchasing: Boolean = false,
     val error: String? = null,
     val info: String? = null,
-)
+    /** Тарифы, которые у пользователя уже куплены — их продлевают, а не покупают. */
+    val ownedTariffIds: Set<Long> = emptySet(),
+    /** Лимит устройств действующей подписки (может быть больше тарифного из-за докупки). */
+    val currentDeviceLimit: Int? = null,
+) {
+    fun isOwned(tariffId: Long) = tariffId in ownedTariffIds
+
+    /** Цена продления за период: берём из вариантов продления, иначе тарифную. */
+    fun renewalPrice(days: Int): Long? = renewalOptions.firstOrNull { it.days == days }?.priceKopeks
+}
 
 class PlansViewModel : ViewModel() {
     private val repo = ServiceLocator.subscriptionRepository
@@ -79,11 +88,16 @@ class PlansViewModel : ViewModel() {
                         emptyList()
                     }
                 }
+                val subsDeferred = async { repo.subscriptions() }
                 val tariffs = tariffsDeferred.await()
                 val renewals = renewalsDeferred.await()
                 val trial = trialDeferred.await()
                 val devices = devicesDeferred.await()
                 val trafficPackages = trafficDeferred.await()
+                val subs = subsDeferred.await()
+                val owned = subs.filter { it.isActive }.mapNotNull { it.tariffId }.toSet()
+                val deviceLimit = devices?.deviceLimit
+                    ?: subs.firstOrNull { it.isActive }?.deviceLimit
                 val error = if (tariffs.isEmpty() && renewals.isEmpty() && !trial &&
                     devices == null && trafficPackages.isEmpty()
                 ) {
@@ -97,6 +111,8 @@ class PlansViewModel : ViewModel() {
                     trafficPackages = trafficPackages,
                     loading = false,
                     error = error,
+                    ownedTariffIds = owned,
+                    currentDeviceLimit = deviceLimit,
                 )
             }
         }

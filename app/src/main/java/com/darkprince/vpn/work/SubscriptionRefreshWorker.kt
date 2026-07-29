@@ -35,6 +35,8 @@ class SubscriptionRefreshWorker(
         if (!ServiceLocator.authRepository.isLoggedIn) return Result.success()
         return try {
             val (_, userInfo) = ServiceLocator.subscriptionRepository.fetchServers(forceRefresh = true)
+            // держим в актуальном состоянии и остальные подписки пользователя
+            ServiceLocator.subscriptionRepository.prefetchAllSubscriptions()
             checkExpiryNotification(userInfo)
             Result.success()
         } catch (_: Exception) {

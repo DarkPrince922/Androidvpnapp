@@ -63,8 +63,9 @@ class HomeViewModel : ViewModel() {
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
             // 1) мгновенно показываем сохранённую подписку (работает офлайн)
-            subRepo.cachedServers()?.let { (cachedServers, cachedInfo) ->
-                val selected = prefs.selectedServerFlow.first()
+            val cachedId = prefs.selectedSubscriptionFlow.first()
+            subRepo.cachedServers(cachedId)?.let { (cachedServers, cachedInfo) ->
+                val selected = prefs.selectedServerFor(cachedId)
                     .coerceIn(0, (cachedServers.size - 1).coerceAtLeast(0))
                 _state.value = _state.value.copy(
                     servers = cachedServers,
@@ -100,7 +101,7 @@ class HomeViewModel : ViewModel() {
             val userInfo = fresh?.second ?: _state.value.subUserInfo
             // если данные в итоге есть — сетевую ошибку не показываем
             if (servers.isNotEmpty()) error = null
-            val selected = prefs.selectedServerFlow.first()
+            val selected = prefs.selectedServerFor(selectedId)
                 .coerceIn(0, (servers.size - 1).coerceAtLeast(0))
             _state.value = _state.value.copy(
                 subscription = sub,
@@ -112,6 +113,12 @@ class HomeViewModel : ViewModel() {
                 subscriptions = subs,
                 selectedSubscriptionId = selectedId,
             )
+
+            // остальные подписки догружаем фоном, чтобы переключение было
+            // мгновенным и работало без сети
+            if (subs.size > 1) {
+                launch { subRepo.prefetchAllSubscriptions() }
+            }
         }
     }
 
@@ -119,13 +126,17 @@ class HomeViewModel : ViewModel() {
     fun selectSubscription(id: Long) {
         if (id == _state.value.selectedSubscriptionId) return
         viewModelScope.launch {
-            val wasConnected = VpnStateStore.state.value == VpnState.CONNECTED
-            if (wasConnected) XVpnService.stop(ServiceLocator.appContext)
+            if (VpnStateStore.state.value == VpnState.CONNECTED) {
+                XVpnService.stop(ServiceLocator.appContext)
+            }
             subRepo.selectSubscription(id)
+            // серверы этой подписки уже могут лежать в кэше — показываем сразу
+            val cached = subRepo.cachedServers(id)
             _state.value = _state.value.copy(
                 selectedSubscriptionId = id,
-                servers = emptyList(),
-                selectedServer = 0,
+                servers = cached?.first ?: emptyList(),
+                subUserInfo = cached?.second,
+                selectedServer = prefs.selectedServerFor(id),
                 pings = emptyMap(),
             )
             refresh(forceServers = true)
@@ -134,7 +145,7 @@ class HomeViewModel : ViewModel() {
 
     fun selectServer(index: Int) {
         viewModelScope.launch {
-            prefs.setSelectedServer(index)
+            prefs.setSelectedServerFor(_state.value.selectedSubscriptionId, index)
             _state.value = _state.value.copy(selectedServer = index)
             // при активном VPN сразу переключаемся на выбранный сервер
             val profile = _state.value.servers.getOrNull(index)

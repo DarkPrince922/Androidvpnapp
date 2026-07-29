@@ -77,6 +77,47 @@ class AppPrefs(private val context: Context) {
     val subscriptionUrlFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SUB_URL] }
     val serversRawFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SERVERS_RAW] }
     val subUserInfoFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SUB_USERINFO] }
+
+    // --- Данные по конкретной подписке ---
+    // Каждая подписка держит свой список серверов, ссылку и выбранный сервер,
+    // поэтому переключение между подписками ничего не теряет.
+
+    private fun serversKey(subId: Long?) = stringPreferencesKey("servers_raw_${subId ?: "default"}")
+    private fun subUrlKey(subId: Long?) = stringPreferencesKey("sub_url_${subId ?: "default"}")
+    private fun userInfoKey(subId: Long?) = stringPreferencesKey("sub_userinfo_${subId ?: "default"}")
+    private fun serverIndexKey(subId: Long?) = intPreferencesKey("selected_server_${subId ?: "default"}")
+
+    suspend fun serversRawFor(subId: Long?): String? =
+        context.dataStore.data.first()[serversKey(subId)] ?: context.dataStore.data.first()[Keys.SERVERS_RAW]
+
+    suspend fun setServersRawFor(subId: Long?, raw: String?) {
+        context.dataStore.edit { p ->
+            if (raw == null) p.remove(serversKey(subId)) else p[serversKey(subId)] = raw
+        }
+    }
+
+    suspend fun subUrlFor(subId: Long?): String? = context.dataStore.data.first()[subUrlKey(subId)]
+
+    suspend fun setSubUrlFor(subId: Long?, url: String?) {
+        context.dataStore.edit { p ->
+            if (url == null) p.remove(subUrlKey(subId)) else p[subUrlKey(subId)] = url
+        }
+    }
+
+    suspend fun userInfoFor(subId: Long?): String? = context.dataStore.data.first()[userInfoKey(subId)]
+
+    suspend fun setUserInfoFor(subId: Long?, json: String?) {
+        context.dataStore.edit { p ->
+            if (json == null) p.remove(userInfoKey(subId)) else p[userInfoKey(subId)] = json
+        }
+    }
+
+    suspend fun selectedServerFor(subId: Long?): Int =
+        context.dataStore.data.first()[serverIndexKey(subId)] ?: 0
+
+    suspend fun setSelectedServerFor(subId: Long?, index: Int) {
+        context.dataStore.edit { it[serverIndexKey(subId)] = index }
+    }
     val selectedServerFlow: Flow<Int> = context.dataStore.data.map { it[Keys.SELECTED_SERVER] ?: 0 }
 
     suspend fun setBaseUrl(url: String) {

@@ -63,12 +63,27 @@ class SubscriptionRepository(
         emptyList()
     }
 
+    /**
+     * Переключение подписки: данные каждой подписки лежат отдельно, поэтому
+     * ничего не удаляем — серверы и выбранный узел прошлой подписки остаются
+     * на месте и доступны сразу при возврате к ней.
+     */
     suspend fun selectSubscription(id: Long?) {
         prefs.setSelectedSubscription(id)
-        // список серверов принадлежит конкретной подписке — сбрасываем кэш
-        prefs.setServersRaw(null)
-        prefs.setSubscriptionUrl(null)
-        prefs.setSelectedServer(0)
+    }
+
+    /**
+     * Догружает серверы для всех подписок, чтобы переключение было мгновенным
+     * и работало без сети. Ошибки по отдельной подписке не прерывают остальные.
+     */
+    suspend fun prefetchAllSubscriptions() = withContext(Dispatchers.IO) {
+        for (sub in subscriptions()) {
+            val url = sub.subscriptionUrl ?: continue
+            try {
+                downloadSubscription(sub.id, url)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     /**
@@ -80,9 +95,10 @@ class SubscriptionRepository(
         if (selectedId != null) {
             val fromList = subscriptions().firstOrNull { it.id == selectedId }?.subscriptionUrl
             if (fromList != null) {
-                prefs.setSubscriptionUrl(fromList)
+                prefs.setSubUrlFor(selectedId, fromList)
                 return fromList
             }
+            prefs.subUrlFor(selectedId)?.let { return it }
         }
         val fromLink = try {
             api.connectionLink().subscriptionUrl
@@ -104,24 +120,29 @@ class SubscriptionRepository(
      */
     suspend fun fetchServers(forceRefresh: Boolean = false): Pair<List<ProxyProfile>, SubscriptionUserInfo?> =
         withContext(Dispatchers.IO) {
+            val subId = prefs.selectedSubscriptionFlow.first()
             if (!forceRefresh) {
-                cachedServers()?.let { return@withContext it }
+                cachedServers(subId)?.let { return@withContext it }
             }
             try {
-                fetchFromNetwork()
+                val url = resolveSubscriptionUrl()
+                    ?: throw IllegalStateException("Нет активной подписки")
+                downloadSubscription(subId, url)
             } catch (e: Exception) {
                 // сеть/сервер недоступны — работаем с сохранённой копией подписки
-                cachedServers() ?: throw e
+                cachedServers(subId) ?: throw e
             }
         }
 
     /** Сохранённая копия подписки (без сети). */
-    suspend fun cachedServers(): Pair<List<ProxyProfile>, SubscriptionUserInfo?>? {
-        val cached = prefs.serversRawFlow.first()
+    suspend fun cachedServers(
+        subId: Long? = prefs.selectedSubscriptionFlow.first(),
+    ): Pair<List<ProxyProfile>, SubscriptionUserInfo?>? {
+        val cached = prefs.serversRawFor(subId)
         if (cached.isNullOrBlank()) return null
         val profiles = LinkParser.parseSubscriptionContent(cached)
         if (profiles.isEmpty()) return null
-        val storedInfo = prefs.subUserInfoFlow.first()?.let {
+        val storedInfo = prefs.userInfoFor(subId)?.let {
             try {
                 client.json.decodeFromString(SubscriptionUserInfo.serializer(), it)
             } catch (_: Exception) {
@@ -131,9 +152,11 @@ class SubscriptionRepository(
         return profiles to storedInfo
     }
 
-    private suspend fun fetchFromNetwork(): Pair<List<ProxyProfile>, SubscriptionUserInfo?> {
-        val url = resolveSubscriptionUrl()
-            ?: throw IllegalStateException("Нет активной подписки")
+    /** Скачивает подписку и складывает результат в кэш конкретной подписки. */
+    private suspend fun downloadSubscription(
+        subId: Long?,
+        url: String,
+    ): Pair<List<ProxyProfile>, SubscriptionUserInfo?> {
         // HWID-заголовки нужны Remnawave, чтобы считать устройства и
         // применять лимит из тарифа; без x-hwid панель с включённым лимитом
         // отдаёт 404.
@@ -153,9 +176,10 @@ class SubscriptionRepository(
             val body = response.body?.string().orEmpty()
             val userInfo = response.header("subscription-userinfo")?.let(::parseUserInfo)
             val profiles = LinkParser.parseSubscriptionContent(body)
-            if (profiles.isNotEmpty()) prefs.setServersRaw(body)
+            if (profiles.isNotEmpty()) prefs.setServersRawFor(subId, body)
             if (userInfo != null) {
-                prefs.setSubUserInfo(
+                prefs.setUserInfoFor(
+                    subId,
                     client.json.encodeToString(SubscriptionUserInfo.serializer(), userInfo)
                 )
             }
