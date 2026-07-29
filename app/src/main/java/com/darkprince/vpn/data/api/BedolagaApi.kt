@@ -94,20 +94,33 @@ interface BedolagaApi {
 
     // --- Устройства и трафик ---
 
+    // subscription_id — для мультитарифа: какой подписке принадлежат устройства
+
     @GET("cabinet/subscription/devices")
-    suspend fun devices(): RawJson
+    suspend fun devices(@Query("subscription_id") subscriptionId: Long? = null): RawJson
 
     @GET("cabinet/subscription/devices/price")
-    suspend fun devicePrice(@Query("devices") devices: Int = 1): RawJson
+    suspend fun devicePrice(
+        @Query("devices") devices: Int = 1,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
 
     @POST("cabinet/subscription/devices/purchase")
-    suspend fun purchaseDevices(@Body body: DevicesPurchaseRequest): RawJson
+    suspend fun purchaseDevices(
+        @Body body: DevicesPurchaseRequest,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
 
     @GET("cabinet/subscription/devices/reduction-info")
-    suspend fun deviceReductionInfo(): RawJson
+    suspend fun deviceReductionInfo(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
 
     @POST("cabinet/subscription/devices/reduce")
-    suspend fun reduceDevices(@Body body: ReduceDevicesRequest): RawJson
+    suspend fun reduceDevices(
+        @Body body: ReduceDevicesRequest,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
 
     @GET("cabinet/subscription/traffic-packages")
     suspend fun trafficPackages(): JsonElement

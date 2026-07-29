@@ -353,12 +353,12 @@ class SubscriptionRepository(
 
     // --- Устройства ---
 
-    /** Сводка по устройствам: лимит, подключено, цена докупки, возможность уменьшения. */
-    suspend fun devicesInfo(): DevicesInfo {
+    /** Сводка по устройствам конкретной подписки (null — текущая). */
+    suspend fun devicesInfo(subscriptionId: Long? = null): DevicesInfo {
         var limit: Int? = null
         var connected: Int? = null
         try {
-            val devices = api.devices()
+            val devices = api.devices(subscriptionId)
             limit = devices.intOf("device_limit")
             connected = devices.intOf("total") ?: (devices["devices"] as? JsonArray)?.size
         } catch (_: Exception) {
@@ -367,7 +367,7 @@ class SubscriptionRepository(
         var maxLimit: Int? = null
         var purchaseAvailable = false
         try {
-            val price = api.devicePrice()
+            val price = api.devicePrice(subscriptionId = subscriptionId)
             purchaseAvailable = price.boolOf("available") ?: true
             pricePerDevice = price.longOf("price_per_device_kopeks")
             maxLimit = price.intOf("max_device_limit")
@@ -376,7 +376,7 @@ class SubscriptionRepository(
         }
         var reduceAvailable = false
         try {
-            val reduction = api.deviceReductionInfo()
+            val reduction = api.deviceReductionInfo(subscriptionId)
             reduceAvailable = reduction.boolOf("available") ?: false
             if (limit == null) limit = reduction.intOf("current_device_limit")
             if (connected == null) connected = reduction.intOf("connected_devices_count")
@@ -392,15 +392,15 @@ class SubscriptionRepository(
         )
     }
 
-    suspend fun buyDevices(count: Int): String? = try {
-        api.purchaseDevices(DevicesPurchaseRequest(count))
+    suspend fun buyDevices(count: Int, subscriptionId: Long? = null): String? = try {
+        api.purchaseDevices(DevicesPurchaseRequest(count), subscriptionId)
         null
     } catch (e: Exception) {
         e.userMessage()
     }
 
-    suspend fun reduceDevices(newLimit: Int): String? = try {
-        api.reduceDevices(ReduceDevicesRequest(newLimit))
+    suspend fun reduceDevices(newLimit: Int, subscriptionId: Long? = null): String? = try {
+        api.reduceDevices(ReduceDevicesRequest(newLimit), subscriptionId)
         null
     } catch (e: Exception) {
         e.userMessage()

@@ -20,7 +20,6 @@ import com.darkprince.vpn.data.api.dto.UserDto
 @Composable
 fun SettingsScreen(
     user: UserDto?,
-    baseUrl: String,
     guestMode: Boolean,
     onOpenReferral: () -> Unit,
     onOpenApps: () -> Unit,
@@ -55,16 +54,6 @@ fun SettingsScreen(
                 } else {
                     user?.firstName?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 }
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Адрес кабинета", style = MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.height(4.dp))
-                Text(baseUrl.ifBlank { "—" }, style = MaterialTheme.typography.bodyMedium)
             }
         }
 

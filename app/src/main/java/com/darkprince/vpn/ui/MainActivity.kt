@@ -391,7 +391,6 @@ private fun AppRoot(
             }
             composable("settings") {
                 val userJson by prefs.userJsonFlow.collectAsState(initial = null)
-                val baseUrl by prefs.baseUrlFlow.collectAsState(initial = "")
                 val user = userJson?.let {
                     try {
                         ServiceLocator.apiClient.json.decodeFromString(UserDto.serializer(), it)
@@ -402,7 +401,6 @@ private fun AppRoot(
                 val scope = androidx.compose.runtime.rememberCoroutineScope()
                 SettingsScreen(
                     user = user,
-                    baseUrl = baseUrl,
                     guestMode = authState.guestMode,
                     onOpenReferral = { navController.navigate("referral") },
                     onOpenApps = { navController.navigate("apps") },

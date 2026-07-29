@@ -2,6 +2,7 @@ package com.darkprince.vpn.ui.vm
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.darkprince.vpn.data.api.dto.SubscriptionListItem
 import com.darkprince.vpn.data.repo.DevicesInfo
 import com.darkprince.vpn.data.repo.PeriodPrice
 import com.darkprince.vpn.data.repo.TariffOffer
@@ -28,7 +29,14 @@ data class PlansUiState(
     val ownedTariffIds: Set<Long> = emptySet(),
     /** Лимит устройств действующей подписки (может быть больше тарифного из-за докупки). */
     val currentDeviceLimit: Int? = null,
+    /** Подписки пользователя и та, для которой сейчас правим устройства. */
+    val subscriptions: List<SubscriptionListItem> = emptyList(),
+    val deviceSubscriptionId: Long? = null,
+    val devicesLoading: Boolean = false,
 ) {
+    val deviceSubscription: SubscriptionListItem?
+        get() = subscriptions.firstOrNull { it.id == deviceSubscriptionId }
+
     fun isOwned(tariffId: Long) = tariffId in ownedTariffIds
 
     /** Цена продления за период: берём из вариантов продления, иначе тарифную. */
@@ -71,10 +79,11 @@ class PlansViewModel : ViewModel() {
                         false
                     }
                 }
+                val deviceSubId = _state.value.deviceSubscriptionId
                 val devicesDeferred = async {
                     try {
                         // «пустая» сводка (все поля недоступны) — карточку не показываем
-                        repo.devicesInfo().takeIf {
+                        repo.devicesInfo(deviceSubId).takeIf {
                             it.deviceLimit != null || it.purchaseAvailable || it.reduceAvailable
                         }
                     } catch (_: Exception) {
@@ -113,6 +122,11 @@ class PlansViewModel : ViewModel() {
                     error = error,
                     ownedTariffIds = owned,
                     currentDeviceLimit = deviceLimit,
+                    subscriptions = subs,
+                    // по умолчанию правим устройства активной подписки
+                    deviceSubscriptionId = deviceSubId
+                        ?: subs.firstOrNull { it.isActive }?.id
+                        ?: subs.firstOrNull()?.id,
                 )
             }
         }
@@ -144,11 +158,30 @@ class PlansViewModel : ViewModel() {
         }
     }
 
+    /** Переключение подписки, для которой управляем устройствами. */
+    fun selectDeviceSubscription(id: Long) {
+        if (id == _state.value.deviceSubscriptionId) return
+        _state.value = _state.value.copy(deviceSubscriptionId = id, devicesLoading = true)
+        viewModelScope.launch {
+            val devices = try {
+                repo.devicesInfo(id)
+            } catch (_: Exception) {
+                null
+            }
+            _state.value = _state.value.copy(
+                devices = devices,
+                currentDeviceLimit = devices?.deviceLimit
+                    ?: _state.value.subscriptions.firstOrNull { it.id == id }?.deviceLimit,
+                devicesLoading = false,
+            )
+        }
+    }
+
     fun buyDevices(count: Int) {
         if (count <= 0) return
         _state.value = _state.value.copy(purchasing = true, error = null, info = null)
         viewModelScope.launch {
-            val error = repo.buyDevices(count)
+            val error = repo.buyDevices(count, _state.value.deviceSubscriptionId)
             if (error == null) {
                 _state.value = _state.value.copy(purchasing = false, info = "Устройства добавлены!")
                 refresh()
@@ -162,7 +195,7 @@ class PlansViewModel : ViewModel() {
         if (newLimit <= 0) return
         _state.value = _state.value.copy(purchasing = true, error = null, info = null)
         viewModelScope.launch {
-            val error = repo.reduceDevices(newLimit)
+            val error = repo.reduceDevices(newLimit, _state.value.deviceSubscriptionId)
             if (error == null) {
                 _state.value = _state.value.copy(purchasing = false, info = "Лимит устройств уменьшен")
                 refresh()

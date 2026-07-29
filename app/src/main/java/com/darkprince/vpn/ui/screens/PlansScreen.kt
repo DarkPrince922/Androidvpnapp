@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -89,7 +91,10 @@ fun PlansScreen(viewModel: PlansViewModel) {
             item {
                 DevicesCard(
                     devices = devices,
-                    purchasing = state.purchasing,
+                    purchasing = state.purchasing || state.devicesLoading,
+                    subscriptions = state.subscriptions,
+                    selectedSubscription = state.deviceSubscription,
+                    onSelectSubscription = { viewModel.selectDeviceSubscription(it) },
                     onBuy = { viewModel.buyDevices(it) },
                     onReduce = { viewModel.reduceDevices(it) },
                 )
@@ -130,14 +135,51 @@ fun PlansScreen(viewModel: PlansViewModel) {
 private fun DevicesCard(
     devices: com.darkprince.vpn.data.repo.DevicesInfo,
     purchasing: Boolean,
+    subscriptions: List<com.darkprince.vpn.data.api.dto.SubscriptionListItem>,
+    selectedSubscription: com.darkprince.vpn.data.api.dto.SubscriptionListItem?,
+    onSelectSubscription: (Long) -> Unit,
     onBuy: (Int) -> Unit,
     onReduce: (Int) -> Unit,
 ) {
     var count by remember { mutableStateOf(1) }
+    var menuOpen by remember { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("Устройства", style = MaterialTheme.typography.titleMedium)
+
+            // при нескольких подписках выбираем, устройствами какой управляем
+            if (subscriptions.size > 1) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(selectedSubscription?.displayName ?: "Выберите подписку")
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    subscriptions.forEach { sub ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(sub.displayName)
+                                    sub.deviceLimit?.let {
+                                        Text(
+                                            "Лимит: $it",
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                }
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onSelectSubscription(sub.id)
+                            },
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 devices.deviceLimit?.let {
