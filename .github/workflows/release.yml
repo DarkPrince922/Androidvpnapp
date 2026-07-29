@@ -53,15 +53,31 @@ jobs:
         id: keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "path=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
-            echo "Keystore восстановлен"
-          else
+          if [ -z "$KEYSTORE_BASE64" ]; then
             echo "::warning::Секрет KEYSTORE_BASE64 не задан — APK будет неподписанным"
             echo "path=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
+
+          # Проверяем пароли сразу: иначе ошибка вылезет только через
+          # несколько минут, на этапе подписи APK.
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" \
+                -storepass "$KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::Неверный KEYSTORE_PASSWORD или повреждён KEYSTORE_BASE64"
+            exit 1
+          fi
+          if ! keytool -certreq -alias "$KEY_ALIAS" -keystore "$RUNNER_TEMP/release.jks" \
+                -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::Неверный KEY_PASSWORD или KEY_ALIAS — ключ не открывается"
+            exit 1
+          fi
+          echo "path=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+          echo "Keystore проверен: пароли и алиас верные"
 
       - name: Собрать release APK
         env:

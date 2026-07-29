@@ -38,7 +38,9 @@ android {
                 storeFile = file(keystorePath!!)
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
+                // у многих хранилищ пароль ключа совпадает с паролем хранилища
+                keyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("KEYSTORE_PASSWORD")
                 enableV1Signing = true
                 enableV2Signing = true
             }
