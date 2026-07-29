@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -26,6 +27,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.ui.vm.BalanceViewModel
 import java.util.Locale
@@ -36,6 +40,17 @@ fun formatKopeks(kopeks: Long): String =
 @Composable
 fun BalanceScreen(viewModel: BalanceViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // возвращаемся из окна оплаты — сразу подтягиваем баланс
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.onScreenResumed()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     var amount by rememberSaveable { mutableStateOf("300") }
     var selectedMethod by rememberSaveable { mutableStateOf<String?>(null) }
 

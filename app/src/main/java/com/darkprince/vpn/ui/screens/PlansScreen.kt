@@ -79,7 +79,8 @@ fun PlansScreen(viewModel: PlansViewModel) {
                 tariff = tariff,
                 purchasing = state.purchasing,
                 owned = owned,
-                currentDeviceLimit = state.currentDeviceLimit.takeIf { owned },
+                // лимит именно этого тарифа, а не выбранного в блоке устройств
+                currentDeviceLimit = state.deviceLimitByTariff[tariff.id],
                 renewalPriceFor = { days -> state.renewalPrice(days) },
                 onAction = { period ->
                     if (owned) viewModel.renew(period) else viewModel.purchase(tariff, period)
@@ -151,6 +152,11 @@ private fun DevicesCard(
             // при нескольких подписках выбираем, устройствами какой управляем
             if (subscriptions.size > 1) {
                 Spacer(Modifier.height(8.dp))
+                Text(
+                    "Подписка, для которой меняем устройства:",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(4.dp))
                 OutlinedButton(
                     onClick = { menuOpen = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -209,9 +215,14 @@ private fun DevicesCard(
                     enabled = !purchasing,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
+                    val target = selectedSubscription?.displayName
+                        ?.takeIf { subscriptions.size > 1 }
                     Text(
-                        if (price != null) "Докупить $count шт. за ${formatKopeks(price * count)}"
-                        else "Докупить $count шт."
+                        buildString {
+                            append("Докупить $count шт.")
+                            if (price != null) append(" за ${formatKopeks(price * count)}")
+                            if (target != null) append(" — $target")
+                        }
                     )
                 }
                 Spacer(Modifier.height(6.dp))

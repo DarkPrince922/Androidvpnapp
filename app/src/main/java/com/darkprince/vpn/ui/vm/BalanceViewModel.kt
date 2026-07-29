@@ -6,6 +6,8 @@ import com.darkprince.vpn.data.api.dto.PaymentMethodDto
 import com.darkprince.vpn.data.api.dto.TransactionDto
 import com.darkprince.vpn.data.repo.userMessage
 import com.darkprince.vpn.di.ServiceLocator
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -86,6 +88,58 @@ class BalanceViewModel : ViewModel() {
 
     fun consumeOpenUrl() {
         _state.value = _state.value.copy(openUrl = null)
+        // после ухода на страницу оплаты ждём зачисления в фоне
+        startPaymentWatch()
+    }
+
+    /**
+     * Пока висит неоплаченный счёт, приложение само опрашивает статус и
+     * обновляет баланс — иначе после оплаты приходится ждать и жать кнопку.
+     * Интервал растёт, чтобы не долбить сервер: сначала часто, потом реже.
+     */
+    private var watchJob: Job? = null
+
+    private fun startPaymentWatch() {
+        val pending = _state.value.pendingPayment ?: return
+        watchJob?.cancel()
+        watchJob = viewModelScope.launch {
+            val startBalance = _state.value.balanceKopeks
+            repeat(40) { attempt ->
+                delay(if (attempt < 12) 5_000 else 15_000)
+                repo.checkPending(pending.method, pending.paymentId)
+                val balance = try {
+                    repo.balance()
+                } catch (_: Exception) {
+                    return@repeat
+                }
+                val kopeks = balance.balanceKopeks
+                    ?: balance.balanceRubles?.let { (it * 100).toLong() }
+                if (kopeks != null && kopeks != startBalance) {
+                    _state.value = _state.value.copy(
+                        balanceKopeks = kopeks,
+                        pendingPayment = null,
+                        info = "Баланс пополнен",
+                    )
+                    refresh()
+                    return@launch
+                }
+            }
+        }
+    }
+
+    /** Вызывается при возвращении на экран — например, из окна оплаты. */
+    fun onScreenResumed() {
+        refresh()
+        val pending = _state.value.pendingPayment ?: return
+        viewModelScope.launch {
+            repo.checkPending(pending.method, pending.paymentId)
+            refresh()
+        }
+    }
+
+    override fun onCleared() {
+        watchJob?.cancel()
+        super.onCleared()
     }
 
     fun activatePromo(code: String) {

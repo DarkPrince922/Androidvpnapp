@@ -37,6 +37,17 @@ data class PlansUiState(
     val deviceSubscription: SubscriptionListItem?
         get() = subscriptions.firstOrNull { it.id == deviceSubscriptionId }
 
+    /**
+     * Действующий лимит устройств по каждому тарифу. Раньше в карточках
+     * показывался один общий лимит, из-за чего цифра у тарифа менялась при
+     * переключении подписки в блоке устройств.
+     */
+    val deviceLimitByTariff: Map<Long, Int>
+        get() = subscriptions
+            .filter { it.isActive }
+            .mapNotNull { sub -> sub.tariffId?.let { id -> sub.deviceLimit?.let { id to it } } }
+            .toMap()
+
     fun isOwned(tariffId: Long) = tariffId in ownedTariffIds
 
     /** Цена продления за период: берём из вариантов продления, иначе тарифную. */
