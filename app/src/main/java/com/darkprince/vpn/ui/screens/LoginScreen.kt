@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -47,6 +48,7 @@ fun LoginScreen(
     onEmailRegister: (String, String, String?) -> Unit,
     onForgotPassword: (String) -> Unit,
     onChangeServer: () -> Unit,
+    onScanSubscription: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var email by rememberSaveable { mutableStateOf("") }
@@ -167,7 +169,22 @@ fun LoginScreen(
             Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onScanSubscription,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.loading,
+        ) {
+            Text("Подключиться по QR-коду")
+        }
+        Text(
+            "Если вам дали доступ к подписке — отсканируйте QR-код владельца",
+            style = MaterialTheme.typography.bodySmall,
+        )
+
+        Spacer(Modifier.height(24.dp))
         TextButton(onClick = onChangeServer) { Text("Изменить адрес кабинета") }
     }
 }

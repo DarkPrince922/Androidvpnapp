@@ -42,6 +42,7 @@ import com.darkprince.vpn.ui.screens.LoginScreen
 import com.darkprince.vpn.ui.screens.PlansScreen
 import com.darkprince.vpn.ui.screens.ReferralScreen
 import com.darkprince.vpn.ui.screens.ServersScreen
+import com.darkprince.vpn.ui.screens.ShareSubscriptionScreen
 import com.darkprince.vpn.ui.screens.SettingsScreen
 import com.darkprince.vpn.ui.screens.SetupScreen
 import com.darkprince.vpn.ui.theme.AppTheme
@@ -51,6 +52,8 @@ import com.darkprince.vpn.ui.vm.BalanceViewModel
 import com.darkprince.vpn.ui.vm.HomeViewModel
 import com.darkprince.vpn.ui.vm.PlansViewModel
 import com.darkprince.vpn.vpn.XVpnService
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -109,6 +112,25 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { }
 
+    /** Сканирование QR-кода подписки; результат уходит в колбэк. */
+    private var onScanResult: ((String) -> Unit)? = null
+
+    private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
+        result.contents?.let { onScanResult?.invoke(it) }
+        onScanResult = null
+    }
+
+    fun scanSubscriptionQr(onResult: (String) -> Unit) {
+        onScanResult = onResult
+        scanLauncher.launch(
+            ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt("Наведите камеру на QR-код подписки")
+                .setBeepEnabled(false)
+                .setOrientationLocked(false)
+        )
+    }
+
     private fun requestNotificationPermission() {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
@@ -156,19 +178,29 @@ private fun AppRoot(
 
     val startDestination = androidx.compose.runtime.remember {
         when {
+            prefs.cachedGuestSubUrl != null -> "home"
             prefs.cachedBaseUrl.isBlank() -> "setup"
             !ServiceLocator.authRepository.isLoggedIn -> "login"
             else -> "home"
         }
     }
 
-    val bottomItems = listOf(
-        BottomItem("home", "Главная", Icons.Default.Home),
-        BottomItem("servers", "Серверы", Icons.Default.Dns),
-        BottomItem("plans", "Тарифы", Icons.Default.ShoppingCart),
-        BottomItem("balance", "Баланс", Icons.Default.AccountBalanceWallet),
-        BottomItem("settings", "Ещё", Icons.Default.Settings),
-    )
+    // в гостевом режиме кабинет недоступен: покупок и баланса нет
+    val bottomItems = if (authState.guestMode) {
+        listOf(
+            BottomItem("home", "Главная", Icons.Default.Home),
+            BottomItem("servers", "Серверы", Icons.Default.Dns),
+            BottomItem("settings", "Ещё", Icons.Default.Settings),
+        )
+    } else {
+        listOf(
+            BottomItem("home", "Главная", Icons.Default.Home),
+            BottomItem("servers", "Серверы", Icons.Default.Dns),
+            BottomItem("plans", "Тарифы", Icons.Default.ShoppingCart),
+            BottomItem("balance", "Баланс", Icons.Default.AccountBalanceWallet),
+            BottomItem("settings", "Ещё", Icons.Default.Settings),
+        )
+    }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -216,8 +248,8 @@ private fun AppRoot(
                 }
             }
             composable("login") {
-                LaunchedEffect(authState.loggedIn) {
-                    if (authState.loggedIn) {
+                LaunchedEffect(authState.loggedIn, authState.guestMode) {
+                    if (authState.loggedIn || authState.guestMode) {
                         navController.navigate("home") { popUpTo("login") { inclusive = true } }
                     }
                 }
@@ -232,6 +264,11 @@ private fun AppRoot(
                     onForgotPassword = { email -> authViewModel.forgotPassword(email) },
                     onChangeServer = {
                         navController.navigate("setup") { popUpTo("login") { inclusive = true } }
+                    },
+                    onScanSubscription = {
+                        activity.scanSubscriptionQr { link ->
+                            authViewModel.loginWithSubscriptionLink(link)
+                        }
                     },
                 )
             }
@@ -277,6 +314,11 @@ private fun AppRoot(
                 val appsViewModel: AppsViewModel = viewModel()
                 AppsScreen(viewModel = appsViewModel)
             }
+            composable("share") {
+                ShareSubscriptionScreen(onShare = { link ->
+                    activity.shareText("Доступ к VPN: $link")
+                })
+            }
             composable("settings") {
                 val userJson by prefs.userJsonFlow.collectAsState(initial = null)
                 val baseUrl by prefs.baseUrlFlow.collectAsState(initial = "")
@@ -291,12 +333,18 @@ private fun AppRoot(
                 SettingsScreen(
                     user = user,
                     baseUrl = baseUrl,
+                    guestMode = authState.guestMode,
                     onOpenReferral = { navController.navigate("referral") },
                     onOpenApps = { navController.navigate("apps") },
+                    onOpenShare = { navController.navigate("share") },
                     onLogout = {
                         scope.launch {
                             XVpnService.stop(activity)
-                            ServiceLocator.authRepository.logout()
+                            if (authState.guestMode) {
+                                ServiceLocator.subscriptionRepository.exitGuestMode()
+                            } else {
+                                ServiceLocator.authRepository.logout()
+                            }
                             authViewModel.onLoggedOut()
                             navController.navigate("login") {
                                 popUpTo("home") { inclusive = true }

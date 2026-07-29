@@ -56,11 +56,54 @@ class SubscriptionRepository(
 
     suspend fun status(): SubscriptionStatusResponse = api.subscription()
 
-    /** Список подписок пользователя; пусто, если мультитариф выключен. */
-    suspend fun subscriptions(): List<SubscriptionListItem> = try {
-        api.subscriptions().subscriptions
-    } catch (_: Exception) {
-        emptyList()
+    /** Список подписок пользователя; пусто в гостевом режиме и без мультитарифа. */
+    suspend fun subscriptions(): List<SubscriptionListItem> {
+        if (prefs.cachedGuestSubUrl != null) return emptyList()
+        return try {
+            api.subscriptions().subscriptions
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Разбирает ссылку, полученную от владельца подписки: принимаем и
+     * прямую ссылку Remnawave, и наш deep link darkprincevpn://sub?url=…
+     */
+    fun parseSharedSubscription(raw: String): String? {
+        val text = raw.trim()
+        if (text.isBlank()) return null
+        val url = when {
+            text.startsWith("darkprincevpn://", true) -> {
+                android.net.Uri.parse(text).getQueryParameter("url")
+                    ?: text.substringAfter("://sub/", "").takeIf { it.isNotBlank() }
+            }
+            text.startsWith("http://", true) || text.startsWith("https://", true) -> text
+            else -> null
+        } ?: return null
+        return url.takeIf { it.startsWith("http", true) }
+    }
+
+    /** Включает гостевой режим по ссылке подписки и сразу проверяет её. */
+    suspend fun activateGuestSubscription(rawLink: String): String? {
+        val url = parseSharedSubscription(rawLink)
+            ?: return "Ссылка не распознана. Нужна ссылка на подписку или QR из приложения владельца."
+        return try {
+            prefs.setGuestSubUrl(url)
+            val (servers, _) = withContext(Dispatchers.IO) { downloadSubscription(null, url) }
+            if (servers.isEmpty()) {
+                prefs.setGuestSubUrl(null)
+                "По ссылке не нашлось серверов. Проверьте, что подписка активна."
+            } else null
+        } catch (e: Exception) {
+            prefs.setGuestSubUrl(null)
+            "Не удалось загрузить подписку: ${e.userMessage()}"
+        }
+    }
+
+    suspend fun exitGuestMode() {
+        prefs.setGuestSubUrl(null)
+        prefs.setServersRawFor(null, null)
     }
 
     /**
@@ -91,6 +134,9 @@ class SubscriptionRepository(
      * выбранной (она приходит прямо в списке), иначе — через кабинет.
      */
     suspend fun resolveSubscriptionUrl(): String? {
+        // гостевой режим: аккаунта кабинета нет, работаем по полученной ссылке
+        prefs.cachedGuestSubUrl?.let { return it }
+
         val selectedId = prefs.selectedSubscriptionFlow.first()
         if (selectedId != null) {
             val fromList = subscriptions().firstOrNull { it.id == selectedId }?.subscriptionUrl

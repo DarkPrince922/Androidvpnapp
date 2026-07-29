@@ -21,8 +21,10 @@ import com.darkprince.vpn.data.api.dto.UserDto
 fun SettingsScreen(
     user: UserDto?,
     baseUrl: String,
+    guestMode: Boolean,
     onOpenReferral: () -> Unit,
     onOpenApps: () -> Unit,
+    onOpenShare: () -> Unit,
     onLogout: () -> Unit,
 ) {
     Column(
@@ -37,12 +39,22 @@ fun SettingsScreen(
             Column(Modifier.padding(16.dp)) {
                 Text("Аккаунт", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
-                val identity = user?.email
-                    ?: user?.username?.let { "@$it" }
-                    ?: user?.telegramId?.let { "Telegram ID: $it" }
-                    ?: "—"
+                val identity = when {
+                    guestMode -> "Гостевой доступ по подписке"
+                    else -> user?.email
+                        ?: user?.username?.let { "@$it" }
+                        ?: user?.telegramId?.let { "Telegram ID: $it" }
+                        ?: "—"
+                }
                 Text(identity, style = MaterialTheme.typography.titleMedium)
-                user?.firstName?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                if (guestMode) {
+                    Text(
+                        "Оплата и управление подпиской доступны у её владельца",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    user?.firstName?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                }
             }
         }
 
@@ -73,20 +85,39 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        if (!guestMode) {
+            Spacer(Modifier.height(12.dp))
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onOpenReferral() },
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Пригласить друга", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Делитесь ссылкой и получайте бонусы с платежей приглашённых",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenShare() },
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Поделиться подпиской", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "QR-код для близких: они подключатся к вашей подписке без доступа к оплате",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenReferral() },
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Пригласить друга", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Делитесь ссылкой и получайте бонусы с платежей приглашённых",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
 
@@ -99,7 +130,7 @@ fun SettingsScreen(
                 containerColor = MaterialTheme.colorScheme.error,
             ),
         ) {
-            Text("Выйти из аккаунта")
+            Text(if (guestMode) "Отключить гостевой доступ" else "Выйти из аккаунта")
         }
     }
 }

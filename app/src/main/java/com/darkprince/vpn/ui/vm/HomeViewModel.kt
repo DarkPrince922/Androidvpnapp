@@ -85,7 +85,9 @@ class HomeViewModel : ViewModel() {
             }
             _state.value = _state.value.copy(subscriptions = subs, selectedSubscriptionId = selectedId)
 
-            val sub = try {
+            // в гостевом режиме кабинет недоступен — только подписка по ссылке
+            val guest = prefs.cachedGuestSubUrl != null
+            val sub = if (guest) null else try {
                 subRepo.status()
             } catch (e: Exception) {
                 error = e.userMessage()

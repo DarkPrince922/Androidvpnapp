@@ -36,11 +36,16 @@ class AppPrefs(private val context: Context) {
         val SELECTED_SUBSCRIPTION = longPreferencesKey("selected_subscription")
         val SPLIT_MODE = stringPreferencesKey("split_mode")
         val SPLIT_APPS = stringSetPreferencesKey("split_apps")
+        val GUEST_SUB_URL = stringPreferencesKey("guest_sub_url")
     }
 
     @Volatile var cachedBaseUrl: String = ""
         private set
     @Volatile var cachedHwid: String = ""
+        private set
+
+    /** Гостевой режим: подписка получена по ссылке, аккаунта кабинета нет. */
+    @Volatile var cachedGuestSubUrl: String? = null
         private set
     @Volatile var cachedAccessToken: String? = null
         private set
@@ -57,9 +62,19 @@ class AppPrefs(private val context: Context) {
         cachedAccessToken = p[Keys.ACCESS_TOKEN]
         cachedRefreshToken = p[Keys.REFRESH_TOKEN]
         cachedAccessExpiresAt = p[Keys.ACCESS_EXPIRES_AT] ?: 0L
+        cachedGuestSubUrl = p[Keys.GUEST_SUB_URL]
         // идентификатор устройства для учёта в панели: один на установку
         cachedHwid = p[Keys.HWID] ?: java.util.UUID.randomUUID().toString().also { generated ->
             context.dataStore.edit { it[Keys.HWID] = generated }
+        }
+    }
+
+    val guestSubUrlFlow: Flow<String?> = context.dataStore.data.map { it[Keys.GUEST_SUB_URL] }
+
+    suspend fun setGuestSubUrl(url: String?) {
+        cachedGuestSubUrl = url
+        context.dataStore.edit { p ->
+            if (url == null) p.remove(Keys.GUEST_SUB_URL) else p[Keys.GUEST_SUB_URL] = url
         }
     }
 

@@ -19,6 +19,8 @@ data class AuthUiState(
     val telegramWebUri: String? = null,
     val waitingTelegram: Boolean = false,
     val loggedIn: Boolean = false,
+    /** Вход по ссылке подписки: VPN работает, кабинет недоступен. */
+    val guestMode: Boolean = false,
 )
 
 class AuthViewModel : ViewModel() {
@@ -26,7 +28,11 @@ class AuthViewModel : ViewModel() {
     private val prefs = ServiceLocator.prefs
 
     private val _state = MutableStateFlow(
-        AuthUiState(baseUrl = prefs.cachedBaseUrl, loggedIn = auth.isLoggedIn)
+        AuthUiState(
+            baseUrl = prefs.cachedBaseUrl,
+            loggedIn = auth.isLoggedIn,
+            guestMode = prefs.cachedGuestSubUrl != null,
+        )
     )
     val state: StateFlow<AuthUiState> = _state
 
@@ -106,7 +112,25 @@ class AuthViewModel : ViewModel() {
     }
 
     fun onLoggedOut() {
-        _state.value = _state.value.copy(loggedIn = false, error = null, info = null)
+        _state.value = _state.value.copy(
+            loggedIn = false,
+            guestMode = false,
+            error = null,
+            info = null,
+        )
+    }
+
+    /** Вход по QR/ссылке подписки, полученной от владельца. */
+    fun loginWithSubscriptionLink(rawLink: String) {
+        _state.value = _state.value.copy(loading = true, error = null, info = null)
+        viewModelScope.launch {
+            val error = ServiceLocator.subscriptionRepository.activateGuestSubscription(rawLink)
+            _state.value = if (error == null) {
+                _state.value.copy(loading = false, guestMode = true)
+            } else {
+                _state.value.copy(loading = false, error = error)
+            }
+        }
     }
 
     fun forgotPassword(email: String) {
