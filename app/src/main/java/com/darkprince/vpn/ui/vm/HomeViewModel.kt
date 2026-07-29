@@ -64,7 +64,7 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             // 1) мгновенно показываем сохранённую подписку (работает офлайн)
             val cachedId = prefs.selectedSubscriptionFlow.first()
-            subRepo.cachedServers(cachedId)?.let { (cachedServers, cachedInfo) ->
+            subRepo.cachedServersFor(cachedId)?.let { (cachedServers, cachedInfo) ->
                 val selected = prefs.selectedServerFor(cachedId)
                     .coerceIn(0, (cachedServers.size - 1).coerceAtLeast(0))
                 _state.value = _state.value.copy(
@@ -131,7 +131,7 @@ class HomeViewModel : ViewModel() {
             }
             subRepo.selectSubscription(id)
             // серверы этой подписки уже могут лежать в кэше — показываем сразу
-            val cached = subRepo.cachedServers(id)
+            val cached = subRepo.cachedServersFor(id)
             _state.value = _state.value.copy(
                 selectedSubscriptionId = id,
                 servers = cached?.first ?: emptyList(),

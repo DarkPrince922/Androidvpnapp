@@ -122,7 +122,7 @@ class SubscriptionRepository(
         withContext(Dispatchers.IO) {
             val subId = prefs.selectedSubscriptionFlow.first()
             if (!forceRefresh) {
-                cachedServers(subId)?.let { return@withContext it }
+                cachedServersFor(subId)?.let { return@withContext it }
             }
             try {
                 val url = resolveSubscriptionUrl()
@@ -130,14 +130,16 @@ class SubscriptionRepository(
                 downloadSubscription(subId, url)
             } catch (e: Exception) {
                 // сеть/сервер недоступны — работаем с сохранённой копией подписки
-                cachedServers(subId) ?: throw e
+                cachedServersFor(subId) ?: throw e
             }
         }
 
-    /** Сохранённая копия подписки (без сети). */
-    suspend fun cachedServers(
-        subId: Long? = prefs.selectedSubscriptionFlow.first(),
-    ): Pair<List<ProxyProfile>, SubscriptionUserInfo?>? {
+    /** Сохранённая копия текущей подписки (без сети). */
+    suspend fun cachedServers(): Pair<List<ProxyProfile>, SubscriptionUserInfo?>? =
+        cachedServersFor(prefs.selectedSubscriptionFlow.first())
+
+    /** Сохранённая копия конкретной подписки (без сети). */
+    suspend fun cachedServersFor(subId: Long?): Pair<List<ProxyProfile>, SubscriptionUserInfo?>? {
         val cached = prefs.serversRawFor(subId)
         if (cached.isNullOrBlank()) return null
         val profiles = LinkParser.parseSubscriptionContent(cached)
