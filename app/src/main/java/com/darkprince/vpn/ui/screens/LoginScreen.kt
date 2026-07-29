@@ -49,6 +49,7 @@ fun LoginScreen(
     onForgotPassword: (String) -> Unit,
     onChangeServer: () -> Unit,
     onScanSubscription: () -> Unit,
+    onPickQrImage: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var email by rememberSaveable { mutableStateOf("") }
@@ -177,10 +178,19 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth(),
             enabled = !state.loading,
         ) {
-            Text("Подключиться по QR-коду")
+            Text("Сканировать QR камерой")
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onPickQrImage,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.loading,
+        ) {
+            Text("Загрузить QR из галереи")
         }
         Text(
-            "Если вам дали доступ к подписке — отсканируйте QR-код владельца",
+            "Если вам дали доступ к подписке — отсканируйте QR владельца или " +
+                "выберите присланную картинку",
             style = MaterialTheme.typography.bodySmall,
         )
 

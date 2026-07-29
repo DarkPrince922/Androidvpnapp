@@ -120,6 +120,14 @@ class AuthViewModel : ViewModel() {
         )
     }
 
+    fun showQrImageError() {
+        _state.value = _state.value.copy(
+            loading = false,
+            error = "QR-код на картинке не распознан. Попробуйте изображение покрупнее " +
+                "или отсканируйте код камерой.",
+        )
+    }
+
     /** Вход по QR/ссылке подписки, полученной от владельца. */
     fun loginWithSubscriptionLink(rawLink: String) {
         _state.value = _state.value.copy(loading = true, error = null, info = null)

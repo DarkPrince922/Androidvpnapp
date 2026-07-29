@@ -2,6 +2,7 @@ package com.darkprince.vpn.ui
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
@@ -33,6 +34,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.lifecycleScope
+import com.darkprince.vpn.core.qr.QrUtils
 import com.darkprince.vpn.data.api.dto.UserDto
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.ui.screens.AppsScreen
@@ -54,7 +57,9 @@ import com.darkprince.vpn.ui.vm.PlansViewModel
 import com.darkprince.vpn.vpn.XVpnService
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -106,6 +111,42 @@ class MainActivity : ComponentActivity() {
             .setType("text/plain")
             .putExtra(Intent.EXTRA_TEXT, text)
         startActivity(Intent.createChooser(intent, null))
+    }
+
+    /** Отправка QR-кода картинкой (в мессенджер, почту, галерею). */
+    fun shareQrImage(bitmap: Bitmap, caption: String) {
+        val uri = QrUtils.saveForSharing(this, bitmap) ?: return
+        val intent = Intent(Intent.ACTION_SEND)
+            .setType("image/png")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .putExtra(Intent.EXTRA_TEXT, "Доступ к VPN ($caption): отсканируйте QR в приложении")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        startActivity(Intent.createChooser(intent, null))
+    }
+
+    /** Распознавание QR с картинки из галереи. */
+    private var onImagePicked: ((String?) -> Unit)? = null
+
+    private val pickImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        val callback = onImagePicked
+        onImagePicked = null
+        if (uri == null) {
+            callback?.invoke(null)
+            return@registerForActivityResult
+        }
+        lifecycleScope.launch {
+            val decoded = withContext(Dispatchers.IO) {
+                QrUtils.decodeFromImage(this@MainActivity, uri)
+            }
+            callback?.invoke(decoded)
+        }
+    }
+
+    fun pickQrImage(onResult: (String?) -> Unit) {
+        onImagePicked = onResult
+        pickImageLauncher.launch("image/*")
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -270,6 +311,15 @@ private fun AppRoot(
                             authViewModel.loginWithSubscriptionLink(link)
                         }
                     },
+                    onPickQrImage = {
+                        activity.pickQrImage { decoded ->
+                            if (decoded != null) {
+                                authViewModel.loginWithSubscriptionLink(decoded)
+                            } else {
+                                authViewModel.showQrImageError()
+                            }
+                        }
+                    },
                 )
             }
             composable("home") {
@@ -315,9 +365,10 @@ private fun AppRoot(
                 AppsScreen(viewModel = appsViewModel)
             }
             composable("share") {
-                ShareSubscriptionScreen(onShare = { link ->
-                    activity.shareText("Доступ к VPN: $link")
-                })
+                ShareSubscriptionScreen(
+                    onShareLink = { link -> activity.shareText("Доступ к VPN: $link") },
+                    onShareImage = { bitmap, label -> activity.shareQrImage(bitmap, label) },
+                )
             }
             composable("settings") {
                 val userJson by prefs.userJsonFlow.collectAsState(initial = null)
