@@ -22,6 +22,7 @@ fun SettingsScreen(
     user: UserDto?,
     baseUrl: String,
     onOpenReferral: () -> Unit,
+    onOpenApps: () -> Unit,
     onLogout: () -> Unit,
 ) {
     Column(
@@ -52,6 +53,23 @@ fun SettingsScreen(
                 Text("Адрес кабинета", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(baseUrl.ifBlank { "—" }, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpenApps() },
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Приложения через VPN", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Выберите, какие приложения идут через VPN, а какие в обход",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
 

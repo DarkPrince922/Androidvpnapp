@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -33,6 +34,8 @@ class AppPrefs(private val context: Context) {
         val LAST_EXPIRY_NOTIFY_DAY = stringPreferencesKey("last_expiry_notify_day")
         val HWID = stringPreferencesKey("hwid")
         val SELECTED_SUBSCRIPTION = longPreferencesKey("selected_subscription")
+        val SPLIT_MODE = stringPreferencesKey("split_mode")
+        val SPLIT_APPS = stringSetPreferencesKey("split_apps")
     }
 
     @Volatile var cachedBaseUrl: String = ""
@@ -62,6 +65,25 @@ class AppPrefs(private val context: Context) {
 
     val selectedSubscriptionFlow: Flow<Long?> =
         context.dataStore.data.map { it[Keys.SELECTED_SUBSCRIPTION] }
+
+    /** Режим раздельного туннелирования: ALL / ONLY_SELECTED / EXCEPT_SELECTED. */
+    val splitModeFlow: Flow<String> =
+        context.dataStore.data.map { it[Keys.SPLIT_MODE] ?: "ALL" }
+
+    val splitAppsFlow: Flow<Set<String>> =
+        context.dataStore.data.map { it[Keys.SPLIT_APPS] ?: emptySet() }
+
+    suspend fun splitMode(): String = context.dataStore.data.first()[Keys.SPLIT_MODE] ?: "ALL"
+
+    suspend fun splitApps(): Set<String> = context.dataStore.data.first()[Keys.SPLIT_APPS] ?: emptySet()
+
+    suspend fun setSplitMode(mode: String) {
+        context.dataStore.edit { it[Keys.SPLIT_MODE] = mode }
+    }
+
+    suspend fun setSplitApps(packages: Set<String>) {
+        context.dataStore.edit { it[Keys.SPLIT_APPS] = packages }
+    }
 
     suspend fun setSelectedSubscription(id: Long?) {
         context.dataStore.edit { p ->

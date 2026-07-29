@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -21,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -110,11 +112,7 @@ class XVpnService : VpnService() {
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
                 .addRoute("0.0.0.0", 0)
-            try {
-                // исключаем себя, чтобы трафик ядра не зациклился через TUN
-                builder.addDisallowedApplication(packageName)
-            } catch (_: Exception) {
-            }
+            applyAppFilter(builder)
             val fd = builder.establish()
                 ?: throw IllegalStateException("Нет разрешения на VPN")
             tunFd = fd
@@ -162,6 +160,51 @@ class XVpnService : VpnService() {
                 }
                 delay(2000)
             }
+        }
+    }
+
+    /**
+     * Раздельное туннелирование. Android разрешает использовать либо список
+     * разрешённых приложений, либо список исключённых, но не оба сразу.
+     * Само приложение всегда вне туннеля, иначе трафик ядра зациклится.
+     */
+    private fun applyAppFilter(builder: Builder) {
+        val prefs = ServiceLocator.prefs
+        val mode = runBlocking { prefs.splitMode() }
+        val apps = runBlocking { prefs.splitApps() } - packageName
+
+        when (mode) {
+            "ONLY_SELECTED" -> {
+                if (apps.isEmpty()) {
+                    // пустой список означал бы «в туннель не идёт никто»
+                    disallowSelf(builder)
+                    return
+                }
+                for (pkg in apps) {
+                    try {
+                        builder.addAllowedApplication(pkg)
+                    } catch (_: PackageManager.NameNotFoundException) {
+                        // приложение удалили — пропускаем
+                    }
+                }
+            }
+            "EXCEPT_SELECTED" -> {
+                disallowSelf(builder)
+                for (pkg in apps) {
+                    try {
+                        builder.addDisallowedApplication(pkg)
+                    } catch (_: PackageManager.NameNotFoundException) {
+                    }
+                }
+            }
+            else -> disallowSelf(builder)
+        }
+    }
+
+    private fun disallowSelf(builder: Builder) {
+        try {
+            builder.addDisallowedApplication(packageName)
+        } catch (_: Exception) {
         }
     }
 

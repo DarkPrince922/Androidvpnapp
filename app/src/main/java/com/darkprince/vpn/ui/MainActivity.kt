@@ -35,6 +35,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.darkprince.vpn.data.api.dto.UserDto
 import com.darkprince.vpn.di.ServiceLocator
+import com.darkprince.vpn.ui.screens.AppsScreen
 import com.darkprince.vpn.ui.screens.BalanceScreen
 import com.darkprince.vpn.ui.screens.HomeScreen
 import com.darkprince.vpn.ui.screens.LoginScreen
@@ -44,6 +45,7 @@ import com.darkprince.vpn.ui.screens.ServersScreen
 import com.darkprince.vpn.ui.screens.SettingsScreen
 import com.darkprince.vpn.ui.screens.SetupScreen
 import com.darkprince.vpn.ui.theme.AppTheme
+import com.darkprince.vpn.ui.vm.AppsViewModel
 import com.darkprince.vpn.ui.vm.AuthViewModel
 import com.darkprince.vpn.ui.vm.BalanceViewModel
 import com.darkprince.vpn.ui.vm.HomeViewModel
@@ -271,6 +273,10 @@ private fun AppRoot(
             composable("referral") {
                 ReferralScreen(onShare = { text -> activity.shareText(text) })
             }
+            composable("apps") {
+                val appsViewModel: AppsViewModel = viewModel()
+                AppsScreen(viewModel = appsViewModel)
+            }
             composable("settings") {
                 val userJson by prefs.userJsonFlow.collectAsState(initial = null)
                 val baseUrl by prefs.baseUrlFlow.collectAsState(initial = "")
@@ -286,6 +292,7 @@ private fun AppRoot(
                     user = user,
                     baseUrl = baseUrl,
                     onOpenReferral = { navController.navigate("referral") },
+                    onOpenApps = { navController.navigate("apps") },
                     onLogout = {
                         scope.launch {
                             XVpnService.stop(activity)
