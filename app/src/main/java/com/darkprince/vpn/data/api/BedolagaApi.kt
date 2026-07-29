@@ -10,7 +10,9 @@ import com.darkprince.vpn.data.api.dto.EmailRegisterRequest
 import com.darkprince.vpn.data.api.dto.ForgotPasswordRequest
 import com.darkprince.vpn.data.api.dto.LogoutRequest
 import com.darkprince.vpn.data.api.dto.PaymentMethodDto
+import com.darkprince.vpn.data.api.dto.DevicesListResponse
 import com.darkprince.vpn.data.api.dto.DevicesPurchaseRequest
+import com.darkprince.vpn.data.api.dto.RenameDeviceRequest
 import com.darkprince.vpn.data.api.dto.PromoActivateRequest
 import com.darkprince.vpn.data.api.dto.PromoActivateResponse
 import com.darkprince.vpn.data.api.dto.PurchaseTariffRequest
@@ -30,7 +32,9 @@ import com.darkprince.vpn.data.api.dto.UserDto
 import kotlinx.serialization.json.JsonElement
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -119,6 +123,30 @@ interface BedolagaApi {
     @POST("cabinet/subscription/devices/reduce")
     suspend fun reduceDevices(
         @Body body: ReduceDevicesRequest,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
+
+    /** Подключённые устройства подписки — с идентификаторами для удаления. */
+    @GET("cabinet/subscription/devices")
+    suspend fun devicesList(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): DevicesListResponse
+
+    @DELETE("cabinet/subscription/devices/{hwid}")
+    suspend fun deleteDevice(
+        @Path("hwid") hwid: String,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
+
+    @DELETE("cabinet/subscription/devices")
+    suspend fun deleteAllDevices(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
+
+    @PATCH("cabinet/subscription/devices/{hwid}/name")
+    suspend fun renameDevice(
+        @Path("hwid") hwid: String,
+        @Body body: RenameDeviceRequest,
         @Query("subscription_id") subscriptionId: Long? = null,
     ): RawJson
 

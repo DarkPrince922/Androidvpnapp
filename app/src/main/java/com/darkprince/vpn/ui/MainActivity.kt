@@ -45,6 +45,7 @@ import com.darkprince.vpn.data.api.dto.UserDto
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.ui.screens.AppsScreen
 import com.darkprince.vpn.ui.screens.BalanceScreen
+import com.darkprince.vpn.ui.screens.DevicesScreen
 import com.darkprince.vpn.ui.screens.HomeScreen
 import com.darkprince.vpn.ui.screens.LoginScreen
 import com.darkprince.vpn.ui.screens.PlansScreen
@@ -58,6 +59,7 @@ import com.darkprince.vpn.ui.theme.AppTheme
 import com.darkprince.vpn.ui.vm.AppsViewModel
 import com.darkprince.vpn.ui.vm.AuthViewModel
 import com.darkprince.vpn.ui.vm.BalanceViewModel
+import com.darkprince.vpn.ui.vm.DevicesViewModel
 import com.darkprince.vpn.ui.vm.HomeViewModel
 import com.darkprince.vpn.ui.vm.PlansViewModel
 import com.darkprince.vpn.vpn.XVpnService
@@ -363,7 +365,10 @@ private fun AppRoot(
             }
             composable("plans") {
                 val plansViewModel: PlansViewModel = viewModel()
-                PlansScreen(viewModel = plansViewModel)
+                PlansScreen(
+                    viewModel = plansViewModel,
+                    onOpenDevices = { navController.navigate("devices") },
+                )
             }
             composable("balance") {
                 val balanceViewModel: BalanceViewModel = viewModel()
@@ -382,6 +387,10 @@ private fun AppRoot(
             composable("apps") {
                 val appsViewModel: AppsViewModel = viewModel()
                 AppsScreen(viewModel = appsViewModel)
+            }
+            composable("devices") {
+                val devicesViewModel: DevicesViewModel = viewModel()
+                DevicesScreen(viewModel = devicesViewModel)
             }
             composable("share") {
                 ShareSubscriptionScreen(

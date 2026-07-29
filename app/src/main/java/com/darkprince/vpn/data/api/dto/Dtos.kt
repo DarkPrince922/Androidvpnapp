@@ -138,6 +138,37 @@ data class PurchaseTariffRequest(
 data class RenewRequest(@SerialName("period_days") val periodDays: Int)
 
 @Serializable
+data class DeviceDto(
+    val hwid: String,
+    val platform: String? = null,
+    @SerialName("device_model") val deviceModel: String? = null,
+    @SerialName("local_name") val localName: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+) {
+    val title: String
+        get() = localName?.takeIf { it.isNotBlank() }
+            ?: deviceModel?.takeIf { it.isNotBlank() }
+            ?: platform?.takeIf { it.isNotBlank() }
+            ?: "Устройство"
+
+    val subtitle: String?
+        get() = listOfNotNull(
+            platform?.takeIf { it.isNotBlank() && it != title },
+            deviceModel?.takeIf { it.isNotBlank() && it != title },
+        ).joinToString(" · ").takeIf { it.isNotBlank() }
+}
+
+@Serializable
+data class DevicesListResponse(
+    val devices: List<DeviceDto> = emptyList(),
+    val total: Int? = null,
+    @SerialName("device_limit") val deviceLimit: Int? = null,
+)
+
+@Serializable
+data class RenameDeviceRequest(val name: String)
+
+@Serializable
 data class DevicesPurchaseRequest(val devices: Int)
 
 @Serializable

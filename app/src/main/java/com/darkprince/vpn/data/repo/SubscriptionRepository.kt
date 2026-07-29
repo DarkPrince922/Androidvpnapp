@@ -3,7 +3,9 @@ package com.darkprince.vpn.data.repo
 import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.core.parser.LinkParser
 import com.darkprince.vpn.data.api.ApiClient
+import com.darkprince.vpn.data.api.dto.DeviceDto
 import com.darkprince.vpn.data.api.dto.DevicesPurchaseRequest
+import com.darkprince.vpn.data.api.dto.RenameDeviceRequest
 import com.darkprince.vpn.data.api.dto.PurchaseTariffRequest
 import com.darkprince.vpn.data.api.dto.ReduceDevicesRequest
 import com.darkprince.vpn.data.api.dto.RenewRequest
@@ -391,6 +393,37 @@ class SubscriptionRepository(
             reduceAvailable = reduceAvailable,
         )
     }
+
+    /** Подключённые устройства подписки. */
+    suspend fun devicesList(subscriptionId: Long? = null): List<DeviceDto> = try {
+        api.devicesList(subscriptionId).devices
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    suspend fun deleteDevice(hwid: String, subscriptionId: Long? = null): String? = try {
+        api.deleteDevice(hwid, subscriptionId)
+        null
+    } catch (e: Exception) {
+        e.userMessage()
+    }
+
+    suspend fun deleteAllDevices(subscriptionId: Long? = null): String? = try {
+        api.deleteAllDevices(subscriptionId)
+        null
+    } catch (e: Exception) {
+        e.userMessage()
+    }
+
+    suspend fun renameDevice(hwid: String, name: String, subscriptionId: Long? = null): String? = try {
+        api.renameDevice(hwid, RenameDeviceRequest(name), subscriptionId)
+        null
+    } catch (e: Exception) {
+        e.userMessage()
+    }
+
+    /** HWID этого телефона — чтобы не удалить его по ошибке. */
+    val ownHwid: String get() = prefs.cachedHwid
 
     suspend fun buyDevices(count: Int, subscriptionId: Long? = null): String? = try {
         api.purchaseDevices(DevicesPurchaseRequest(count), subscriptionId)

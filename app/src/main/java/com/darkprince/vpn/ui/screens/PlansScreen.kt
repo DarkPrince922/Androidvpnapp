@@ -31,7 +31,10 @@ import com.darkprince.vpn.data.repo.TariffOffer
 import com.darkprince.vpn.ui.vm.PlansViewModel
 
 @Composable
-fun PlansScreen(viewModel: PlansViewModel) {
+fun PlansScreen(
+    viewModel: PlansViewModel,
+    onOpenDevices: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     LazyColumn(
@@ -98,6 +101,7 @@ fun PlansScreen(viewModel: PlansViewModel) {
                     onSelectSubscription = { viewModel.selectDeviceSubscription(it) },
                     onBuy = { viewModel.buyDevices(it) },
                     onReduce = { viewModel.reduceDevices(it) },
+                    onOpenDevices = onOpenDevices,
                 )
             }
         }
@@ -141,6 +145,7 @@ private fun DevicesCard(
     onSelectSubscription: (Long) -> Unit,
     onBuy: (Int) -> Unit,
     onReduce: (Int) -> Unit,
+    onOpenDevices: () -> Unit,
 ) {
     var count by remember { mutableStateOf(1) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -240,6 +245,14 @@ private fun DevicesCard(
                         else "Уменьшить лимит"
                     )
                 }
+            }
+
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = onOpenDevices,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Управление устройствами")
             }
         }
     }
