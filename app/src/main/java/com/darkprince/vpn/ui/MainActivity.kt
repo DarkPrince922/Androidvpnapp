@@ -10,6 +10,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -27,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -48,6 +53,7 @@ import com.darkprince.vpn.ui.screens.ServersScreen
 import com.darkprince.vpn.ui.screens.ShareSubscriptionScreen
 import com.darkprince.vpn.ui.screens.SettingsScreen
 import com.darkprince.vpn.ui.screens.SetupScreen
+import com.darkprince.vpn.ui.theme.AnimatedBackground
 import com.darkprince.vpn.ui.theme.AppTheme
 import com.darkprince.vpn.ui.vm.AppsViewModel
 import com.darkprince.vpn.ui.vm.AuthViewModel
@@ -186,10 +192,12 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermission()
         setContent {
             AppTheme {
-                AppRoot(
-                    activity = this,
-                    onConnect = ::connectVpn,
-                )
+                AnimatedBackground {
+                    AppRoot(
+                        activity = this@MainActivity,
+                        onConnect = ::connectVpn,
+                    )
+                }
             }
         }
     }
@@ -248,9 +256,11 @@ private fun AppRoot(
     val showBottomBar = authState.loggedIn && currentRoute in bottomItems.map { it.route }
 
     Scaffold(
+        // фон рисует AnimatedBackground, поэтому сам Scaffold прозрачный
+        containerColor = Color.Transparent,
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                NavigationBar(containerColor = Color.Transparent) {
                     bottomItems.forEach { item ->
                         NavigationBarItem(
                             selected = currentRoute == item.route,
@@ -280,6 +290,15 @@ private fun AppRoot(
             navController = navController,
             startDestination = startDestination,
             modifier = Modifier.padding(innerPadding),
+            // мягкие переходы вместо резкой смены экранов
+            enterTransition = {
+                fadeIn(tween(280)) + slideInHorizontally(tween(320)) { it / 12 }
+            },
+            exitTransition = { fadeOut(tween(200)) },
+            popEnterTransition = {
+                fadeIn(tween(280)) + slideInHorizontally(tween(320)) { -it / 12 }
+            },
+            popExitTransition = { fadeOut(tween(200)) },
         ) {
             composable("setup") {
                 SetupScreen(initialUrl = authState.baseUrl) { url ->

@@ -28,9 +28,10 @@ private val PremiumDark = darkColorScheme(
     onPrimaryContainer = Color(0xFF14100A),
     secondary = BrandColors.Glow,
     onSecondary = Color.White,
-    background = BrandColors.Background,
+    background = Color.Transparent,
     onBackground = BrandColors.TextPrimary,
-    surface = BrandColors.Surface,
+    // карточки слегка прозрачные — сквозь них видно живой фон
+    surface = BrandColors.Surface.copy(alpha = 0.82f),
     onSurface = BrandColors.TextPrimary,
     surfaceVariant = BrandColors.SurfaceHigh,
     onSurfaceVariant = BrandColors.TextSecondary,
