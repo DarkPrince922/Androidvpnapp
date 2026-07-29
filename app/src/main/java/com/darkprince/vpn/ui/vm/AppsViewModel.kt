@@ -9,7 +9,6 @@ import com.darkprince.vpn.di.ServiceLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -45,13 +44,26 @@ class AppsViewModel : ViewModel() {
     val state: StateFlow<AppsUiState> = _state
 
     init {
-        load()
+        // режим и отметки читаем потоком из настроек: список приложений
+        // грузится долго, и раньше его результат затирал только что
+        // выбранный режим значением, прочитанным до начала загрузки
+        viewModelScope.launch {
+            prefs.splitModeFlow.collect { key ->
+                val mode = SplitMode.entries.firstOrNull { it.key == key } ?: SplitMode.ALL
+                _state.value = _state.value.copy(mode = mode)
+            }
+        }
+        viewModelScope.launch {
+            prefs.splitAppsFlow.collect { packages ->
+                _state.value = _state.value.copy(selected = packages)
+            }
+        }
+        loadApps()
     }
 
-    private fun load() {
+    private fun loadApps() {
         viewModelScope.launch {
-            val mode = SplitMode.entries.firstOrNull { it.key == prefs.splitMode() } ?: SplitMode.ALL
-            val selected = prefs.splitApps()
+            val selectedNow = prefs.splitApps()
             val apps = withContext(Dispatchers.IO) {
                 val pm = ServiceLocator.appContext.packageManager
                 val self = ServiceLocator.appContext.packageName
@@ -79,31 +91,28 @@ class AppsViewModel : ViewModel() {
                     }
                     // выбранные и пользовательские — выше системных
                     .sortedWith(
-                        compareByDescending<InstalledApp> { it.packageName in selected }
+                        compareByDescending<InstalledApp> { it.packageName in selectedNow }
                             .thenBy { it.isSystem }
                             .thenBy { it.label.lowercase() }
                     )
                     .toList()
             }
-            _state.value = AppsUiState(apps = apps, selected = selected, mode = mode, loading = false)
+            // обновляем только список: режим и отметки живут своим потоком
+            _state.value = _state.value.copy(apps = apps, loading = false)
         }
     }
 
     fun setMode(mode: SplitMode) {
-        viewModelScope.launch {
-            prefs.setSplitMode(mode.key)
-            _state.value = _state.value.copy(mode = mode)
-        }
+        _state.value = _state.value.copy(mode = mode)
+        viewModelScope.launch { prefs.setSplitMode(mode.key) }
     }
 
     fun toggle(packageName: String) {
-        viewModelScope.launch {
-            val updated = _state.value.selected.toMutableSet().apply {
-                if (!add(packageName)) remove(packageName)
-            }
-            prefs.setSplitApps(updated)
-            _state.value = _state.value.copy(selected = updated)
+        val updated = _state.value.selected.toMutableSet().apply {
+            if (!add(packageName)) remove(packageName)
         }
+        _state.value = _state.value.copy(selected = updated)
+        viewModelScope.launch { prefs.setSplitApps(updated) }
     }
 
     fun setQuery(value: String) {
@@ -111,9 +120,7 @@ class AppsViewModel : ViewModel() {
     }
 
     fun clearSelection() {
-        viewModelScope.launch {
-            prefs.setSplitApps(emptySet())
-            _state.value = _state.value.copy(selected = emptySet())
-        }
+        _state.value = _state.value.copy(selected = emptySet())
+        viewModelScope.launch { prefs.setSplitApps(emptySet()) }
     }
 }

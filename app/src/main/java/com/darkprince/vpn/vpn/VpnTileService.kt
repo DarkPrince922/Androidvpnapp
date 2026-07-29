@@ -6,14 +6,12 @@ import android.net.VpnService
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import com.darkprince.vpn.di.ServiceLocator
+import android.widget.Toast
 import com.darkprince.vpn.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** Плитка в шторке: включение/выключение VPN без открытия приложения. */
@@ -54,37 +52,36 @@ class VpnTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        when (VpnStateStore.state.value) {
-            VpnState.CONNECTED, VpnState.CONNECTING -> {
-                XVpnService.stop(this)
-                updateTile(VpnState.DISCONNECTED)
-            }
-            else -> {
-                ServiceLocator.init(applicationContext)
-                if (VpnService.prepare(this) != null || !ServiceLocator.authRepository.isLoggedIn) {
-                    // нет разрешения на VPN или входа — открываем приложение
-                    openApp()
-                    return
-                }
-                CoroutineScope(Dispatchers.IO).launch {
-                    val profile = try {
-                        val (servers, _) = ServiceLocator.subscriptionRepository.fetchServers()
-                        val index = ServiceLocator.prefs.selectedServerFlow.first()
-                            .coerceIn(0, (servers.size - 1).coerceAtLeast(0))
-                        servers.getOrNull(index)
-                    } catch (_: Exception) {
-                        null
-                    }
-                    if (profile != null) {
-                        // сервис мог ещё завершать прошлую сессию — небольшая
-                        // пауза, иначе новый запуск погибнет вместе с ней
-                        delay(300)
-                        XVpnService.start(this@VpnTileService, profile)
-                    } else {
-                        launch(Dispatchers.Main) { openApp() }
-                    }
-                }
-            }
+
+        if (VpnStateStore.state.value == VpnState.CONNECTED ||
+            VpnStateStore.state.value == VpnState.CONNECTING
+        ) {
+            XVpnService.stop(applicationContext)
+            updateTile(VpnState.DISCONNECTED)
+            return
+        }
+
+        // Всё, что до запуска сервиса, делаем синхронно и без обращений к
+        // диску и сети: система разрешает запустить foreground-сервис лишь
+        // в коротком окне сразу после нажатия на плитку.
+        if (VpnService.prepare(this) != null) {
+            // разрешение на VPN ещё не выдано — только через приложение
+            openApp()
+            return
+        }
+        if (!XVpnService.hasSavedProfile(applicationContext)) {
+            openApp()
+            return
+        }
+
+        updateTile(VpnState.CONNECTING)
+        try {
+            XVpnService.startLast(applicationContext)
+        } catch (_: Exception) {
+            // система не дала запустить сервис из фона — открываем приложение
+            updateTile(VpnState.DISCONNECTED)
+            Toast.makeText(this, "Откройте приложение для подключения", Toast.LENGTH_SHORT).show()
+            openApp()
         }
     }
 

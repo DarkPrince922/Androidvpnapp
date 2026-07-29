@@ -55,6 +55,20 @@ class XVpnService : VpnService() {
             val intent = Intent(context, XVpnService::class.java).setAction(ACTION_STOP)
             context.startService(intent)
         }
+
+        /** Есть ли сохранённый профиль для быстрого запуска (плитка, автозапуск). */
+        fun hasSavedProfile(context: Context): Boolean =
+            File(context.filesDir, PROFILE_FILE).let { it.exists() && it.length() > 0 }
+
+        /**
+         * Запуск по ранее сохранённому профилю. Ничего не читает заранее —
+         * важно для плитки: система даёт очень короткое окно на запуск
+         * foreground-сервиса после нажатия.
+         */
+        fun startLast(context: Context) {
+            val intent = Intent(context, XVpnService::class.java).setAction(ACTION_START)
+            context.startForegroundService(intent)
+        }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -86,16 +100,24 @@ class XVpnService : VpnService() {
                 return START_STICKY
             }
             ACTION_START -> {
+                // уведомление показываем первым: после startForegroundService
+                // система даёт лишь несколько секунд, иначе убивает процесс
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(activeProfileName.ifBlank { "Подключение…" })
+                )
                 val profile = try {
                     val profileJson = File(filesDir, PROFILE_FILE).readText()
                     Json.decodeFromString(ProxyProfile.serializer(), profileJson)
                 } catch (_: Exception) {
-                    stopSelf()
+                    VpnStateStore.setState(VpnState.ERROR, "Сервер не выбран")
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf(startId)
                     return START_NOT_STICKY
                 }
                 activeProfileName = profile.name
                 lastPingMs = null
-                startForeground(NOTIFICATION_ID, buildNotification(profile.name))
+                updateNotificationForce(profile.name)
                 // повторный START на работающем сервисе = смена сервера:
                 // старый туннель гасится и сразу поднимается новый
                 scope.launch { vpnMutex.withLock { startVpn(profile) } }
@@ -328,9 +350,13 @@ class XVpnService : VpnService() {
 
     private fun updateNotification() {
         if (VpnStateStore.state.value != VpnState.CONNECTED) return
+        updateNotificationForce(activeProfileName)
+    }
+
+    private fun updateNotificationForce(title: String) {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         try {
-            manager.notify(NOTIFICATION_ID, buildNotification(activeProfileName))
+            manager.notify(NOTIFICATION_ID, buildNotification(title))
         } catch (_: Exception) {
         }
     }
