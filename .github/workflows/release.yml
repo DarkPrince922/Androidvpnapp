@@ -12,6 +12,12 @@ on:
 permissions:
   contents: write
 
+# релизы одной версии не должны собираться параллельно, но начатый
+# релиз не прерываем — иначе можно получить полузалитый файл
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest

@@ -3,7 +3,18 @@ name: Build APK
 on:
   push:
     branches: ["**"]
+    # правки документации и релизного workflow не требуют пересборки APK
+    paths-ignore:
+      - "README.md"
+      - "**/*.md"
+      - ".github/workflows/release.yml"
+      - ".gitignore"
   workflow_dispatch:
+
+# новый push отменяет предыдущую сборку той же ветки — иначе они копятся
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
