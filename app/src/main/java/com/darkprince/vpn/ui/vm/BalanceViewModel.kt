@@ -88,6 +88,20 @@ class BalanceViewModel : ViewModel() {
         _state.value = _state.value.copy(openUrl = null)
     }
 
+    fun activatePromo(code: String) {
+        if (code.isBlank()) return
+        _state.value = _state.value.copy(error = null, info = null)
+        viewModelScope.launch {
+            val (ok, message) = repo.activatePromocode(code)
+            if (ok) {
+                _state.value = _state.value.copy(info = message)
+                refresh()
+            } else {
+                _state.value = _state.value.copy(error = message)
+            }
+        }
+    }
+
     fun checkPending() {
         val pending = _state.value.pendingPayment ?: return
         viewModelScope.launch {

@@ -93,10 +93,10 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    fun emailRegister(email: String, password: String) {
+    fun emailRegister(email: String, password: String, referralCode: String? = null) {
         _state.value = _state.value.copy(loading = true, error = null, info = null)
         viewModelScope.launch {
-            val (success, message) = auth.emailRegister(email, password)
+            val (success, message) = auth.emailRegister(email, password, referralCode)
             _state.value = when {
                 success && auth.isLoggedIn -> _state.value.copy(loading = false, loggedIn = true)
                 success -> _state.value.copy(loading = false, info = message)

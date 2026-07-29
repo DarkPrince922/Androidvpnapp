@@ -39,6 +39,7 @@ import com.darkprince.vpn.ui.screens.BalanceScreen
 import com.darkprince.vpn.ui.screens.HomeScreen
 import com.darkprince.vpn.ui.screens.LoginScreen
 import com.darkprince.vpn.ui.screens.PlansScreen
+import com.darkprince.vpn.ui.screens.ReferralScreen
 import com.darkprince.vpn.ui.screens.ServersScreen
 import com.darkprince.vpn.ui.screens.SettingsScreen
 import com.darkprince.vpn.ui.screens.SetupScreen
@@ -94,8 +95,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Системное меню «Поделиться». */
+    fun shareText(text: String) {
+        val intent = Intent(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, text)
+        startActivity(Intent.createChooser(intent, null))
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    private fun requestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestNotificationPermission()
         setContent {
             AppTheme {
                 AppRoot(
@@ -201,7 +224,9 @@ private fun AppRoot(
                     onTelegramLogin = { authViewModel.startTelegramAuth() },
                     onCancelTelegram = { authViewModel.cancelTelegramAuth() },
                     onEmailLogin = { email, password -> authViewModel.emailLogin(email, password) },
-                    onEmailRegister = { email, password -> authViewModel.emailRegister(email, password) },
+                    onEmailRegister = { email, password, referral ->
+                        authViewModel.emailRegister(email, password, referral)
+                    },
                     onForgotPassword = { email -> authViewModel.forgotPassword(email) },
                     onChangeServer = {
                         navController.navigate("setup") { popUpTo("login") { inclusive = true } }
@@ -243,6 +268,9 @@ private fun AppRoot(
                 }
                 BalanceScreen(viewModel = balanceViewModel)
             }
+            composable("referral") {
+                ReferralScreen(onShare = { text -> activity.shareText(text) })
+            }
             composable("settings") {
                 val userJson by prefs.userJsonFlow.collectAsState(initial = null)
                 val baseUrl by prefs.baseUrlFlow.collectAsState(initial = "")
@@ -257,6 +285,7 @@ private fun AppRoot(
                 SettingsScreen(
                     user = user,
                     baseUrl = baseUrl,
+                    onOpenReferral = { navController.navigate("referral") },
                     onLogout = {
                         scope.launch {
                             XVpnService.stop(activity)

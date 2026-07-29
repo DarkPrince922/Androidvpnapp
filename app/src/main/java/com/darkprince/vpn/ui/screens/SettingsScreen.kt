@@ -1,5 +1,6 @@
 package com.darkprince.vpn.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,7 @@ import com.darkprince.vpn.data.api.dto.UserDto
 fun SettingsScreen(
     user: UserDto?,
     baseUrl: String,
+    onOpenReferral: () -> Unit,
     onLogout: () -> Unit,
 ) {
     Column(
@@ -50,6 +52,23 @@ fun SettingsScreen(
                 Text("Адрес кабинета", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(baseUrl.ifBlank { "—" }, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpenReferral() },
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Пригласить друга", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Делитесь ссылкой и получайте бонусы с платежей приглашённых",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
 

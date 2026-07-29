@@ -44,7 +44,7 @@ fun LoginScreen(
     onTelegramLogin: () -> Unit,
     onCancelTelegram: () -> Unit,
     onEmailLogin: (String, String) -> Unit,
-    onEmailRegister: (String, String) -> Unit,
+    onEmailRegister: (String, String, String?) -> Unit,
     onForgotPassword: (String) -> Unit,
     onChangeServer: () -> Unit,
 ) {
@@ -52,6 +52,7 @@ fun LoginScreen(
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var registerMode by rememberSaveable { mutableStateOf(false) }
+    var referralCode by rememberSaveable { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -121,10 +122,24 @@ fun LoginScreen(
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
+            if (registerMode) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = referralCode,
+                    onValueChange = { referralCode = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Реферальный код (необязательно)") },
+                    singleLine = true,
+                )
+            }
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = {
-                    if (registerMode) onEmailRegister(email, password) else onEmailLogin(email, password)
+                    if (registerMode) {
+                        onEmailRegister(email, password, referralCode.takeIf { it.isNotBlank() })
+                    } else {
+                        onEmailLogin(email, password)
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !state.loading && email.contains('@') && password.length >= 6,

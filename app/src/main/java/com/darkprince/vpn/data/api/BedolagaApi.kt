@@ -11,8 +11,11 @@ import com.darkprince.vpn.data.api.dto.ForgotPasswordRequest
 import com.darkprince.vpn.data.api.dto.LogoutRequest
 import com.darkprince.vpn.data.api.dto.PaymentMethodDto
 import com.darkprince.vpn.data.api.dto.DevicesPurchaseRequest
+import com.darkprince.vpn.data.api.dto.PromoActivateRequest
+import com.darkprince.vpn.data.api.dto.PromoActivateResponse
 import com.darkprince.vpn.data.api.dto.PurchaseTariffRequest
 import com.darkprince.vpn.data.api.dto.RawJson
+import com.darkprince.vpn.data.api.dto.ReferralInfoResponse
 import com.darkprince.vpn.data.api.dto.ReduceDevicesRequest
 import com.darkprince.vpn.data.api.dto.RefreshRequest
 import com.darkprince.vpn.data.api.dto.RenewRequest
@@ -112,6 +115,14 @@ interface BedolagaApi {
 
     @POST("cabinet/subscription/renew")
     suspend fun renew(@Body body: RenewRequest): RawJson
+
+    // --- Рефералка и промокоды ---
+
+    @GET("cabinet/referral")
+    suspend fun referralInfo(): ReferralInfoResponse
+
+    @POST("cabinet/promocode/activate")
+    suspend fun activatePromocode(@Body body: PromoActivateRequest): PromoActivateResponse
 
     // --- Баланс и оплата ---
 

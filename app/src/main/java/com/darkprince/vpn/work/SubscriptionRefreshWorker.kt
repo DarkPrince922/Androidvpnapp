@@ -1,6 +1,11 @@
 package com.darkprince.vpn.work
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -8,7 +13,11 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.darkprince.vpn.R
+import com.darkprince.vpn.data.repo.SubscriptionUserInfo
 import com.darkprince.vpn.di.ServiceLocator
+import com.darkprince.vpn.ui.MainActivity
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 /**
@@ -25,11 +34,62 @@ class SubscriptionRefreshWorker(
         ServiceLocator.init(applicationContext)
         if (!ServiceLocator.authRepository.isLoggedIn) return Result.success()
         return try {
-            ServiceLocator.subscriptionRepository.fetchServers(forceRefresh = true)
+            val (_, userInfo) = ServiceLocator.subscriptionRepository.fetchServers(forceRefresh = true)
+            checkExpiryNotification(userInfo)
             Result.success()
         } catch (_: Exception) {
             // сеть/сервер недоступны — попробуем в следующем цикле
             Result.retry()
+        }
+    }
+
+    /** Уведомление «подписка заканчивается», не чаще раза в день. */
+    private suspend fun checkExpiryNotification(userInfo: SubscriptionUserInfo?) {
+        val daysLeft = try {
+            ServiceLocator.subscriptionRepository.status().daysLeft
+        } catch (_: Exception) {
+            null
+        } ?: userInfo?.expireUnix?.takeIf { it > 0 }?.let {
+            ((it * 1000 - System.currentTimeMillis()) / 86_400_000L).toInt()
+        } ?: return
+
+        if (daysLeft > 3 || daysLeft < 0) return
+        val today = java.time.LocalDate.now().toString()
+        val prefs = ServiceLocator.prefs
+        if (prefs.lastExpiryNotifyDayFlow.first() == today) return
+        prefs.setLastExpiryNotifyDay(today)
+
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE)
+            as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel(
+                "subscription",
+                "Подписка",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+        )
+        val contentIntent = PendingIntent.getActivity(
+            applicationContext,
+            1,
+            Intent(applicationContext, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        val text = when (daysLeft) {
+            0 -> "Подписка заканчивается сегодня. Продлите, чтобы не остаться без защиты."
+            1 -> "Подписка заканчивается завтра. Продлите её в приложении."
+            else -> "Подписка заканчивается через $daysLeft дн. Продлите её в приложении."
+        }
+        val notification = Notification.Builder(applicationContext, "subscription")
+            .setSmallIcon(R.drawable.ic_stat_vpn)
+            .setContentTitle("Подписка истекает")
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setContentIntent(contentIntent)
+            .setAutoCancel(true)
+            .build()
+        try {
+            manager.notify(2, notification)
+        } catch (_: SecurityException) {
         }
     }
 

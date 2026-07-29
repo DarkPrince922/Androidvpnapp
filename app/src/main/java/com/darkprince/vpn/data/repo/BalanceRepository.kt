@@ -48,4 +48,20 @@ class BalanceRepository(private val client: ApiClient) {
     } catch (_: Exception) {
         false
     }
+
+    suspend fun referralInfo() = api.referralInfo()
+
+    /** Активация промокода. Возвращает Pair(успех, сообщение). */
+    suspend fun activatePromocode(code: String): Pair<Boolean, String> = try {
+        val response = api.activatePromocode(
+            com.darkprince.vpn.data.api.dto.PromoActivateRequest(code.trim())
+        )
+        val ok = response.success ?: true
+        val message = listOfNotNull(response.message, response.bonusDescription)
+            .joinToString(" ")
+            .ifBlank { if (ok) "Промокод активирован!" else "Не удалось активировать промокод" }
+        ok to message
+    } catch (e: Exception) {
+        false to e.userMessage()
+    }
 }

@@ -106,10 +106,19 @@ class AuthRepository(
      * Регистрация по e-mail. Возвращает Pair(успех, сообщение). При успехе без
      * токенов сервер прислал письмо для подтверждения почты.
      */
-    suspend fun emailRegister(email: String, password: String): Pair<Boolean, String?> {
+    suspend fun emailRegister(
+        email: String,
+        password: String,
+        referralCode: String? = null,
+    ): Pair<Boolean, String?> {
         return try {
             val auth = api.emailRegister(
-                EmailRegisterRequest(email.trim(), password, language = "ru")
+                EmailRegisterRequest(
+                    email.trim(),
+                    password,
+                    language = "ru",
+                    referralCode = referralCode?.trim()?.takeIf { it.isNotBlank() },
+                )
             )
             if (auth.accessToken != null) {
                 saveSession(auth)

@@ -127,6 +127,30 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                 }
             }
         }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Промокод", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(12.dp))
+                    var promo by rememberSaveable { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = promo,
+                        onValueChange = { promo = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Введите промокод") },
+                        singleLine = true,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { viewModel.activatePromo(promo) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = promo.isNotBlank(),
+                    ) {
+                        Text("Активировать")
+                    }
+                }
+            }
+        }
         state.error?.let { error ->
             item {
                 Text(error, color = MaterialTheme.colorScheme.error)

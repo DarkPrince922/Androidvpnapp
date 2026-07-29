@@ -30,6 +30,7 @@ class AppPrefs(private val context: Context) {
         val SERVERS_RAW = stringPreferencesKey("servers_raw")
         val SUB_USERINFO = stringPreferencesKey("sub_userinfo")
         val SELECTED_SERVER = intPreferencesKey("selected_server")
+        val LAST_EXPIRY_NOTIFY_DAY = stringPreferencesKey("last_expiry_notify_day")
     }
 
     @Volatile var cachedBaseUrl: String = ""
@@ -97,6 +98,13 @@ class AppPrefs(private val context: Context) {
         context.dataStore.edit { p ->
             if (raw == null) p.remove(Keys.SERVERS_RAW) else p[Keys.SERVERS_RAW] = raw
         }
+    }
+
+    val lastExpiryNotifyDayFlow: Flow<String?> =
+        context.dataStore.data.map { it[Keys.LAST_EXPIRY_NOTIFY_DAY] }
+
+    suspend fun setLastExpiryNotifyDay(day: String) {
+        context.dataStore.edit { it[Keys.LAST_EXPIRY_NOTIFY_DAY] = day }
     }
 
     suspend fun setSubUserInfo(json: String?) {

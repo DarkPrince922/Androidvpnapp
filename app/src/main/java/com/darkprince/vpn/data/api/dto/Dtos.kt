@@ -182,5 +182,31 @@ data class TransactionsResponse(
     val list: List<TransactionDto> get() = items ?: transactions ?: emptyList()
 }
 
+// ---------- Рефералка и промокоды ----------
+
+@Serializable
+data class ReferralInfoResponse(
+    @SerialName("referral_code") val referralCode: String? = null,
+    @SerialName("referral_link") val referralLink: String? = null,
+    @SerialName("bot_referral_link") val botReferralLink: String? = null,
+    @SerialName("total_referrals") val totalReferrals: Int? = null,
+    @SerialName("active_referrals") val activeReferrals: Int? = null,
+    @SerialName("total_earnings_kopeks") val totalEarningsKopeks: Long? = null,
+    @SerialName("available_balance_kopeks") val availableBalanceKopeks: Long? = null,
+    @SerialName("commission_percent") val commissionPercent: Double? = null,
+) {
+    val shareLink: String? get() = botReferralLink ?: referralLink
+}
+
+@Serializable
+data class PromoActivateRequest(val code: String)
+
+@Serializable
+data class PromoActivateResponse(
+    val success: Boolean? = null,
+    val message: String? = null,
+    @SerialName("bonus_description") val bonusDescription: String? = null,
+)
+
 // Ответы неизвестной/переменной формы храним как JsonObject и разбираем адаптивно.
 typealias RawJson = JsonObject
