@@ -2,6 +2,9 @@ package com.darkprince.vpn.data.api
 
 import com.darkprince.vpn.data.api.dto.RefreshRequest
 import com.darkprince.vpn.data.prefs.AppPrefs
+import com.darkprince.vpn.core.xray.XrayConfigBuilder
+import com.darkprince.vpn.vpn.VpnState
+import com.darkprince.vpn.vpn.VpnStateStore
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -9,6 +12,11 @@ import kotlinx.serialization.json.Json
 import okhttp3.Authenticator
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.SocketAddress
+import java.net.URI
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -117,16 +125,38 @@ class ApiClient(private val prefs: AppPrefs) {
         plainOkHttp.connectionPool.evictAll()
     }
 
+    /**
+     * Приложение исключено из VPN (иначе трафик ядра зациклится), поэтому при
+     * активном туннеле запросы кабинета идут через локальный SOCKS ядра Xray —
+     * то есть через VPN, в обход блокировок оператора. DNS при этом
+     * резолвится удалённо. При недоступности SOCKS — fallback напрямую.
+     */
+    private val vpnAwareProxySelector = object : ProxySelector() {
+        private val socks =
+            Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", XrayConfigBuilder.SOCKS_PORT))
+
+        override fun select(uri: URI?): MutableList<Proxy> =
+            if (VpnStateStore.state.value == VpnState.CONNECTED) {
+                mutableListOf(socks, Proxy.NO_PROXY)
+            } else {
+                mutableListOf(Proxy.NO_PROXY)
+            }
+
+        override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: java.io.IOException?) = Unit
+    }
+
     val okHttp: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(baseUrlInterceptor)
         .addInterceptor(authInterceptor)
         .authenticator(tokenAuthenticator)
+        .proxySelector(vpnAwareProxySelector)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
     /** Отдельный «чистый» клиент для скачивания подписки и служебных запросов. */
     val plainOkHttp: OkHttpClient = OkHttpClient.Builder()
+        .proxySelector(vpnAwareProxySelector)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
@@ -146,6 +176,7 @@ class ApiClient(private val prefs: AppPrefs) {
         .client(
             OkHttpClient.Builder()
                 .addInterceptor(baseUrlInterceptor)
+                .proxySelector(vpnAwareProxySelector)
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build()

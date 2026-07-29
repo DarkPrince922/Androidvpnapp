@@ -8,6 +8,8 @@ import com.darkprince.vpn.data.repo.TariffOffer
 import com.darkprince.vpn.data.repo.TrafficPackage
 import com.darkprince.vpn.data.repo.userMessage
 import com.darkprince.vpn.di.ServiceLocator
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -37,46 +39,66 @@ class PlansViewModel : ViewModel() {
     fun refresh() {
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            val tariffs = try {
-                repo.tariffs()
-            } catch (_: Exception) {
-                emptyList()
+            coroutineScope {
+                val tariffsDeferred = async {
+                    try {
+                        repo.tariffs()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+                val renewalsDeferred = async {
+                    try {
+                        repo.renewalOptions()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+                val trialDeferred = async {
+                    try {
+                        val info = repo.trialInfo()
+                        info.available ?: info.isAvailable ?: false
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                val devicesDeferred = async {
+                    try {
+                        // «пустая» сводка (все поля недоступны) — карточку не показываем
+                        repo.devicesInfo().takeIf {
+                            it.deviceLimit != null || it.purchaseAvailable || it.reduceAvailable
+                        }
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                val trafficDeferred = async {
+                    try {
+                        repo.trafficPackages()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+                val tariffs = tariffsDeferred.await()
+                val renewals = renewalsDeferred.await()
+                val trial = trialDeferred.await()
+                val devices = devicesDeferred.await()
+                val trafficPackages = trafficDeferred.await()
+                val error = if (tariffs.isEmpty() && renewals.isEmpty() && !trial &&
+                    devices == null && trafficPackages.isEmpty()
+                ) {
+                    "Не удалось загрузить предложения. Проверьте соединение и потяните для обновления."
+                } else null
+                _state.value = PlansUiState(
+                    tariffs = tariffs,
+                    renewalOptions = renewals,
+                    trialAvailable = trial,
+                    devices = devices,
+                    trafficPackages = trafficPackages,
+                    loading = false,
+                    error = error,
+                )
             }
-            val renewals = try {
-                repo.renewalOptions()
-            } catch (_: Exception) {
-                emptyList()
-            }
-            val trial = try {
-                val info = repo.trialInfo()
-                info.available ?: info.isAvailable ?: false
-            } catch (_: Exception) {
-                false
-            }
-            val devices = try {
-                repo.devicesInfo()
-            } catch (_: Exception) {
-                null
-            }
-            val trafficPackages = try {
-                repo.trafficPackages()
-            } catch (_: Exception) {
-                emptyList()
-            }
-            val error = if (tariffs.isEmpty() && renewals.isEmpty() && !trial &&
-                devices == null && trafficPackages.isEmpty()
-            ) {
-                "Нет доступных предложений. Возможно, покупка через кабинет отключена."
-            } else null
-            _state.value = PlansUiState(
-                tariffs = tariffs,
-                renewalOptions = renewals,
-                trialAvailable = trial,
-                devices = devices,
-                trafficPackages = trafficPackages,
-                loading = false,
-                error = error,
-            )
         }
     }
 
