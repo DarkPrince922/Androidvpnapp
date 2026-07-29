@@ -255,7 +255,9 @@ private fun AppRoot(
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val showBottomBar = authState.loggedIn && currentRoute in bottomItems.map { it.route }
+    // гостю панель нужна не меньше: без неё нет ни «Ещё», ни выбора приложений
+    val showBottomBar = (authState.loggedIn || authState.guestMode) &&
+        currentRoute in bottomItems.map { it.route }
 
     Scaffold(
         // фон рисует AnimatedBackground, поэтому сам Scaffold прозрачный
@@ -343,6 +345,32 @@ private fun AppRoot(
                     },
                 )
             }
+            // гость заводит свой аккаунт, не теряя чужую подписку: экран тот же,
+            // но выход отсюда — назад в приложение, а не на стартовый вход
+            composable("upgrade") {
+                val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = activity)
+                LaunchedEffect(authState.loggedIn) {
+                    if (authState.loggedIn) {
+                        homeViewModel.refresh(forceServers = true)
+                        navController.navigate("home") { popUpTo("home") { inclusive = true } }
+                    }
+                }
+                LoginScreen(
+                    state = authState,
+                    upgradeMode = true,
+                    onBack = { navController.popBackStack() },
+                    onTelegramLogin = { authViewModel.startTelegramAuth() },
+                    onCancelTelegram = { authViewModel.cancelTelegramAuth() },
+                    onEmailLogin = { email, password -> authViewModel.emailLogin(email, password) },
+                    onEmailRegister = { email, password, referral ->
+                        authViewModel.emailRegister(email, password, referral)
+                    },
+                    onForgotPassword = { email -> authViewModel.forgotPassword(email) },
+                    onChangeServer = {},
+                    onScanSubscription = {},
+                    onPickQrImage = {},
+                )
+            }
             composable("home") {
                 val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = activity)
                 HomeScreen(
@@ -365,6 +393,13 @@ private fun AppRoot(
             }
             composable("plans") {
                 val plansViewModel: PlansViewModel = viewModel()
+                val plansState by plansViewModel.state.collectAsStateWithLifecycle()
+                val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = activity)
+                // после покупки подтягиваем свою подписку: у бывшего гостя
+                // приложение сразу переходит с чужой ссылки на собственную
+                LaunchedEffect(plansState.info) {
+                    if (plansState.info != null) homeViewModel.refresh(forceServers = true)
+                }
                 PlansScreen(
                     viewModel = plansViewModel,
                     onOpenDevices = { navController.navigate("devices") },
@@ -408,18 +443,30 @@ private fun AppRoot(
                     }
                 }
                 val scope = androidx.compose.runtime.rememberCoroutineScope()
+                val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = activity)
                 SettingsScreen(
                     user = user,
                     guestMode = authState.guestMode,
+                    usingSharedSubscription = authState.usingSharedSubscription,
                     onOpenReferral = { navController.navigate("referral") },
                     onOpenApps = { navController.navigate("apps") },
                     onOpenShare = { navController.navigate("share") },
+                    onCreateAccount = { navController.navigate("upgrade") },
+                    onDropSharedSubscription = {
+                        scope.launch {
+                            XVpnService.stop(activity)
+                            ServiceLocator.subscriptionRepository.exitGuestMode()
+                            homeViewModel.refresh(forceServers = true)
+                            navController.navigate("home") { popUpTo("home") { inclusive = true } }
+                        }
+                    },
                     onLogout = {
                         scope.launch {
                             XVpnService.stop(activity)
-                            if (authState.guestMode) {
-                                ServiceLocator.subscriptionRepository.exitGuestMode()
-                            } else {
+                            // чужую подписку отпускаем в любом случае: она привязана
+                            // к этому телефону, а не к аккаунту
+                            ServiceLocator.subscriptionRepository.exitGuestMode()
+                            if (!authState.guestMode) {
                                 ServiceLocator.authRepository.logout()
                             }
                             authViewModel.onLoggedOut()

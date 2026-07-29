@@ -19,8 +19,14 @@ data class AuthUiState(
     val telegramWebUri: String? = null,
     val waitingTelegram: Boolean = false,
     val loggedIn: Boolean = false,
-    /** Вход по ссылке подписки: VPN работает, кабинет недоступен. */
+    /** Вход по ссылке подписки без аккаунта: VPN работает, кабинет недоступен. */
     val guestMode: Boolean = false,
+    /**
+     * Сейчас используется подписка, которой поделились. Гость может завести
+     * свой аккаунт, не теряя доступ: чужая подписка работает, пока не появится
+     * своя.
+     */
+    val usingSharedSubscription: Boolean = false,
 )
 
 class AuthViewModel : ViewModel() {
@@ -31,12 +37,26 @@ class AuthViewModel : ViewModel() {
         AuthUiState(
             baseUrl = prefs.cachedBaseUrl,
             loggedIn = auth.isLoggedIn,
-            guestMode = prefs.cachedGuestSubUrl != null,
+            guestMode = prefs.cachedGuestSubUrl != null && !auth.isLoggedIn,
+            usingSharedSubscription = prefs.cachedGuestSubUrl != null,
         )
     )
     val state: StateFlow<AuthUiState> = _state
 
     private var telegramJob: Job? = null
+
+    init {
+        // чужая подписка отпускается сама, как только заработает своя, —
+        // следим за этим, чтобы экраны сразу перестроились
+        viewModelScope.launch {
+            prefs.guestSubUrlFlow.collect { url ->
+                _state.value = _state.value.copy(
+                    usingSharedSubscription = url != null,
+                    guestMode = url != null && !auth.isLoggedIn,
+                )
+            }
+        }
+    }
 
     fun setBaseUrl(url: String, onDone: () -> Unit) {
         viewModelScope.launch {
@@ -65,6 +85,7 @@ class AuthViewModel : ViewModel() {
                         telegramUri = null,
                         telegramWebUri = null,
                         loggedIn = true,
+                        guestMode = false,
                     )
                     is DeepLinkAuthEvent.Failed -> _state.value = _state.value.copy(
                         loading = false,
@@ -92,7 +113,7 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             val error = auth.emailLogin(email, password)
             _state.value = if (error == null) {
-                _state.value.copy(loading = false, loggedIn = true)
+                _state.value.copy(loading = false, loggedIn = true, guestMode = false)
             } else {
                 _state.value.copy(loading = false, error = error)
             }
@@ -104,7 +125,8 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             val (success, message) = auth.emailRegister(email, password, referralCode)
             _state.value = when {
-                success && auth.isLoggedIn -> _state.value.copy(loading = false, loggedIn = true)
+                success && auth.isLoggedIn ->
+                    _state.value.copy(loading = false, loggedIn = true, guestMode = false)
                 success -> _state.value.copy(loading = false, info = message)
                 else -> _state.value.copy(loading = false, error = message)
             }
@@ -115,6 +137,7 @@ class AuthViewModel : ViewModel() {
         _state.value = _state.value.copy(
             loggedIn = false,
             guestMode = false,
+            usingSharedSubscription = false,
             error = null,
             info = null,
         )
@@ -134,7 +157,11 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             val error = ServiceLocator.subscriptionRepository.activateGuestSubscription(rawLink)
             _state.value = if (error == null) {
-                _state.value.copy(loading = false, guestMode = true)
+                _state.value.copy(
+                    loading = false,
+                    guestMode = !auth.isLoggedIn,
+                    usingSharedSubscription = true,
+                )
             } else {
                 _state.value.copy(loading = false, error = error)
             }

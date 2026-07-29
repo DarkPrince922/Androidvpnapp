@@ -32,7 +32,10 @@ class SubscriptionRefreshWorker(
 
     override suspend fun doWork(): Result {
         ServiceLocator.init(applicationContext)
-        if (!ServiceLocator.authRepository.isLoggedIn) return Result.success()
+        // гостю подписку тоже нужно обновлять: аккаунта нет, но ссылка есть
+        val hasAccount = ServiceLocator.authRepository.isLoggedIn
+        val hasSharedSubscription = ServiceLocator.prefs.cachedGuestSubUrl != null
+        if (!hasAccount && !hasSharedSubscription) return Result.success()
         return try {
             val (_, userInfo) = ServiceLocator.subscriptionRepository.fetchServers(forceRefresh = true)
             // держим в актуальном состоянии и остальные подписки пользователя

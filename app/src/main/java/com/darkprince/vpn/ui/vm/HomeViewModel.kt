@@ -85,8 +85,8 @@ class HomeViewModel : ViewModel() {
             }
             _state.value = _state.value.copy(subscriptions = subs, selectedSubscriptionId = selectedId)
 
-            // в гостевом режиме кабинет недоступен — только подписка по ссылке
-            val guest = prefs.cachedGuestSubUrl != null
+            // без аккаунта кабинет недоступен — только подписка по ссылке
+            val guest = !ServiceLocator.authRepository.isLoggedIn
             val sub = if (guest) null else try {
                 subRepo.status()
             } catch (e: Exception) {

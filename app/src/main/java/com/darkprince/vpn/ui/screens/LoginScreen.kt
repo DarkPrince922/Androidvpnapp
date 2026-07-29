@@ -50,11 +50,14 @@ fun LoginScreen(
     onChangeServer: () -> Unit,
     onScanSubscription: () -> Unit,
     onPickQrImage: () -> Unit,
+    /** Гость заводит собственный аккаунт, не теряя чужую подписку. */
+    upgradeMode: Boolean = false,
+    onBack: (() -> Unit)? = null,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
-    var registerMode by rememberSaveable { mutableStateOf(false) }
+    var registerMode by rememberSaveable { mutableStateOf(upgradeMode) }
     var referralCode by rememberSaveable { mutableStateOf("") }
 
     Column(
@@ -73,7 +76,19 @@ fun LoginScreen(
                 .clip(RoundedCornerShape(32.dp)),
         )
         Spacer(Modifier.height(20.dp))
-        Text("Вход", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            if (upgradeMode) "Свой аккаунт" else "Вход",
+            style = MaterialTheme.typography.headlineMedium,
+        )
+        if (upgradeMode) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Зарегистрируйтесь или войдите, чтобы купить собственную подписку. " +
+                    "Доступ, которым с вами поделились, продолжит работать, пока " +
+                    "не заработает ваша.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         Spacer(Modifier.height(24.dp))
 
         TabRow(selectedTabIndex = tab) {
@@ -173,28 +188,39 @@ fun LoginScreen(
         Spacer(Modifier.height(24.dp))
         HorizontalDivider()
         Spacer(Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = onScanSubscription,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.loading,
-        ) {
-            Text("Сканировать QR камерой")
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = onPickQrImage,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.loading,
-        ) {
-            Text("Загрузить QR из галереи")
-        }
-        Text(
-            "Если вам дали доступ к подписке — отсканируйте QR владельца или " +
-                "выберите присланную картинку",
-            style = MaterialTheme.typography.bodySmall,
-        )
 
-        Spacer(Modifier.height(24.dp))
-        TextButton(onClick = onChangeServer) { Text("Изменить адрес кабинета") }
+        if (upgradeMode) {
+            // подписка по QR у гостя уже есть — здесь нужен только аккаунт
+            OutlinedButton(
+                onClick = { onBack?.invoke() },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Вернуться")
+            }
+        } else {
+            OutlinedButton(
+                onClick = onScanSubscription,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.loading,
+            ) {
+                Text("Сканировать QR камерой")
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = onPickQrImage,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.loading,
+            ) {
+                Text("Загрузить QR из галереи")
+            }
+            Text(
+                "Если вам дали доступ к подписке — отсканируйте QR владельца или " +
+                    "выберите присланную картинку",
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            Spacer(Modifier.height(24.dp))
+            TextButton(onClick = onChangeServer) { Text("Изменить адрес кабинета") }
+        }
     }
 }

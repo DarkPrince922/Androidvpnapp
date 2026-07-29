@@ -56,11 +56,14 @@ class SubscriptionRepository(
 ) {
     private val api get() = client.api
 
+    /** Есть аккаунт кабинета. Гость без аккаунта живёт только по чужой ссылке. */
+    private val isLoggedIn: Boolean get() = prefs.cachedRefreshToken != null
+
     suspend fun status(): SubscriptionStatusResponse = api.subscription()
 
-    /** Список подписок пользователя; пусто в гостевом режиме и без мультитарифа. */
+    /** Список подписок пользователя; пусто без аккаунта и без мультитарифа. */
     suspend fun subscriptions(): List<SubscriptionListItem> {
-        if (prefs.cachedGuestSubUrl != null) return emptyList()
+        if (!isLoggedIn) return emptyList()
         return try {
             api.subscriptions().subscriptions
         } catch (_: Exception) {
@@ -134,11 +137,18 @@ class SubscriptionRepository(
     /**
      * Ссылка на подписку Remnawave. При нескольких подписках берём ссылку
      * выбранной (она приходит прямо в списке), иначе — через кабинет.
+     *
+     * Гостевая ссылка — запасной вариант: пока у зарегистрировавшегося гостя
+     * нет своей подписки, он продолжает пользоваться той, которой с ним
+     * поделились, и не остаётся без VPN во время оплаты.
      */
     suspend fun resolveSubscriptionUrl(): String? {
-        // гостевой режим: аккаунта кабинета нет, работаем по полученной ссылке
-        prefs.cachedGuestSubUrl?.let { return it }
+        // гость без аккаунта: кабинета нет, работаем только по чужой ссылке
+        if (!isLoggedIn) return prefs.cachedGuestSubUrl
+        return ownSubscriptionUrl() ?: prefs.cachedGuestSubUrl
+    }
 
+    private suspend fun ownSubscriptionUrl(): String? {
         val selectedId = prefs.selectedSubscriptionFlow.first()
         if (selectedId != null) {
             val fromList = subscriptions().firstOrNull { it.id == selectedId }?.subscriptionUrl
@@ -175,7 +185,14 @@ class SubscriptionRepository(
             try {
                 val url = resolveSubscriptionUrl()
                     ?: throw IllegalStateException("Нет активной подписки")
-                downloadSubscription(subId, url)
+                val result = downloadSubscription(subId, url)
+                // своя подписка заработала — чужую отпускаем, чтобы не занимать
+                // место в лимите устройств владельца
+                val guestUrl = prefs.cachedGuestSubUrl
+                if (guestUrl != null && url != guestUrl && result.first.isNotEmpty()) {
+                    prefs.setGuestSubUrl(null)
+                }
+                result
             } catch (e: Exception) {
                 // сеть/сервер недоступны — работаем с сохранённой копией подписки
                 cachedServersFor(subId) ?: throw e

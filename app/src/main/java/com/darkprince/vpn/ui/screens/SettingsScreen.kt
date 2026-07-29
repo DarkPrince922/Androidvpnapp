@@ -7,10 +7,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -21,14 +24,19 @@ import com.darkprince.vpn.data.api.dto.UserDto
 fun SettingsScreen(
     user: UserDto?,
     guestMode: Boolean,
+    usingSharedSubscription: Boolean,
     onOpenReferral: () -> Unit,
     onOpenApps: () -> Unit,
     onOpenShare: () -> Unit,
+    onCreateAccount: () -> Unit,
+    onDropSharedSubscription: () -> Unit,
     onLogout: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // карточек стало больше — на маленьком экране их нужно прокручивать
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
         Text("Настройки", style = MaterialTheme.typography.headlineSmall)
@@ -53,6 +61,35 @@ fun SettingsScreen(
                     )
                 } else {
                     user?.firstName?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                    if (usingSharedSubscription) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Пока работает подписка, которой с вами поделились. " +
+                                "Купите свою — приложение переключится на неё само.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (guestMode) {
+            Spacer(Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onCreateAccount() },
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Своя подписка", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Зарегистрируйтесь через Telegram или почту и купите " +
+                            "собственную подписку. Гостевой доступ будет работать, " +
+                            "пока не заработает ваша.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }
@@ -111,6 +148,17 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(24.dp))
+
+        // у гостя без аккаунта чужая подписка отключается кнопкой выхода ниже
+        if (!guestMode && usingSharedSubscription) {
+            OutlinedButton(
+                onClick = onDropSharedSubscription,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Отключить гостевой доступ")
+            }
+            Spacer(Modifier.height(12.dp))
+        }
 
         Button(
             onClick = onLogout,
