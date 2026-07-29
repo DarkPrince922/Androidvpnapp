@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -54,7 +55,10 @@ class VpnTileService : TileService() {
     override fun onClick() {
         super.onClick()
         when (VpnStateStore.state.value) {
-            VpnState.CONNECTED, VpnState.CONNECTING -> XVpnService.stop(this)
+            VpnState.CONNECTED, VpnState.CONNECTING -> {
+                XVpnService.stop(this)
+                updateTile(VpnState.DISCONNECTED)
+            }
             else -> {
                 ServiceLocator.init(applicationContext)
                 if (VpnService.prepare(this) != null || !ServiceLocator.authRepository.isLoggedIn) {
@@ -72,6 +76,9 @@ class VpnTileService : TileService() {
                         null
                     }
                     if (profile != null) {
+                        // сервис мог ещё завершать прошлую сессию — небольшая
+                        // пауза, иначе новый запуск погибнет вместе с ней
+                        delay(300)
                         XVpnService.start(this@VpnTileService, profile)
                     } else {
                         launch(Dispatchers.Main) { openApp() }

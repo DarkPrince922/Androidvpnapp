@@ -36,6 +36,7 @@ class XVpnService : VpnService() {
     companion object {
         const val ACTION_START = "com.darkprince.vpn.START"
         const val ACTION_STOP = "com.darkprince.vpn.STOP"
+        const val ACTION_PING = "com.darkprince.vpn.PING"
         private const val PROFILE_FILE = "active_profile.json"
 
         private const val NOTIFICATION_ID = 1
@@ -61,6 +62,11 @@ class XVpnService : VpnService() {
     private var statsJob: Job? = null
     private var tunFd: ParcelFileDescriptor? = null
     private var coreController: CoreController? = null
+    /** Последний startId: останавливаемся только им, иначе новый запуск,
+     *  пришедший сразу после остановки, погибнет вместе со старым. */
+    private var lastStartId = 0
+    private var activeProfileName: String = ""
+    private var lastPingMs: Long? = null
 
     private val coreCallback = object : CoreCallbackHandler {
         override fun startup(): Long = 0
@@ -69,10 +75,15 @@ class XVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lastStartId = startId
         when (intent?.action) {
             ACTION_STOP -> {
                 scope.launch { vpnMutex.withLock { stopVpn() } }
                 return START_NOT_STICKY
+            }
+            ACTION_PING -> {
+                scope.launch { measurePing() }
+                return START_STICKY
             }
             ACTION_START -> {
                 val profile = try {
@@ -82,6 +93,8 @@ class XVpnService : VpnService() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
+                activeProfileName = profile.name
+                lastPingMs = null
                 startForeground(NOTIFICATION_ID, buildNotification(profile.name))
                 // повторный START на работающем сервисе = смена сервера:
                 // старый туннель гасится и сразу поднимается новый
@@ -135,7 +148,10 @@ class XVpnService : VpnService() {
 
             VpnStateStore.setState(VpnState.CONNECTED)
             ServiceLocator.apiClient.onNetworkChanged()
+            updateNotification()
             startStatsLoop(profile)
+            // первый замер задержки сразу после подключения
+            scope.launch { measurePing() }
         } catch (e: Throwable) {
             VpnStateStore.setState(VpnState.ERROR, e.message)
             stopVpn()
@@ -236,12 +252,13 @@ class XVpnService : VpnService() {
         }
         VpnStateStore.setActiveProfile(null)
         VpnStateStore.setStats(TrafficStats())
+        lastPingMs = null
         try {
             ServiceLocator.apiClient.onNetworkChanged()
         } catch (_: Exception) {
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        stopSelf(lastStartId)
     }
 
     override fun onRevoke() {
@@ -253,6 +270,10 @@ class XVpnService : VpnService() {
         super.onDestroy()
     }
 
+    /**
+     * Уведомление с названием сервера, задержкой и кнопками управления —
+     * чтобы отключать VPN и мерить пинг прямо из шторки.
+     */
     private fun buildNotification(profileName: String): Notification {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -261,7 +282,7 @@ class XVpnService : VpnService() {
                     CHANNEL_ID,
                     getString(R.string.notification_channel_vpn),
                     NotificationManager.IMPORTANCE_LOW
-                )
+                ).apply { setShowBadge(false) }
             )
         }
         val contentIntent = PendingIntent.getActivity(
@@ -270,12 +291,71 @@ class XVpnService : VpnService() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
+        val stopIntent = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, XVpnService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val pingIntent = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, XVpnService::class.java).setAction(ACTION_PING),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val text = when (val ping = lastPingMs) {
+            null -> "Подключено"
+            in 0..Long.MAX_VALUE -> "Пинг: $ping мс"
+            else -> "Сервер не отвечает"
+        }
+
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_vpn)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText(profileName)
+            .setContentTitle(profileName)
+            .setContentText(text)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent)
+            .addAction(
+                Notification.Action.Builder(null as android.graphics.drawable.Icon?, "Пинг", pingIntent).build()
+            )
+            .addAction(
+                Notification.Action.Builder(null as android.graphics.drawable.Icon?, "Остановить", stopIntent).build()
+            )
             .build()
+    }
+
+    private fun updateNotification() {
+        if (VpnStateStore.state.value != VpnState.CONNECTED) return
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        try {
+            manager.notify(NOTIFICATION_ID, buildNotification(activeProfileName))
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Замер задержки текущего сервера — по кнопке в уведомлении. */
+    private suspend fun measurePing() {
+        val profileJson = try {
+            File(filesDir, PROFILE_FILE).readText()
+        } catch (_: Exception) {
+            return
+        }
+        val profile = try {
+            Json.decodeFromString(ProxyProfile.serializer(), profileJson)
+        } catch (_: Exception) {
+            return
+        }
+        lastPingMs = try {
+            CoreEnv.ensure(this)
+            Libv2ray.measureOutboundDelay(
+                XrayConfigBuilder.build(profile),
+                "https://www.gstatic.com/generate_204",
+            )
+        } catch (_: Throwable) {
+            -1L
+        }
+        updateNotification()
     }
 }

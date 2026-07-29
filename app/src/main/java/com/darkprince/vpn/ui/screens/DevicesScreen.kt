@@ -113,11 +113,55 @@ fun DevicesScreen(viewModel: DevicesViewModel) {
 
         when {
             state.loading -> CircularProgressIndicator()
-            state.devices.isEmpty() -> Text(
-                "Устройств пока нет. Они появятся после первого подключения.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            state.devices.isEmpty() -> Column {
+                Text(
+                    "Устройств пока нет. Панель заводит устройство в момент " +
+                        "загрузки подписки — нажмите кнопку ниже, если этот телефон " +
+                        "не появился в списке.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { viewModel.registerThisDevice() },
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Зарегистрировать это устройство")
+                }
+            }
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // если этого телефона нет в списке — панель его не завела
+                if (state.devices.none { it.hwid == viewModel.ownHwid }) {
+                    item {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(
+                                    "Этого телефона нет в списке",
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Устройство регистрируется при загрузке подписки. " +
+                                        "Нажмите, чтобы запросить её заново.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = { viewModel.registerThisDevice() },
+                                    enabled = !state.busy,
+                                ) {
+                                    Text("Зарегистрировать")
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "ID этого устройства: ${viewModel.ownHwid.take(13)}…",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
                 items(state.devices, key = { it.hwid }) { device ->
                     val isCurrent = device.hwid == viewModel.ownHwid
                     Card(Modifier.fillMaxWidth()) {

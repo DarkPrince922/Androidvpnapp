@@ -95,6 +95,29 @@ class DevicesViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Перерегистрация: панель заводит устройство в момент скачивания
+     * подписки с заголовком x-hwid, а не при подключении VPN. Если список
+     * пуст после переустановки — принудительно тянем подписку заново.
+     */
+    fun registerThisDevice() {
+        _state.value = _state.value.copy(busy = true, error = null, info = null)
+        viewModelScope.launch {
+            val error = try {
+                repo.fetchServers(forceRefresh = true)
+                null
+            } catch (e: Exception) {
+                e.message
+            }
+            _state.value = _state.value.copy(
+                busy = false,
+                info = if (error == null) "Подписка перезапрошена — обновляем список" else null,
+                error = error,
+            )
+            load()
+        }
+    }
+
     fun rename(hwid: String, name: String) {
         if (name.isBlank()) return
         _state.value = _state.value.copy(busy = true, error = null, info = null)
