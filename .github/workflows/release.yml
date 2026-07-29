@@ -121,25 +121,45 @@ jobs:
           cp "$SRC" "$DEST"
           echo "path=$DEST" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "$DEST" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+          # Отпечаток сертификата: подтверждает, что APK подписан нашим ключом
+          FP=$(keytool -printcert -jarfile "$DEST" 2>/dev/null \
+               | grep -m1 'SHA256:' | sed 's/.*SHA256: *//')
+          if [ -z "$FP" ]; then
+            echo "::error::APK не подписан — сертификат не найден"
+            exit 1
+          fi
+          echo "fingerprint=$FP" >> "$GITHUB_OUTPUT"
+          echo "Подписан, отпечаток сертификата: $FP"
           ls -lh "$DEST"
 
       - name: Создать GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          APK: ${{ steps.apk.outputs.path }}
         run: |
-          NOTES="Версия ${{ steps.version.outputs.version }}
+          NOTES=$(cat <<EOF
+          Версия $VERSION
 
           Установка: скачайте APK и разрешите установку из неизвестных источников.
 
-          SHA-256: \`${{ steps.apk.outputs.sha256 }}\`"
-          gh release create "v${{ steps.version.outputs.version }}" \
-            "${{ steps.apk.outputs.path }}" \
-            --title "DarkPrince VPN ${{ steps.version.outputs.version }}" \
-            --notes "$NOTES" \
-            --repo "${{ github.repository }}" \
-            || gh release upload "v${{ steps.version.outputs.version }}" \
-                 "${{ steps.apk.outputs.path }}" --clobber \
-                 --repo "${{ github.repository }}"
+          SHA-256 файла: \`${{ steps.apk.outputs.sha256 }}\`
+          Отпечаток сертификата подписи: \`${{ steps.apk.outputs.fingerprint }}\`
+          EOF
+          )
+          NOTES=$(echo "$NOTES" | sed 's/^          //')
+          if ! gh release create "v$VERSION" "$APK" \
+                --title "DarkPrince VPN $VERSION" \
+                --notes "$NOTES" \
+                --repo "${{ github.repository }}"; then
+            # релиз уже существует — обновляем и файл, и описание
+            gh release upload "v$VERSION" "$APK" --clobber --repo "${{ github.repository }}"
+            gh release edit "v$VERSION" \
+              --title "DarkPrince VPN $VERSION" \
+              --notes "$NOTES" \
+              --repo "${{ github.repository }}"
+          fi
 
       - name: Выгрузить APK в артефакты сборки
         uses: actions/upload-artifact@v4
