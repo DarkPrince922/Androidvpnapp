@@ -2,6 +2,11 @@
 build/
 app/build/
 local.properties
+
+# Ключи подписи — никогда не коммитить
+*.jks
+*.keystore
+keystore.properties
 .idea/
 *.iml
 .DS_Store
