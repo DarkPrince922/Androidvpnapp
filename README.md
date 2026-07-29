@@ -65,7 +65,54 @@ Workflow `.github/workflows/build.yml` при каждом пуше сам ск�
    ```
 4. `./gradlew assembleDebug` или сборка из Android Studio.
 
-Для release-подписи добавьте свой keystore в конфигурацию `signingConfigs`.
+## Релиз
+
+Релизный APK собирается и публикуется автоматически по тегу.
+
+### 1. Ключ подписи (один раз)
+
+```bash
+keytool -genkeypair -v -keystore release.jks -alias darkprince \
+  -keyalg RSA -keysize 4096 -validity 10000
+```
+
+**Храните `release.jks` и пароли в надёжном месте.** Если ключ потерян, выпустить
+обновление поверх установленного приложения будет невозможно — пользователям
+придётся удалять старое и ставить новое.
+
+### 2. Секреты репозитория
+
+Settings → Secrets and variables → Actions → New repository secret:
+
+| Секрет | Значение |
+|---|---|
+| `KEYSTORE_BASE64` | `base64 -w0 release.jks` |
+| `KEYSTORE_PASSWORD` | пароль хранилища |
+| `KEY_ALIAS` | `darkprince` |
+| `KEY_PASSWORD` | пароль ключа |
+
+Без этих секретов релиз соберётся, но APK будет неподписанным.
+
+### 3. Выпуск версии
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Workflow `release.yml` соберёт подписанный APK, посчитает SHA-256 и создаст
+GitHub Release с файлом `DarkPrinceVPN-<версия>.apk`. Версия приложения берётся
+из тега, `versionCode` — из номера сборки, так что каждая новая публикация
+корректно обновляет установленное приложение.
+
+Тот же workflow можно запустить вручную: Actions → Release → Run workflow.
+
+### Раздача клиентам
+
+Репозиторий приватный, поэтому ссылка на GitHub Release не открывается без
+доступа. Варианты: выложить APK на свой сервер рядом с кабинетом, отдавать
+файл через бота или создать отдельный публичный репозиторий только для
+релизов.
 
 ## Архитектура
 

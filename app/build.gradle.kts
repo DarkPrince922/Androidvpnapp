@@ -5,6 +5,13 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Версия и подпись берутся из окружения (задаются CI при релизе по тегу),
+// иначе — значения по умолчанию для локальной сборки.
+val appVersionName: String = System.getenv("RELEASE_VERSION") ?: "1.0.0"
+val appVersionCode: Int = System.getenv("RELEASE_VERSION_CODE")?.toIntOrNull() ?: 1
+val keystorePath: String? = System.getenv("KEYSTORE_PATH")
+val hasKeystore: Boolean = !keystorePath.isNullOrBlank() && file(keystorePath).exists()
+
 android {
     namespace = "com.darkprince.vpn"
     compileSdk = 35
@@ -13,8 +20,8 @@ android {
         applicationId = "com.darkprince.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         // Адрес Cabinet API бота Bedolaga (можно оставить пустым — тогда
         // приложение спросит адрес при первом запуске).
@@ -22,6 +29,19 @@ android {
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (hasKeystore) {
+                storeFile = file(keystorePath!!)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+                enableV1Signing = true
+                enableV2Signing = true
+            }
         }
     }
 
@@ -33,6 +53,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // без keystore собирается неподписанный APK (как раньше)
+            if (hasKeystore) signingConfig = signingConfigs.getByName("release")
         }
     }
 
