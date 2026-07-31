@@ -28,7 +28,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -82,6 +84,9 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // при нескольких подписках добавляется карточка-переключатель и
+            // блок со сроком и трафиком уезжает за нижний край экрана
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -279,17 +284,21 @@ fun HomeScreen(
         // заголовка subscription-userinfo самой подписки Remnawave
         val sub = state.subscription
         val userInfo = state.subUserInfo
+        // при нескольких подписках общий статус кабинета относится не к той,
+        // что выбрана, — сведения берём из самой выбранной подписки
+        val current = state.selectedSubscription.takeIf { state.subscriptions.size > 1 }
         Appear(delayMillis = 140) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("Подписка", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
                 var shownAnything = false
-                sub?.tariffName?.let {
+                (current?.tariffName ?: sub?.tariffName)?.let {
                     Text(it, style = MaterialTheme.typography.titleMedium)
                     shownAnything = true
                 }
-                val daysLeft = sub?.daysLeft
+                val daysLeft = current?.endDate?.let(::daysUntil)
+                    ?: sub?.daysLeft
                     ?: userInfo?.expireUnix?.takeIf { it > 0 }?.let {
                         ((it * 1000 - System.currentTimeMillis()) / 86_400_000L).toInt().coerceAtLeast(0)
                     }
@@ -297,12 +306,14 @@ fun HomeScreen(
                     Text("Осталось дней: $it")
                     shownAnything = true
                 }
-                val usedGb = sub?.trafficUsedGb
+                val usedGb = current?.trafficUsedGb
+                    ?: sub?.trafficUsedGb
                     ?: userInfo?.let { info ->
                         val total = (info.uploadBytes ?: 0) + (info.downloadBytes ?: 0)
                         if (total > 0 || info.totalBytes != null) total / 1_073_741_824.0 else null
                     }
-                val limitGb = sub?.trafficLimitGb
+                val limitGb = current?.trafficLimitGb
+                    ?: sub?.trafficLimitGb
                     ?: userInfo?.totalBytes?.takeIf { it > 0 }?.let { it / 1_073_741_824.0 }
                 if (usedGb != null) {
                     val usedText = String.format(Locale.getDefault(), "%.1f ГБ", usedGb)
@@ -333,4 +344,19 @@ fun HomeScreen(
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
         }
     }
+}
+
+/**
+ * Сколько дней осталось до даты окончания подписки. Кабинет отдаёт дату
+ * строкой ISO — берём из неё только календарный день, время и часовой пояс
+ * для «осталось дней» роли не играют.
+ */
+private fun daysUntil(endDate: String): Int? = try {
+    val date = java.time.LocalDate.parse(endDate.take(10))
+    java.time.temporal.ChronoUnit.DAYS
+        .between(java.time.LocalDate.now(), date)
+        .toInt()
+        .coerceAtLeast(0)
+} catch (_: Exception) {
+    null
 }
