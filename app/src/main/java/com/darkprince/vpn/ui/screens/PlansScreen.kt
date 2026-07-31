@@ -231,6 +231,23 @@ private fun DevicesCard(
                     )
                 }
                 Spacer(Modifier.height(6.dp))
+            } else {
+                // без пояснения кнопка просто исчезала, и было непонятно,
+                // это ограничение тарифа или сбой запроса
+                val limitReached = devices.maxDeviceLimit != null &&
+                    devices.deviceLimit != null &&
+                    devices.deviceLimit >= devices.maxDeviceLimit
+                Text(
+                    devices.purchaseNote
+                        ?: if (limitReached) {
+                            "Достигнут максимум тарифа: ${devices.maxDeviceLimit} устройств"
+                        } else {
+                            "Докупка устройств для этой подписки недоступна"
+                        },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
             }
             if (devices.reduceAvailable) {
                 val limit = devices.deviceLimit

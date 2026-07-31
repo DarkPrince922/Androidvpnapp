@@ -385,13 +385,22 @@ class SubscriptionRepository(
         var pricePerDevice: Long? = null
         var maxLimit: Int? = null
         var purchaseAvailable = false
+        // почему докупка недоступна — иначе кнопка просто исчезает и
+        // непонятно, это ограничение тарифа или сбой запроса
+        var purchaseNote: String? = null
         try {
             val price = api.devicePrice(subscriptionId = subscriptionId)
             purchaseAvailable = price.boolOf("available") ?: true
             pricePerDevice = price.longOf("price_per_device_kopeks")
             maxLimit = price.intOf("max_device_limit")
             if (limit == null) limit = price.intOf("current_device_limit")
-        } catch (_: Exception) {
+            if (!purchaseAvailable || pricePerDevice == null) {
+                purchaseNote = price.textOf("message")
+                    ?: price.textOf("reason")
+                    ?: price.textOf("detail")
+            }
+        } catch (e: Exception) {
+            purchaseNote = "Не удалось узнать цену: ${e.userMessage()}"
         }
         var reduceAvailable = false
         try {
@@ -408,6 +417,7 @@ class SubscriptionRepository(
             maxDeviceLimit = maxLimit,
             purchaseAvailable = purchaseAvailable && pricePerDevice != null,
             reduceAvailable = reduceAvailable,
+            purchaseNote = purchaseNote,
         )
     }
 
@@ -492,11 +502,15 @@ data class DevicesInfo(
     val maxDeviceLimit: Int?,
     val purchaseAvailable: Boolean,
     val reduceAvailable: Boolean,
+    /** Пояснение, почему докупка недоступна. */
+    val purchaseNote: String? = null,
 )
 
 data class TrafficPackage(val gb: Int, val priceKopeks: Long)
 
 private fun JsonObject.intOf(key: String): Int? = this[key]?.jsonPrimitive?.intOrNull
+private fun JsonObject.textOf(key: String): String? =
+    this[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
 private fun JsonObject.longOf(key: String): Long? = this[key]?.jsonPrimitive?.longOrNull
 private fun JsonObject.boolOf(key: String): Boolean? =
     (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull

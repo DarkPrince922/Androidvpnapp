@@ -374,7 +374,12 @@ private fun SubscriptionCard(
                 buildString {
                     append(String.format(Locale.getDefault(), "%.1f ГБ", usedGb ?: 0.0))
                     append(" / ")
-                    append(limitGb?.let { String.format(Locale.getDefault(), "%.0f", it) } ?: "∞")
+                    // ноль в лимите означает безлимит, а не «нисколько»
+                    append(
+                        limitGb?.takeIf { it > 0 }
+                            ?.let { String.format(Locale.getDefault(), "%.0f", it) }
+                            ?: "∞"
+                    )
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
