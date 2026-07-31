@@ -84,7 +84,7 @@ fun ServersScreen(viewModel: HomeViewModel) {
                             Column(Modifier.weight(1f)) {
                                 Text(server.name, style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "${server.protocol.name.lowercase()} · ${server.address}",
+                                    server.transportLabel,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }

@@ -63,6 +63,9 @@ object LinkParser {
             var protocol = Protocol.VLESS
             var address = ""
             var port = 443
+            // транспорт и шифрование показываем в списке серверов вместо адреса
+            var network = "tcp"
+            var security = "none"
             for (outbound in outbounds) {
                 val obj = outbound as? kotlinx.serialization.json.JsonObject ?: continue
                 val proto = obj["protocol"]?.jsonPrimitive?.contentOrNull ?: continue
@@ -81,6 +84,10 @@ object LinkParser {
                     address = s["address"]?.jsonPrimitive?.contentOrNull ?: address
                     port = s["port"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: port
                 }
+                (obj["streamSettings"] as? kotlinx.serialization.json.JsonObject)?.let { stream ->
+                    network = stream["network"]?.jsonPrimitive?.contentOrNull ?: network
+                    security = stream["security"]?.jsonPrimitive?.contentOrNull ?: security
+                }
                 break
             }
             val name = config["remarks"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
@@ -91,6 +98,8 @@ object LinkParser {
                 address = address.ifBlank { "-" },
                 port = port,
                 userId = "",
+                network = network,
+                security = security,
                 rawConfig = config.toString(),
             )
         }

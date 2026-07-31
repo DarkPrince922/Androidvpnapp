@@ -38,4 +38,29 @@ data class ProxyProfile(
      * панели; приложение только подменяет inbounds на свой SOCKS.
      */
     val rawConfig: String? = null,
-)
+) {
+    /**
+     * Как узел выглядит в списке серверов: протокол, шифрование и транспорт.
+     * Адрес и домен намеренно не показываем — пользователю они ничего не
+     * говорят, а на чужом экране или скриншоте выдают инфраструктуру.
+     */
+    val transportLabel: String
+        get() = listOfNotNull(
+            protocol.name.lowercase(),
+            security.takeIf { it.isNotBlank() && it != "none" },
+            networkLabel,
+        ).joinToString(" · ")
+
+    private val networkLabel: String
+        get() = when (network.lowercase()) {
+            "ws" -> "websocket"
+            "grpc" -> "gRPC"
+            "xhttp" -> "xhttp"
+            "httpupgrade" -> "httpupgrade"
+            "h2", "http" -> "http/2"
+            "quic" -> "quic"
+            "kcp" -> "mkcp"
+            "" -> "tcp"
+            else -> network.lowercase()
+        }
+}
