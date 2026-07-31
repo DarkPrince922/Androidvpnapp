@@ -14,7 +14,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Dns
@@ -22,8 +27,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,7 +59,10 @@ import com.darkprince.vpn.ui.screens.ShareSubscriptionScreen
 import com.darkprince.vpn.ui.screens.SettingsScreen
 import com.darkprince.vpn.ui.screens.SetupScreen
 import com.darkprince.vpn.ui.theme.AnimatedBackground
+import androidx.compose.ui.unit.dp
 import com.darkprince.vpn.ui.theme.AppTheme
+import com.darkprince.vpn.ui.theme.BrandColors
+import com.darkprince.vpn.ui.theme.NavPillItem
 import com.darkprince.vpn.ui.vm.AppsViewModel
 import com.darkprince.vpn.ui.vm.AuthViewModel
 import com.darkprince.vpn.ui.vm.BalanceViewModel
@@ -264,10 +271,26 @@ private fun AppRoot(
         containerColor = Color.Transparent,
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(containerColor = Color.Transparent) {
+                // плавающая панель: скруглённый блок с «таблеткой» под активным
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(BrandColors.Surface.copy(alpha = 0.9f))
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                            RoundedCornerShape(24.dp),
+                        )
+                        .padding(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     bottomItems.forEach { item ->
-                        NavigationBarItem(
+                        NavPillItem(
                             selected = currentRoute == item.route,
+                            icon = item.icon,
+                            label = item.label,
                             onClick = {
                                 if (item.route == "home") {
                                     // «Главная» всегда возвращает на корневой экран
@@ -282,8 +305,7 @@ private fun AppRoot(
                                     }
                                 }
                             },
-                            icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label) },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -451,6 +473,7 @@ private fun AppRoot(
                     onOpenReferral = { navController.navigate("referral") },
                     onOpenApps = { navController.navigate("apps") },
                     onOpenShare = { navController.navigate("share") },
+                    onOpenDevices = { navController.navigate("devices") },
                     onCreateAccount = { navController.navigate("upgrade") },
                     onDropSharedSubscription = {
                         scope.launch {

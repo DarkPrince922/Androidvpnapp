@@ -1,5 +1,9 @@
 package com.darkprince.vpn.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,13 +14,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,9 +31,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.darkprince.vpn.core.model.ProxyProfile
+import com.darkprince.vpn.ui.theme.BrandColors
+import com.darkprince.vpn.ui.theme.EmojiTile
+import com.darkprince.vpn.ui.theme.SectionHeader
+import com.darkprince.vpn.ui.theme.TagChip
+import com.darkprince.vpn.ui.theme.leadingEmoji
+import com.darkprince.vpn.ui.theme.nameWithoutEmoji
 import com.darkprince.vpn.ui.vm.HomeViewModel
 
 @Composable
@@ -38,10 +51,12 @@ fun ServersScreen(viewModel: HomeViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(horizontal = 16.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -62,7 +77,8 @@ fun ServersScreen(viewModel: HomeViewModel) {
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
+
+        Spacer(Modifier.height(4.dp))
 
         if (state.servers.isEmpty()) {
             Text(
@@ -70,48 +86,95 @@ fun ServersScreen(viewModel: HomeViewModel) {
                 style = MaterialTheme.typography.bodyMedium,
             )
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionHeader("Доступные узлы · ${state.servers.size}")
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+            ) {
                 itemsIndexed(state.servers) { index, server ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.selectServer(index) },
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(server.name, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    server.transportLabel,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                            state.pings[index]?.let { ping ->
-                                Text(
-                                    text = if (ping < 0) "нет ответа" else "$ping мс",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = when {
-                                        ping < 0 -> MaterialTheme.colorScheme.error
-                                        ping < 300 -> Color(0xFF34A853)
-                                        ping < 700 -> Color(0xFFF9A825)
-                                        else -> MaterialTheme.colorScheme.error
-                                    },
-                                    modifier = Modifier.padding(end = 8.dp),
-                                )
-                            }
-                            if (index == state.selectedServer) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = "Выбран",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                        }
-                    }
+                    ServerRow(
+                        server = server,
+                        selected = index == state.selectedServer,
+                        ping = state.pings[index],
+                        onClick = { viewModel.selectServer(index) },
+                    )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Строка сервера: слева плитка с флагом из названия, справа — метки
+ * транспорта и формата конфига. Выбранный узел обведён акцентной рамкой.
+ */
+@Composable
+private fun ServerRow(
+    server: ProxyProfile,
+    selected: Boolean,
+    ping: Long?,
+    onClick: () -> Unit,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) accent.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+        animationSpec = tween(250),
+        label = "serverBorder",
+    )
+    val background by animateColorAsState(
+        targetValue = if (selected) accent.copy(alpha = 0.07f) else MaterialTheme.colorScheme.surface,
+        animationSpec = tween(250),
+        label = "serverBackground",
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(background)
+            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        EmojiTile(emoji = leadingEmoji(server.name) ?: "🌐", tint = accent)
+        Spacer(Modifier.width(12.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                nameWithoutEmoji(server.name),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TagChip(server.transportLabel, tint = BrandColors.Glow)
+                if (server.rawConfig != null) {
+                    TagChip("JSON", tint = accent)
+                }
+            }
+        }
+
+        ping?.let {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (it < 0) "—" else "$it мс",
+                style = MaterialTheme.typography.labelLarge,
+                color = when {
+                    it < 0 -> MaterialTheme.colorScheme.error
+                    it < 300 -> Color(0xFF34A853)
+                    it < 700 -> Color(0xFFF9A825)
+                    else -> MaterialTheme.colorScheme.error
+                },
+            )
+        }
+        if (selected) {
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = "Выбран",
+                tint = accent,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }
