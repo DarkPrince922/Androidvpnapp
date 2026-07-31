@@ -1,0 +1,18 @@
+diff --git a/src/hev-socks5-session-udp.c b/src/hev-socks5-session-udp.c
+index a7b9d12..7d29ab3 100644
+--- a/src/hev-socks5-session-udp.c
++++ b/src/hev-socks5-session-udp.c
+@@ -135,6 +135,13 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
+         err_t err;
+         int ret;
+ 
++        /* Ядро помечает непригодную датаграмму нулевым адресом: короткий
++         * пакет (меньше 4 байт) не содержит заголовка SOCKS5, разбирать в
++         * нём нечего. Без этой проверки hev_socks5_addr_into_lwip
++         * разыменовывает NULL и роняет весь процесс. */
++        if (!msgv[i].addr)
++            continue;
++
+         if (self->addr && self->port) {
+             ip_2_ip4 (&saddr)->addr = self->addr;
+             port = self->port;

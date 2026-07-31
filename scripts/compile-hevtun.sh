@@ -13,10 +13,25 @@ fi
 
 ABIS="armeabi-v7a arm64-v8a x86_64"
 SRC="$DIR/third_party/hev-socks5-tunnel"
+# Версия зафиксирована: иначе каждая сборка тянет новый HEAD, и патч ниже
+# однажды перестанет накладываться молча.
+HEVTUN_COMMIT="180cda8b304b71b9d9ef8ea93aeb0e4e00e15f7d"
 
 if [[ ! -d "$SRC" ]]; then
-  git clone --recursive --depth 1 https://github.com/heiher/hev-socks5-tunnel "$SRC"
+  git clone https://github.com/heiher/hev-socks5-tunnel "$SRC"
 fi
+
+(
+  cd "$SRC"
+  git fetch -q origin
+  git checkout -q --force "$HEVTUN_COMMIT"
+  git submodule update --init --recursive -q
+  # Короткая UDP-датаграмма роняла весь VPN: ядро помечает такое сообщение
+  # нулевым адресом, а туннель разыменовывал его без проверки.
+  git checkout -q -- src/hev-socks5-session-udp.c
+  git apply "$DIR/patches/hev-socks5-tunnel-udp-null-addr.patch"
+  echo "Патч про нулевой адрес UDP наложен"
+)
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
