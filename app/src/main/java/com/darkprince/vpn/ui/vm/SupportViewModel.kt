@@ -32,6 +32,7 @@ data class SupportUiState(
     val error: String? = null,
     val info: String? = null,
     val navigateToTicketId: Long? = null,
+    val replySentVersion: Long = 0,
 ) {
     val ticketsEnabled: Boolean get() = config?.ticketsEnabled == true
     val contactUrl: String
@@ -207,7 +208,13 @@ class SupportViewModel : ViewModel() {
             try {
                 val media = attachment?.let { repository.upload(it) }
                 repository.reply(ticket.id, normalized, media)
-                _state.update { it.copy(sending = false, pendingAttachment = null) }
+                _state.update {
+                    it.copy(
+                        sending = false,
+                        pendingAttachment = null,
+                        replySentVersion = it.replySentVersion + 1,
+                    )
+                }
                 refreshActiveTicket(ticket.id)
                 refreshTicketListSilently()
             } catch (error: Exception) {

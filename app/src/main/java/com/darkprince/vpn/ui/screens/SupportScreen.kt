@@ -281,6 +281,9 @@ fun SupportTicketScreen(
         val last = ticket?.messages?.lastIndex ?: -1
         if (last >= 0) listState.animateScrollToItem(last)
     }
+    LaunchedEffect(state.replySentVersion) {
+        if (state.replySentVersion > 0) reply = ""
+    }
 
     Column(
         modifier = Modifier
@@ -355,7 +358,6 @@ fun SupportTicketScreen(
                         IconButton(
                             onClick = {
                                 viewModel.sendReply(reply)
-                                reply = ""
                             },
                             enabled = !state.sending &&
                                 (reply.isNotBlank() || state.pendingAttachment != null),
