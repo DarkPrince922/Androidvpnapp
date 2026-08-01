@@ -36,16 +36,19 @@ jobs:
             SSH=open
           fi
 
-          MANIFEST=$(curl -fsSL --max-time 15 https://dprince.online/updates/android.json || true)
+          SITE_JSON=$(curl -fsSL --max-time 15 "https://dprince.online/downloads.json?ts=$(date +%s)" || true)
+          SITE_VERSION=$(printf '%s' "$SITE_JSON" | jq -r '.android.version // "missing"' 2>/dev/null || echo missing)
+          MANIFEST=$(curl -fsSL --max-time 15 "https://dprince.online/updates/android.json?ts=$(date +%s)" || true)
           VERSION=$(printf '%s' "$MANIFEST" | jq -r '.version // "missing"' 2>/dev/null || echo missing)
-          APK_SHA=$(curl -fsSL --max-time 120 https://dprince.online/downloads/DarkPrinceVPN.apk \
+          APK_SHA=$(curl -fsSL --max-time 120 "https://dprince.online/downloads/DarkPrinceVPN.apk?ts=$(date +%s)" \
             | sha256sum | cut -d' ' -f1)
           CACHE=$(curl -fsSI --max-time 15 https://dprince.online/updates/android.json \
             | tr -d '\r' \
             | awk -F': ' 'tolower($1) == "cache-control" {print $2; exit}')
-          DESCRIPTION="ssh=$SSH manifest=$VERSION apk=${APK_SHA:-missing} cache=${CACHE:-missing}"
+          DESCRIPTION="site=$SITE_VERSION ssh=$SSH manifest=$VERSION apk=${APK_SHA:-missing} cache=${CACHE:-missing}"
           STATE=success
-          [ -n "$IP" ] && [ "$VERSION" != "missing" ] || STATE=failure
+          EXPECTED_SHA=29b7a7ffc2591a915da173695597d383588ea981f2dc2efabe1eaf2522a33768
+          [ -n "$IP" ] && [ "$SITE_VERSION" = "1.2.4" ] && [ "$VERSION" = "1.2.4" ] && [ "$APK_SHA" = "$EXPECTED_SHA" ] || STATE=failure
 
           gh api --method POST \
             "repos/${{ github.repository }}/statuses/$TARGET_SHA" \
