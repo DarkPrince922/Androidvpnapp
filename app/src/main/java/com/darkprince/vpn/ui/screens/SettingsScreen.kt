@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,6 +38,8 @@ fun SettingsScreen(
     onOpenApps: () -> Unit,
     onOpenShare: () -> Unit,
     onOpenDevices: () -> Unit,
+    onOpenSupport: () -> Unit,
+    supportUnreadCount: Int,
     onCreateAccount: () -> Unit,
     onDropSharedSubscription: () -> Unit,
     onLogout: () -> Unit,
@@ -83,6 +86,24 @@ fun SettingsScreen(
                     onClick = onCreateAccount,
                 )
             }
+        }
+
+        Spacer(Modifier.height(22.dp))
+
+        // --- Помощь ---
+        SectionHeader("Помощь")
+        GroupCard {
+            SettingsRow(
+                icon = Icons.Default.SupportAgent,
+                title = "Техподдержка",
+                subtitle = when {
+                    supportUnreadCount > 0 -> "Новых ответов: $supportUnreadCount"
+                    guestMode -> "Написать нам в Telegram"
+                    else -> "Обращения и переписка с поддержкой"
+                },
+                tint = if (supportUnreadCount > 0) BrandColors.Glow else MaterialTheme.colorScheme.primary,
+                onClick = onOpenSupport,
+            )
         }
 
         Spacer(Modifier.height(22.dp))

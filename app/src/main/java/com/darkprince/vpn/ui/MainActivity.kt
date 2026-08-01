@@ -58,6 +58,8 @@ import com.darkprince.vpn.ui.screens.ServersScreen
 import com.darkprince.vpn.ui.screens.ShareSubscriptionScreen
 import com.darkprince.vpn.ui.screens.SettingsScreen
 import com.darkprince.vpn.ui.screens.SetupScreen
+import com.darkprince.vpn.ui.screens.SupportScreen
+import com.darkprince.vpn.ui.screens.SupportTicketScreen
 import com.darkprince.vpn.ui.theme.AnimatedBackground
 import androidx.compose.ui.unit.dp
 import com.darkprince.vpn.ui.theme.AppTheme
@@ -69,6 +71,7 @@ import com.darkprince.vpn.ui.vm.BalanceViewModel
 import com.darkprince.vpn.ui.vm.DevicesViewModel
 import com.darkprince.vpn.ui.vm.HomeViewModel
 import com.darkprince.vpn.ui.vm.PlansViewModel
+import com.darkprince.vpn.ui.vm.SupportViewModel
 import com.darkprince.vpn.vpn.XVpnService
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -164,6 +167,22 @@ class MainActivity : ComponentActivity() {
         pickImageLauncher.launch("image/*")
     }
 
+    /** Файл, который пользователь прикрепляет к обращению в поддержку. */
+    private var onSupportAttachmentPicked: ((Uri?) -> Unit)? = null
+
+    private val supportAttachmentLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        val callback = onSupportAttachmentPicked
+        onSupportAttachmentPicked = null
+        callback?.invoke(uri)
+    }
+
+    fun pickSupportAttachment(onResult: (Uri?) -> Unit) {
+        onSupportAttachmentPicked = onResult
+        supportAttachmentLauncher.launch("*/*")
+    }
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
@@ -222,7 +241,14 @@ private fun AppRoot(
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = viewModel()
     val authState by authViewModel.state.collectAsStateWithLifecycle()
+    val supportViewModel: SupportViewModel = viewModel(viewModelStoreOwner = activity)
+    val supportState by supportViewModel.state.collectAsStateWithLifecycle()
     val prefs = ServiceLocator.prefs
+
+    // При входе или выходе очищаем переписку предыдущей сессии.
+    LaunchedEffect(authState.loggedIn, authState.guestMode) {
+        supportViewModel.sessionChanged()
+    }
 
     // открыть Telegram, когда начата deep-link авторизация
     LaunchedEffect(authState.telegramUri) {
@@ -457,6 +483,37 @@ private fun AppRoot(
                     onShareImage = { bitmap, label -> activity.shareQrImage(bitmap, label) },
                 )
             }
+            composable("support") {
+                SupportScreen(
+                    viewModel = supportViewModel,
+                    onBack = { navController.popBackStack() },
+                    onOpenTicket = { ticketId -> navController.navigate("support/$ticketId") },
+                    onOpenContact = activity::openExternal,
+                    onPickAttachment = {
+                        activity.pickSupportAttachment { uri ->
+                            uri?.let(supportViewModel::chooseAttachment)
+                        }
+                    },
+                )
+            }
+            composable("support/{ticketId}") { entry ->
+                val ticketId = entry.arguments?.getString("ticketId")?.toLongOrNull()
+                if (ticketId != null) {
+                    SupportTicketScreen(
+                        viewModel = supportViewModel,
+                        ticketId = ticketId,
+                        onBack = { navController.popBackStack() },
+                        onOpenAttachment = activity::openExternal,
+                        onPickAttachment = {
+                            activity.pickSupportAttachment { uri ->
+                                uri?.let(supportViewModel::chooseAttachment)
+                            }
+                        },
+                    )
+                } else {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                }
+            }
             composable("settings") {
                 val userJson by prefs.userJsonFlow.collectAsState(initial = null)
                 val user = userJson?.let {
@@ -476,6 +533,8 @@ private fun AppRoot(
                     onOpenApps = { navController.navigate("apps") },
                     onOpenShare = { navController.navigate("share") },
                     onOpenDevices = { navController.navigate("devices") },
+                    onOpenSupport = { navController.navigate("support") },
+                    supportUnreadCount = supportState.unreadCount,
                     onCreateAccount = { navController.navigate("upgrade") },
                     onDropSharedSubscription = {
                         scope.launch {

@@ -24,6 +24,14 @@ import com.darkprince.vpn.data.api.dto.RenewRequest
 import com.darkprince.vpn.data.api.dto.TrafficPurchaseRequest
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
 import com.darkprince.vpn.data.api.dto.SubscriptionsListResponse
+import com.darkprince.vpn.data.api.dto.SupportConfigDto
+import com.darkprince.vpn.data.api.dto.SupportMediaUploadDto
+import com.darkprince.vpn.data.api.dto.SupportMessageCreateRequest
+import com.darkprince.vpn.data.api.dto.SupportMessageDto
+import com.darkprince.vpn.data.api.dto.SupportTicketCreateRequest
+import com.darkprince.vpn.data.api.dto.SupportTicketDetailDto
+import com.darkprince.vpn.data.api.dto.SupportTicketListDto
+import com.darkprince.vpn.data.api.dto.SupportUnreadCountDto
 import com.darkprince.vpn.data.api.dto.TopupRequest
 import com.darkprince.vpn.data.api.dto.TopupResponse
 import com.darkprince.vpn.data.api.dto.TransactionsResponse
@@ -31,10 +39,14 @@ import com.darkprince.vpn.data.api.dto.TrialInfoResponse
 import com.darkprince.vpn.data.api.dto.UserDto
 import kotlinx.serialization.json.JsonElement
 import retrofit2.Response
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
+import retrofit2.http.Part
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -192,4 +204,48 @@ interface BedolagaApi {
         @Path("method") method: String,
         @Path("paymentId") paymentId: String,
     ): RawJson
+
+    // --- Техподдержка ---
+
+    /** Публичный режим поддержки: тикеты, внешний контакт или оба варианта. */
+    @GET("cabinet/info/support-config")
+    suspend fun supportConfig(): SupportConfigDto
+
+    @GET("cabinet/tickets")
+    suspend fun supportTickets(
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 50,
+        @Query("status") status: String? = null,
+    ): SupportTicketListDto
+
+    @POST("cabinet/tickets")
+    suspend fun createSupportTicket(
+        @Body body: SupportTicketCreateRequest,
+    ): SupportTicketDetailDto
+
+    @GET("cabinet/tickets/{ticketId}")
+    suspend fun supportTicket(
+        @Path("ticketId") ticketId: Long,
+    ): SupportTicketDetailDto
+
+    @POST("cabinet/tickets/{ticketId}/messages")
+    suspend fun addSupportMessage(
+        @Path("ticketId") ticketId: Long,
+        @Body body: SupportMessageCreateRequest,
+    ): SupportMessageDto
+
+    @GET("cabinet/tickets/notifications/unread-count")
+    suspend fun supportUnreadCount(): SupportUnreadCountDto
+
+    @POST("cabinet/tickets/notifications/ticket/{ticketId}/read")
+    suspend fun markSupportTicketRead(
+        @Path("ticketId") ticketId: Long,
+    ): RawJson
+
+    @Multipart
+    @POST("cabinet/media/upload")
+    suspend fun uploadSupportMedia(
+        @Part file: MultipartBody.Part,
+        @Part("media_type") mediaType: RequestBody,
+    ): SupportMediaUploadDto
 }
