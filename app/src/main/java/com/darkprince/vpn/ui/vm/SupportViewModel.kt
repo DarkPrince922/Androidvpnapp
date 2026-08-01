@@ -103,6 +103,7 @@ class SupportViewModel : ViewModel() {
                         error = null,
                     )
                 }
+                if (pollingJob == null) startWatching(ticketId = null)
             } catch (error: Exception) {
                 _state.update {
                     it.copy(config = config, loading = false, error = supportErrorMessage(error))
@@ -226,16 +227,19 @@ class SupportViewModel : ViewModel() {
             it.copy(activeTicket = null, pendingAttachment = null, socketConnected = false, error = null)
         }
         refreshTicketListSilently()
+        if (repository.isLoggedIn && _state.value.ticketsEnabled) {
+            startWatching(ticketId = null)
+        }
     }
 
-    private fun startWatching(ticketId: Long) {
+    private fun startWatching(ticketId: Long?) {
         socket = repository.openEventSocket(
             onConnected = { connected ->
                 _state.update { it.copy(socketConnected = connected) }
             },
             onTicketChanged = { changedId ->
                 viewModelScope.launch {
-                    if (changedId == null || changedId == ticketId) {
+                    if (ticketId != null && (changedId == null || changedId == ticketId)) {
                         refreshActiveTicket(ticketId)
                     }
                     refreshTicketListSilently()
@@ -245,10 +249,16 @@ class SupportViewModel : ViewModel() {
         )
         // WebSocket ускоряет обновление, polling гарантирует доставку после
         // смены сети, истечения access-токена или старой версии Bedolaga.
+        // Вне чата реже обновляем только список и счётчик новых ответов.
         pollingJob = viewModelScope.launch {
             while (isActive) {
-                delay(8_000)
-                refreshActiveTicket(ticketId)
+                delay(if (ticketId == null) 30_000 else 8_000)
+                if (ticketId == null) {
+                    refreshTicketListSilently()
+                    refreshUnread()
+                } else {
+                    refreshActiveTicket(ticketId)
+                }
             }
         }
     }

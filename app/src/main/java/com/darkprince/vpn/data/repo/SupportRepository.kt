@@ -109,8 +109,8 @@ class SupportRepository(
                     if (sizeColumn >= 0 && !cursor.isNull(sizeColumn)) size = cursor.getLong(sizeColumn)
                 }
             }
-        if (size != null && size!! > MAX_FILE_SIZE) {
-            throw IllegalArgumentException("Файл больше 10 МБ")
+        size?.let {
+            if (it > MAX_FILE_SIZE) throw IllegalArgumentException("Файл больше 10 МБ")
         }
         PendingSupportAttachment(
             uri = uri,
