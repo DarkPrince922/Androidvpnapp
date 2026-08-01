@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: ["release/v1.2.4"]
   workflow_dispatch:
     inputs:
       version:
@@ -11,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 # релизы одной версии не должны собираться параллельно, но начатый
 # релиз не прерываем — иначе можно получить полузалитый файл
@@ -29,8 +31,10 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ github.event.inputs.version }}"
-          else
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="1.2.4"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Версия релиза: $VERSION"
@@ -169,6 +173,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
           APK: ${{ steps.apk.outputs.path }}
+          TARGET_SHA: b55b120b5be7f5a07e49a25db75db8353e67a02f
         run: |
           NOTES=$(cat <<EOF
           Версия $VERSION
@@ -181,6 +186,7 @@ jobs:
           )
           NOTES=$(echo "$NOTES" | sed 's/^          //')
           if ! gh release create "v$VERSION" "$APK" android.json \
+                --target "$TARGET_SHA" \
                 --title "DarkPrince VPN $VERSION" \
                 --notes "$NOTES" \
                 --repo "${{ github.repository }}"; then
@@ -197,3 +203,25 @@ jobs:
         with:
           name: release-apk
           path: ${{ steps.apk.outputs.path }}
+
+
+      - name: Опубликовать статус релиза
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: b55b120b5be7f5a07e49a25db75db8353e67a02f
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = "success" ]; then
+            STATE=success
+            DESCRIPTION="Подписанный релиз v1.2.4 опубликован"
+          else
+            STATE=failure
+            DESCRIPTION="Релиз v1.2.4 завершился ошибкой"
+          fi
+          gh api --method POST \
+            "repos/${{ github.repository }}/statuses/$TARGET_SHA" \
+            -f state="$STATE" \
+            -f context="release/v1.2.4" \
+            -f description="$DESCRIPTION" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
