@@ -173,8 +173,8 @@ class SupportRepository(
         val token = prefs.cachedAccessToken ?: return null
         val base = prefs.cachedBaseUrl.trimEnd('/')
         val wsBase = when {
-            base.startsWith("https://") -> "wss://${base.removePrefix("https://")}" 
-            base.startsWith("http://") -> "ws://${base.removePrefix("http://")}" 
+            base.startsWith("https://") -> "wss://${base.removePrefix("https://")}"
+            base.startsWith("http://") -> "ws://${base.removePrefix("http://")}"
             else -> return null
         }
         val request = Request.Builder()
