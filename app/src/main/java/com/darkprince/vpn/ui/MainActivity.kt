@@ -409,7 +409,6 @@ private fun AppRoot(
                         }
                     },
                     onDisconnectClick = { XVpnService.stop(activity) },
-                    onOpenServers = { navController.navigate("servers") },
                 )
             }
             composable("servers") {
