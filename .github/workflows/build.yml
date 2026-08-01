@@ -16,6 +16,12 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
+# Публикуем обычный commit status: его видят PR и GitHub-коннектор,
+# даже когда workflow запущен событием push.
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -59,3 +65,23 @@ jobs:
         with:
           name: app-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Publish build status
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RESULT: ${{ job.status }}
+        run: |
+          if [ "$BUILD_RESULT" = "success" ]; then
+            STATE="success"
+            DESCRIPTION="Debug and release APKs built successfully"
+          else
+            STATE="failure"
+            DESCRIPTION="Android APK build failed"
+          fi
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$STATE" \
+            -f context="Build APK" \
+            -f description="$DESCRIPTION" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
