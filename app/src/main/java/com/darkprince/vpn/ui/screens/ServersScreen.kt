@@ -109,7 +109,7 @@ fun ServersScreen(viewModel: HomeViewModel) {
  * транспорта и формата конфига. Выбранный узел обведён акцентной рамкой.
  */
 @Composable
-private fun ServerRow(
+internal fun ServerRow(
     server: ProxyProfile,
     selected: Boolean,
     ping: Long?,

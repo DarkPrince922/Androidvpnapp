@@ -22,14 +22,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,6 +49,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -90,7 +95,6 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onConnectClick: () -> Unit,
     onDisconnectClick: () -> Unit,
-    onOpenServers: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val vpnState by viewModel.vpnState.collectAsStateWithLifecycle()
@@ -100,6 +104,7 @@ fun HomeScreen(
     val updateBusy by viewModel.updateBusy.collectAsStateWithLifecycle()
     val updateError by viewModel.updateError.collectAsStateWithLifecycle()
     val updateProgress by viewModel.updateProgress.collectAsStateWithLifecycle()
+    var serverPickerOpen by remember { mutableStateOf(false) }
 
     // Приложения нет в Google Play, и кроме нас сказать о новой версии
     // некому — поэтому спрашиваем окном, а не строкой где-то внизу.
@@ -112,6 +117,19 @@ fun HomeScreen(
             progress = updateProgress,
             onInstall = viewModel::installUpdate,
             onDismiss = viewModel::hideUpdate,
+        )
+    }
+
+    if (serverPickerOpen) {
+        ServerPickerDialog(
+            state = state,
+            onSelect = { index ->
+                viewModel.selectServer(index)
+                serverPickerOpen = false
+            },
+            onRefresh = { viewModel.refresh(forceServers = true) },
+            onPing = viewModel::pingAll,
+            onDismiss = { serverPickerOpen = false },
         )
     }
 
@@ -172,7 +190,7 @@ fun HomeScreen(
                     onRefresh = { viewModel.refresh(forceServers = true) },
                     onPing = { viewModel.pingAll() },
                     onSelectSubscription = { viewModel.selectSubscription(it) },
-                    onOpenServers = onOpenServers,
+                    onChooseServer = { serverPickerOpen = true },
                 )
             }
         }
@@ -340,7 +358,7 @@ private fun SubscriptionCard(
     onRefresh: () -> Unit,
     onPing: () -> Unit,
     onSelectSubscription: (Long) -> Unit,
-    onOpenServers: () -> Unit,
+    onChooseServer: () -> Unit,
 ) {
     val accent = MaterialTheme.colorScheme.primary
     // при нескольких подписках общий статус кабинета относится не к той,
@@ -484,7 +502,7 @@ private fun SubscriptionCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onOpenServers)
+                .clickable(onClick = onChooseServer)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -506,8 +524,93 @@ private fun SubscriptionCard(
                     }
                 }
             }
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Default.ExpandMore,
+                contentDescription = "Выбрать сервер",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
+}
+
+/**
+ * Выбор сервера поверх главного экрана. Пользователь остаётся в контексте
+ * подключения, а при активном VPN HomeViewModel сразу переключает узел.
+ */
+@Composable
+private fun ServerPickerDialog(
+    state: com.darkprince.vpn.ui.vm.HomeUiState,
+    onSelect: (Int) -> Unit,
+    onRefresh: () -> Unit,
+    onPing: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Выберите сервер") },
+        text = {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Доступно: ${state.servers.size}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (state.pinging) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        IconButton(onClick = onPing) {
+                            Icon(Icons.Default.Speed, contentDescription = "Проверить пинг")
+                        }
+                    }
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Обновить список")
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                if (state.servers.isEmpty()) {
+                    Text(
+                        "Список серверов пуст. Обновите подписку.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 440.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = 2.dp),
+                    ) {
+                        itemsIndexed(
+                            items = state.servers,
+                            key = { index, server -> "${server.name}:$index" },
+                        ) { index, server ->
+                            ServerRow(
+                                server = server,
+                                selected = index == state.selectedServer,
+                                ping = state.pings[index],
+                                onClick = {
+                                    if (index == state.selectedServer) onDismiss()
+                                    else onSelect(index)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Закрыть") }
+        },
+    )
 }
 
 /**
