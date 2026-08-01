@@ -112,7 +112,10 @@ jobs:
       - name: Собрать release APK
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_VERSION_CODE: ${{ github.run_number }}
+          # RELEASE_VERSION_CODE не задаём: номер сборки считается из версии,
+          # см. versionCodeOf в app/build.gradle.kts. Номер прогона CI сюда не
+          # годится — он с версией не связан и при перезапуске мог оказаться
+          # меньше уже установленного, после чего APK перестал бы ставиться.
           KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}

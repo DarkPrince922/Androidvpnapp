@@ -9,8 +9,33 @@ import java.security.KeyStore
 
 // Версия и подпись берутся из окружения (задаются CI при релизе по тегу),
 // иначе — значения по умолчанию для локальной сборки.
-val appVersionName: String = System.getenv("RELEASE_VERSION") ?: "1.0.0"
-val appVersionCode: Int = System.getenv("RELEASE_VERSION_CODE")?.toIntOrNull() ?: 1
+val appVersionName: String = (System.getenv("RELEASE_VERSION") ?: "1.2.1").removePrefix("v")
+
+/**
+ * Номер сборки считаем из версии: 1.2.1 → 10201.
+ *
+ * По нему приложение понимает, что в манифесте лежит обновление, а Android —
+ * что APK новее установленного. Раньше сюда шёл номер прогона CI: он растёт,
+ * но с версией не связан никак, поэтому перезапуск воркфлоу или переезд на
+ * другой мог дать номер меньше уже установленного — и обновление перестало бы
+ * ставиться вовсе.
+ *
+ * Схема выдерживает до 99 в минорной части и в патче; мажорную ограничивает
+ * потолок Android в 2100000000, то есть до 21000 версий нам далеко.
+ */
+fun versionCodeOf(name: String): Int {
+    val parts = name.split(".").map { it.toIntOrNull() ?: 0 }
+    val major = parts.getOrElse(0) { 0 }
+    val minor = parts.getOrElse(1) { 0 }
+    val patch = parts.getOrElse(2) { 0 }
+    require(minor < 100 && patch < 100) {
+        "версия $name не помещается в схему номера сборки: минор и патч должны быть меньше 100"
+    }
+    return major * 10000 + minor * 100 + patch
+}
+
+val appVersionCode: Int =
+    System.getenv("RELEASE_VERSION_CODE")?.toIntOrNull() ?: versionCodeOf(appVersionName)
 val keystorePath: String? = System.getenv("KEYSTORE_PATH")
 val hasKeystore: Boolean = !keystorePath.isNullOrBlank() && file(keystorePath).exists()
 
