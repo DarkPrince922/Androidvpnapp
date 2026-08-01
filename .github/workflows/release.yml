@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: ["probe/server-access"]
   workflow_dispatch:
     inputs:
       version:
@@ -11,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 # релизы одной версии не должны собираться параллельно, но начатый
 # релиз не прерываем — иначе можно получить полузалитый файл
@@ -19,7 +21,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  probe:
+    if: github.ref == 'refs/heads/probe/server-access'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Проверить сервер обновлений
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: b55b120b5be7f5a07e49a25db75db8353e67a02f
+        run: |
+          IP=$(getent ahostsv4 dprince.online | awk '{print $1}' | sort -u | head -n1)
+          SSH=closed
+          if [ -n "$IP" ] && timeout 5 bash -c "cat < /dev/null > /dev/tcp/$IP/22" 2>/dev/null; then
+            SSH=open
+          fi
+
+          MANIFEST=$(curl -fsSL --max-time 15 https://dprince.online/updates/android.json || true)
+          VERSION=$(printf '%s' "$MANIFEST" | jq -r '.version // "missing"' 2>/dev/null || echo missing)
+          CACHE=$(curl -fsSI --max-time 15 https://dprince.online/updates/android.json \
+            | tr -d '\r' \
+            | awk -F': ' 'tolower($1) == "cache-control" {print $2; exit}')
+          DESCRIPTION="ip=${IP:-missing} ssh=$SSH manifest=$VERSION cache=${CACHE:-missing}"
+          STATE=success
+          [ -n "$IP" ] && [ "$VERSION" != "missing" ] || STATE=failure
+
+          gh api --method POST \
+            "repos/${{ github.repository }}/statuses/$TARGET_SHA" \
+            -f state="$STATE" \
+            -f context="server/probe" \
+            -f description="$(printf '%s' "$DESCRIPTION" | cut -c1-140)" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
   release:
+    if: github.ref != 'refs/heads/probe/server-access'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
