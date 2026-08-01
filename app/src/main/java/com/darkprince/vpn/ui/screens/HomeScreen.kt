@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
@@ -43,9 +44,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -93,6 +96,9 @@ fun HomeScreen(
     val vpnState by viewModel.vpnState.collectAsStateWithLifecycle()
     val stats by viewModel.vpnStats.collectAsStateWithLifecycle()
     val vpnError by viewModel.vpnError.collectAsStateWithLifecycle()
+    val update by viewModel.update.collectAsStateWithLifecycle()
+    val updateBusy by viewModel.updateBusy.collectAsStateWithLifecycle()
+    val updateError by viewModel.updateError.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -102,6 +108,20 @@ fun HomeScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(12.dp))
+
+        // Обновление показываем выше всего: приложения нет в Google Play,
+        // и кроме нас сказать о новой версии некому.
+        AnimatedVisibility(visible = update != null) {
+            update?.let {
+                UpdateBanner(
+                    versionName = it.versionName,
+                    busy = updateBusy,
+                    error = updateError,
+                    onInstall = viewModel::installUpdate,
+                    onHide = viewModel::hideUpdate,
+                )
+            }
+        }
 
         PowerButton(
             vpnState = vpnState,
@@ -171,6 +191,53 @@ fun HomeScreen(
 }
 
 /** Большая круглая кнопка с тонким кольцом и «радаром» при подключении. */
+@Composable
+private fun UpdateBanner(
+    versionName: String,
+    busy: Boolean,
+    error: String?,
+    onInstall: () -> Unit,
+    onHide: () -> Unit,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(accent.copy(alpha = 0.12f))
+            .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = "Вышла версия $versionName",
+                style = MaterialTheme.typography.bodyMedium,
+                color = accent,
+            )
+            Text(
+                text = error ?: "Скачается и установится через системный установщик",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (error != null) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        TextButton(onClick = onInstall, enabled = !busy) {
+            Text(if (busy) "Качаю…" else "Обновить")
+        }
+        // крестик прячет полосу до следующей версии
+        IconButton(onClick = onHide) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Скрыть",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 @Composable
 private fun PowerButton(vpnState: VpnState, onClick: () -> Unit) {
     val targetColor = when (vpnState) {

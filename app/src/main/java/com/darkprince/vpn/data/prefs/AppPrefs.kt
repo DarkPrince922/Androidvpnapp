@@ -37,6 +37,7 @@ class AppPrefs(private val context: Context) {
         val SPLIT_MODE = stringPreferencesKey("split_mode")
         val SPLIT_APPS = stringSetPreferencesKey("split_apps")
         val GUEST_SUB_URL = stringPreferencesKey("guest_sub_url")
+        val HIDDEN_UPDATE = intPreferencesKey("hidden_update_code")
     }
 
     @Volatile var cachedBaseUrl: String = ""
@@ -147,6 +148,17 @@ class AppPrefs(private val context: Context) {
         context.dataStore.edit { p ->
             if (json == null) p.remove(userInfoKey(subId)) else p[userInfoKey(subId)] = json
         }
+    }
+
+    /**
+     * Номер сборки обновления, полосу про которое закрыли крестиком.
+     * Переживает перезапуск: иначе полоса возвращалась бы при каждом запуске.
+     */
+    suspend fun hiddenUpdateCode(): Int =
+        context.dataStore.data.first()[Keys.HIDDEN_UPDATE] ?: 0
+
+    suspend fun setHiddenUpdateCode(code: Int) {
+        context.dataStore.edit { it[Keys.HIDDEN_UPDATE] = code }
     }
 
     suspend fun selectedServerFor(subId: Long?): Int =

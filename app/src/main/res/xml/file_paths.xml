@@ -2,4 +2,6 @@
 <paths>
     <!-- QR-коды подписки, которыми делится владелец -->
     <cache-path name="shared" path="shared/" />
+    <!-- Скачанное обновление: отсюда его читает системный установщик -->
+    <cache-path name="updates" path="updates/" />
 </paths>

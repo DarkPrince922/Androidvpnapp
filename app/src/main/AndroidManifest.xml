@@ -7,6 +7,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Приложения нет в Google Play, поэтому обновление ставим сами: качаем
+         APK и отдаём системному установщику. Разрешение выдаётся отдельно
+         каждому приложению — то, что человек когда-то разрешил браузеру, на
+         нас не распространяется, поэтому спрашиваем при первом обновлении. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- нужно, чтобы показать список приложений для раздельного туннелирования -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />

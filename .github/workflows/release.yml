@@ -142,6 +142,28 @@ jobs:
           echo "Подписан, отпечаток сертификата: $FP"
           ls -lh "$DEST"
 
+          # Манифест обновлений. Формат свой: плагина Tauri тут нет, читает его
+          # наш AppUpdater. Адрес ведёт на наш сайт, а не на GitHub — у части
+          # пользователей он недоступен ровно тогда, когда обновление и нужно.
+          # Имя файла на сайте без версии, поэтому ссылка постоянная.
+          #
+          # Номер сборки считаем той же формулой, что и Gradle: 1.2.1 -> 10201.
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${VERSION#v}"
+          CODE=$(echo "$VERSION" | awk -F. '{ printf "%d", $1 * 10000 + $2 * 100 + $3 }')
+
+          cat > android.json <<JSON
+          {
+            "version": "$VERSION",
+            "versionCode": $CODE,
+            "notes": "DarkPrince VPN $VERSION",
+            "url": "https://dprince.online/downloads/DarkPrinceVPN.apk",
+            "sha256": "$(sha256sum "$DEST" | cut -d" " -f1)"
+          }
+          JSON
+          sed -i 's/^          //' android.json
+          cat android.json
+
       - name: Создать GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -158,12 +180,12 @@ jobs:
           EOF
           )
           NOTES=$(echo "$NOTES" | sed 's/^          //')
-          if ! gh release create "v$VERSION" "$APK" \
+          if ! gh release create "v$VERSION" "$APK" android.json \
                 --title "DarkPrince VPN $VERSION" \
                 --notes "$NOTES" \
                 --repo "${{ github.repository }}"; then
-            # релиз уже существует — обновляем и файл, и описание
-            gh release upload "v$VERSION" "$APK" --clobber --repo "${{ github.repository }}"
+            # релиз уже существует — обновляем и файлы, и описание
+            gh release upload "v$VERSION" "$APK" android.json --clobber --repo "${{ github.repository }}"
             gh release edit "v$VERSION" \
               --title "DarkPrince VPN $VERSION" \
               --notes "$NOTES" \

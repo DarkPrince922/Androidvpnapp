@@ -8,6 +8,7 @@ import com.darkprince.vpn.data.api.dto.SubscriptionListItem
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
 import com.darkprince.vpn.data.repo.SubscriptionUserInfo
 import com.darkprince.vpn.data.repo.userMessage
+import com.darkprince.vpn.data.update.AppUpdater
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.vpn.CoreEnv
 import com.darkprince.vpn.vpn.TrafficStats
@@ -47,6 +48,7 @@ data class HomeUiState(
 class HomeViewModel : ViewModel() {
     private val subRepo = ServiceLocator.subscriptionRepository
     private val prefs = ServiceLocator.prefs
+    private val updater = ServiceLocator.appUpdater
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state
@@ -55,7 +57,20 @@ class HomeViewModel : ViewModel() {
     val vpnStats: StateFlow<TrafficStats> = VpnStateStore.stats
     val vpnError: StateFlow<String?> = VpnStateStore.lastError
 
+    /** Обновление, о котором стоит сказать. null — говорить нечего. */
+    private val _update = MutableStateFlow<AppUpdater.Update?>(null)
+    val update: StateFlow<AppUpdater.Update?> = _update
+
+    /** Идёт закачка: кнопку нажимать второй раз незачем. */
+    private val _updateBusy = MutableStateFlow(false)
+    val updateBusy: StateFlow<Boolean> = _updateBusy
+
+    /** Не получилось скачать. Отдельно от ошибок подписки: это про другое. */
+    private val _updateError = MutableStateFlow<String?>(null)
+    val updateError: StateFlow<String?> = _updateError
+
     init {
+        checkUpdate()
         refresh(forceServers = true)
     }
 
@@ -195,5 +210,58 @@ class HomeViewModel : ViewModel() {
             }
             _state.value = _state.value.copy(pinging = false)
         }
+    }
+
+    /**
+     * Спрашивает манифест обновлений.
+     *
+     * Ошибки глотаются внутри AppUpdater: проверка обновлений не должна мешать
+     * пользоваться приложением, а показать всё равно нечего.
+     */
+    fun checkUpdate() {
+        viewModelScope.launch {
+            val found = updater.check() ?: return@launch
+            // полосу про эту версию уже закрывали крестиком
+            if (found.versionCode <= prefs.hiddenUpdateCode()) return@launch
+            _update.value = found
+        }
+    }
+
+    /**
+     * Качает APK и отдаёт системному установщику.
+     *
+     * Если разрешение на установку ещё не выдано, сначала уводим в системные
+     * настройки: оно выдаётся отдельно каждому приложению, и то, что человек
+     * когда-то разрешил браузеру, на нас не распространяется.
+     */
+    fun installUpdate() {
+        val found = _update.value ?: return
+        if (!updater.canInstall()) {
+            updater.requestInstallPermission()
+            return
+        }
+        if (_updateBusy.value) return
+
+        viewModelScope.launch {
+            _updateBusy.value = true
+            try {
+                _updateError.value = null
+                val apk = updater.download(found)
+                if (apk == null) {
+                    _updateError.value = "Не удалось скачать обновление"
+                    return@launch
+                }
+                updater.install(apk)
+            } finally {
+                _updateBusy.value = false
+            }
+        }
+    }
+
+    /** Больше не показывать полосу про эту версию. */
+    fun hideUpdate() {
+        val found = _update.value ?: return
+        _update.value = null
+        viewModelScope.launch { prefs.setHiddenUpdateCode(found.versionCode) }
     }
 }
