@@ -38,10 +38,12 @@ jobs:
 
           MANIFEST=$(curl -fsSL --max-time 15 https://dprince.online/updates/android.json || true)
           VERSION=$(printf '%s' "$MANIFEST" | jq -r '.version // "missing"' 2>/dev/null || echo missing)
+          APK_SHA=$(curl -fsSL --max-time 120 https://dprince.online/downloads/DarkPrinceVPN.apk \
+            | sha256sum | cut -d' ' -f1)
           CACHE=$(curl -fsSI --max-time 15 https://dprince.online/updates/android.json \
             | tr -d '\r' \
             | awk -F': ' 'tolower($1) == "cache-control" {print $2; exit}')
-          DESCRIPTION="ip=${IP:-missing} ssh=$SSH manifest=$VERSION cache=${CACHE:-missing}"
+          DESCRIPTION="ssh=$SSH manifest=$VERSION apk=${APK_SHA:-missing} cache=${CACHE:-missing}"
           STATE=success
           [ -n "$IP" ] && [ "$VERSION" != "missing" ] || STATE=failure
 
