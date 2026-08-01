@@ -35,16 +35,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -99,6 +99,21 @@ fun HomeScreen(
     val update by viewModel.update.collectAsStateWithLifecycle()
     val updateBusy by viewModel.updateBusy.collectAsStateWithLifecycle()
     val updateError by viewModel.updateError.collectAsStateWithLifecycle()
+    val updateProgress by viewModel.updateProgress.collectAsStateWithLifecycle()
+
+    // Приложения нет в Google Play, и кроме нас сказать о новой версии
+    // некому — поэтому спрашиваем окном, а не строкой где-то внизу.
+    update?.let {
+        UpdateDialog(
+            versionName = it.versionName,
+            notes = it.notes,
+            busy = updateBusy,
+            error = updateError,
+            progress = updateProgress,
+            onInstall = viewModel::installUpdate,
+            onDismiss = viewModel::hideUpdate,
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -108,20 +123,6 @@ fun HomeScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(12.dp))
-
-        // Обновление показываем выше всего: приложения нет в Google Play,
-        // и кроме нас сказать о новой версии некому.
-        AnimatedVisibility(visible = update != null) {
-            update?.let {
-                UpdateBanner(
-                    versionName = it.versionName,
-                    busy = updateBusy,
-                    error = updateError,
-                    onInstall = viewModel::installUpdate,
-                    onHide = viewModel::hideUpdate,
-                )
-            }
-        }
 
         PowerButton(
             vpnState = vpnState,
@@ -192,50 +193,73 @@ fun HomeScreen(
 
 /** Большая круглая кнопка с тонким кольцом и «радаром» при подключении. */
 @Composable
-private fun UpdateBanner(
+private fun UpdateDialog(
     versionName: String,
+    notes: String?,
     busy: Boolean,
     error: String?,
+    progress: Pair<Long, Long>,
     onInstall: () -> Unit,
-    onHide: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val accent = MaterialTheme.colorScheme.primary
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(accent.copy(alpha = 0.12f))
-            .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = "Вышла версия $versionName",
-                style = MaterialTheme.typography.bodyMedium,
-                color = accent,
-            )
-            Text(
-                text = error ?: "Скачается и установится через системный установщик",
-                style = MaterialTheme.typography.bodySmall,
-                color = if (error != null) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        TextButton(onClick = onInstall, enabled = !busy) {
-            Text(if (busy) "Качаю…" else "Обновить")
-        }
-        // крестик прячет полосу до следующей версии
-        IconButton(onClick = onHide) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Скрыть",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    val (downloaded, total) = progress
+
+    AlertDialog(
+        // во время закачки закрывать нечему: файл всё равно докачается
+        onDismissRequest = { if (!busy) onDismiss() },
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.14f))
+                    .border(1.dp, accent.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = accent)
+            }
+        },
+        title = { Text("Вышла версия $versionName") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = error
+                        ?: notes
+                        ?: "Приложение скачает обновление само и передаст его установщику.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (error != null) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (busy) {
+                    Spacer(Modifier.height(12.dp))
+                    // размер известен не всегда — тогда крутим бесконечную
+                    if (total > 0) {
+                        LinearProgressIndicator(
+                            progress = { downloaded.toFloat() / total },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "${formatBytes(downloaded)} из ${formatBytes(total)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onInstall, enabled = !busy) {
+                Text(if (busy) "Качаю…" else if (error != null) "Повторить" else "Обновить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !busy) { Text("Не сейчас") }
+        },
+    )
 }
 
 @Composable

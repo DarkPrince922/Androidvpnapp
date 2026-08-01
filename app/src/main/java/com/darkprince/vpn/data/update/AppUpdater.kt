@@ -81,7 +81,10 @@ class AppUpdater(
      * Файл кладём именно туда, а не во внешнюю память: разрешений не нужно, и
      * подменить его между скачиванием и установкой другое приложение не может.
      */
-    suspend fun download(update: Update): File? = withContext(Dispatchers.IO) {
+    suspend fun download(
+        update: Update,
+        onProgress: (downloaded: Long, total: Long) -> Unit = { _, _ -> },
+    ): File? = withContext(Dispatchers.IO) {
         val directory = File(context.cacheDir, "updates")
         directory.mkdirs()
         // старый файл мог остаться от прерванной попытки
@@ -92,8 +95,23 @@ class AppUpdater(
             val request = Request.Builder().url(update.url).build()
             okHttp.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext null
-                val stream = response.body?.byteStream() ?: return@withContext null
-                target.outputStream().use { out -> stream.copyTo(out) }
+                val body = response.body ?: return@withContext null
+                // -1 означает, что сервер не сказал размер заранее
+                val total = body.contentLength()
+                var downloaded = 0L
+
+                body.byteStream().use { stream ->
+                    target.outputStream().use { out ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val read = stream.read(buffer)
+                            if (read <= 0) break
+                            out.write(buffer, 0, read)
+                            downloaded += read
+                            onProgress(downloaded, total)
+                        }
+                    }
+                }
             }
         } catch (_: Exception) {
             target.delete()

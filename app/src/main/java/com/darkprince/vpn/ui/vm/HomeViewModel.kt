@@ -69,6 +69,10 @@ class HomeViewModel : ViewModel() {
     private val _updateError = MutableStateFlow<String?>(null)
     val updateError: StateFlow<String?> = _updateError
 
+    /** Скачано и всего байт. Ноль во втором — размер неизвестен. */
+    private val _updateProgress = MutableStateFlow(0L to 0L)
+    val updateProgress: StateFlow<Pair<Long, Long>> = _updateProgress
+
     init {
         checkUpdate()
         refresh(forceServers = true)
@@ -246,7 +250,11 @@ class HomeViewModel : ViewModel() {
             _updateBusy.value = true
             try {
                 _updateError.value = null
-                val apk = updater.download(found)
+                _updateProgress.value = 0L to 0L
+                val apk = updater.download(found) { downloaded, total ->
+                    // total = -1, когда сервер не сказал размер заранее
+                    _updateProgress.value = downloaded to total.coerceAtLeast(0L)
+                }
                 if (apk == null) {
                     _updateError.value = "Не удалось скачать обновление"
                     return@launch
