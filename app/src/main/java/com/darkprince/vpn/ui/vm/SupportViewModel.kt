@@ -274,6 +274,12 @@ class SupportViewModel : ViewModel() {
         if (_state.value.activeTicket?.id != ticketId) return
         try {
             val ticket = repository.ticket(ticketId)
+            // Пока шёл запрос, человек мог вернуться к списку и открыть другое
+            // обращение. Обновления по сокету запускаются отдельными
+            // корутинами, и stopWatching() их не отменяет, поэтому проверку
+            // приходится повторить: иначе сюда легла бы переписка не того
+            // тикета, который сейчас на экране.
+            if (_state.value.activeTicket?.id != ticketId) return
             _state.update { it.copy(activeTicket = ticket, error = null) }
             runCatching { repository.markRead(ticketId) }
         } catch (_: Exception) {
