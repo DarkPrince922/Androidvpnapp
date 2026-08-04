@@ -172,10 +172,14 @@ class SupportRepository(
     ): WebSocket? {
         val token = prefs.cachedAccessToken ?: return null
         val base = prefs.cachedBaseUrl.trimEnd('/')
-        val wsBase = when {
-            base.startsWith("https://") -> "wss://${base.removePrefix("https://")}"
-            base.startsWith("http://") -> "ws://${base.removePrefix("http://")}"
-            else -> return null
+        // Только wss. По ws токен доступа ушёл бы в заголовке открытым
+        // текстом, а переписка с поддержкой — открытой всему пути. Если база
+        // задана по http, сокета просто нет: обновления в этом случае
+        // приносит опрос, он идёт параллельно и ничего не теряет.
+        val wsBase = if (base.startsWith("https://")) {
+            "wss://${base.removePrefix("https://")}"
+        } else {
+            return null
         }
         val request = Request.Builder()
             .url("$wsBase/cabinet/ws/support/v1")
