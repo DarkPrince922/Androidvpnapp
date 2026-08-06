@@ -4,4 +4,6 @@
     <cache-path name="shared" path="shared/" />
     <!-- Скачанное обновление: отсюда его читает системный установщик -->
     <cache-path name="updates" path="updates/" />
+    <!-- Журнал, который прикладывают к обращению в поддержку -->
+    <cache-path name="support" path="support/" />
 </paths>

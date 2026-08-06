@@ -132,6 +132,23 @@ class SupportViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Прикладывает журнал приложения.
+     *
+     * Отдельной кнопкой, а не через выбор файла: человек не должен искать,
+     * где этот журнал лежит, — он и не лежит нигде, пока его не попросят.
+     */
+    fun attachLog() {
+        viewModelScope.launch {
+            try {
+                val attachment = repository.logAttachment()
+                _state.update { it.copy(pendingAttachment = attachment, error = null) }
+            } catch (error: Exception) {
+                _state.update { it.copy(error = supportErrorMessage(error)) }
+            }
+        }
+    }
+
     fun removeAttachment() {
         _state.update { it.copy(pendingAttachment = null) }
     }

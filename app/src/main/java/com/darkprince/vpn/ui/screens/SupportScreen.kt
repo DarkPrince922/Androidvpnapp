@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.OpenInNew
@@ -227,6 +228,7 @@ fun SupportScreen(
                         name = state.pendingAttachment?.name,
                         enabled = !state.sending,
                         onPick = onPickAttachment,
+                        onAttachLog = viewModel::attachLog,
                         onRemove = viewModel::removeAttachment,
                     )
                     state.error?.let {
@@ -339,6 +341,7 @@ fun SupportTicketScreen(
                         name = state.pendingAttachment?.name,
                         enabled = !state.sending,
                         onPick = onPickAttachment,
+                        onAttachLog = viewModel::attachLog,
                         onRemove = viewModel::removeAttachment,
                     )
                     Row(
@@ -535,13 +538,29 @@ private fun AttachmentRow(
     name: String?,
     enabled: Boolean,
     onPick: () -> Unit,
+    onAttachLog: () -> Unit,
     onRemove: () -> Unit,
 ) {
     if (name == null) {
-        TextButton(onClick = onPick, enabled = enabled) {
-            Icon(Icons.Default.AttachFile, contentDescription = null)
-            Spacer(Modifier.width(4.dp))
-            Text("Прикрепить файл (до 10 МБ)")
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onPick, enabled = enabled) {
+                    Icon(Icons.Default.AttachFile, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Файл (до 10 МБ)")
+                }
+                TextButton(onClick = onAttachLog, enabled = enabled) {
+                    Icon(Icons.Default.Description, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Журнал")
+                }
+            }
+            // Человек должен понимать, что именно отправляет.
+            Text(
+                "Журнал — что происходило с подключением. Ссылки и токены из него вырезаны.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     } else {
         Row(

@@ -3,6 +3,8 @@ package com.darkprince.vpn.data.repo
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.core.content.FileProvider
+import com.darkprince.vpn.BuildConfig
 import com.darkprince.vpn.data.api.ApiClient
 import com.darkprince.vpn.data.api.dto.SupportConfigDto
 import com.darkprince.vpn.data.api.dto.SupportMediaUploadDto
@@ -11,6 +13,7 @@ import com.darkprince.vpn.data.api.dto.SupportMessageDto
 import com.darkprince.vpn.data.api.dto.SupportTicketCreateRequest
 import com.darkprince.vpn.data.api.dto.SupportTicketDetailDto
 import com.darkprince.vpn.data.api.dto.SupportTicketDto
+import com.darkprince.vpn.data.log.AppLog
 import com.darkprince.vpn.data.prefs.AppPrefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -95,6 +98,29 @@ class SupportRepository(
             mediaCaption = message.takeIf { media != null && it.isNotBlank() },
         )
     )
+
+    /**
+     * Журнал приложения как готовое вложение.
+     *
+     * Пишем во внутренний кэш и отдаём через FileProvider — тем же путём, что
+     * и выбранный человеком файл, поэтому загрузка ничем не отличается.
+     * Содержимое уже очищено от ссылок и токенов в AppLog.
+     */
+    suspend fun logAttachment(): PendingSupportAttachment = withContext(Dispatchers.IO) {
+        val directory = File(context.cacheDir, "support").apply { mkdirs() }
+        val file = File(directory, LOG_FILE_NAME)
+        file.writeText(AppLog.snapshot())
+        PendingSupportAttachment(
+            uri = FileProvider.getUriForFile(
+                context,
+                "${BuildConfig.APPLICATION_ID}.fileprovider",
+                file,
+            ),
+            name = LOG_FILE_NAME,
+            mimeType = "text/plain",
+            size = file.length(),
+        )
+    }
 
     suspend fun describeAttachment(uri: Uri): PendingSupportAttachment = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
@@ -225,6 +251,7 @@ class SupportRepository(
         const val DEFAULT_SUPPORT_URL = "https://t.me/skzfeee"
         private const val SUPPORT_SUBPROTOCOL = "bedolaga.support.mobile.v1"
         private const val MAX_FILE_SIZE = 10 * 1024 * 1024
+        private const val LOG_FILE_NAME = "darkprince-log.txt"
         private val SAFE_IMAGE_TYPES = setOf("image/jpeg", "image/png", "image/gif", "image/webp")
     }
 }
