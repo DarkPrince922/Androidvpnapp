@@ -54,17 +54,23 @@ jobs:
       - name: Build release APK (unsigned)
         run: ./gradlew --no-daemon assembleRelease
 
+      # retention-days у всех выгрузок: по умолчанию GitHub держит артефакты
+      # 90 дней, а квота хранилища общая на весь аккаунт — пары сотен мегабайт
+      # с каждого пуша хватало, чтобы она кончилась и прогоны начали падать.
+      # Неделя перекрывает всё, ради чего эти файлы вообще качают.
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
 
       - name: Upload release APK (unsigned)
         uses: actions/upload-artifact@v4
         with:
           name: app-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 7
 
       - name: Publish build status
         if: ${{ always() }}
