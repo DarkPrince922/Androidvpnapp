@@ -7,11 +7,16 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import com.darkprince.vpn.R
 import com.darkprince.vpn.core.model.ProxyProfile
+import com.darkprince.vpn.data.log.AppLog
 import com.darkprince.vpn.core.xray.XrayConfigBuilder
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.ui.MainActivity
@@ -38,6 +43,13 @@ class XVpnService : VpnService() {
         const val ACTION_STOP = "com.darkprince.vpn.STOP"
         const val ACTION_PING = "com.darkprince.vpn.PING"
         private const val PROFILE_FILE = "active_profile.json"
+
+        /**
+         * Пауза перед переподключением при смене сети. Переход с Wi-Fi на
+         * мобильную даёт несколько событий подряд, и без паузы туннель
+         * перезапускался бы по разу на каждое.
+         */
+        private const val RECONNECT_DELAY_MS = 1500L
 
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "vpn_state"
@@ -82,6 +94,11 @@ class XVpnService : VpnService() {
     private var activeProfileName: String = ""
     private var lastPingMs: Long? = null
 
+    /** Слежение за сетью под туннелем; null — не подписаны. */
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var underlyingNetwork: Network? = null
+    private var reconnectJob: Job? = null
+
     private val coreCallback = object : CoreCallbackHandler {
         override fun startup(): Long = 0
         override fun shutdown(): Long = 0
@@ -106,10 +123,9 @@ class XVpnService : VpnService() {
                     NOTIFICATION_ID,
                     buildNotification(activeProfileName.ifBlank { "Подключение…" })
                 )
-                val profile = try {
-                    val profileJson = File(filesDir, PROFILE_FILE).readText()
-                    Json.decodeFromString(ProxyProfile.serializer(), profileJson)
-                } catch (_: Exception) {
+                val profile = readSavedProfile()
+                if (profile == null) {
+                    AppLog.write("запуск без выбранного сервера")
                     VpnStateStore.setState(VpnState.ERROR, "Сервер не выбран")
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf(startId)
@@ -169,15 +185,101 @@ class XVpnService : VpnService() {
             TProxyService.TProxyStartService(configFile.absolutePath, fd.fd)
 
             VpnStateStore.setState(VpnState.CONNECTED)
+            AppLog.write("подключено: ${profile.name}")
             ServiceLocator.apiClient.onNetworkChanged()
+            watchNetwork()
             updateNotification()
             startStatsLoop(profile)
             // первый замер задержки сразу после подключения
             scope.launch { measurePing() }
         } catch (e: Throwable) {
+            AppLog.write("подключиться не удалось: ${e.javaClass.simpleName}: ${e.message}")
             VpnStateStore.setState(VpnState.ERROR, e.message)
             stopVpn()
         }
+    }
+
+    /**
+     * Следит за сетью под туннелем и переподнимает его при смене.
+     *
+     * Без этого переход с Wi-Fi на мобильную выглядит так: значок VPN горит,
+     * а трафик не идёт — ядро осталось привязано к исчезнувшей сети.
+     *
+     * Просим только сети с NET_CAPABILITY_NOT_VPN. Иначе в подписку попал бы
+     * наш собственный туннель, его появление считалось бы сменой сети, и
+     * переподключение зациклилось бы само на себя.
+     */
+    private fun watchNetwork() {
+        if (networkCallback != null) return
+        val manager = getSystemService(ConnectivityManager::class.java) ?: return
+
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                // система сообщает VPN, поверх какой сети он работает
+                runCatching { setUnderlyingNetworks(arrayOf(network)) }
+
+                val previous = underlyingNetwork
+                underlyingNetwork = network
+                // первая сеть после подключения — это та же, на которой мы
+                // только что поднялись, перезапускать нечего
+                if (previous == null || previous == network) return
+
+                AppLog.write("сеть сменилась, переподключаюсь")
+                scheduleReconnect()
+            }
+
+            override fun onLost(network: Network) {
+                if (network != underlyingNetwork) return
+                // сети сейчас нет; ждём появления новой, тогда и перезапустим
+                underlyingNetwork = null
+                AppLog.write("сеть пропала, жду новую")
+            }
+        }
+
+        runCatching { manager.registerNetworkCallback(request, callback) }
+            .onSuccess { networkCallback = callback }
+            .onFailure { AppLog.write("следить за сетью не вышло: ${it.javaClass.simpleName}") }
+    }
+
+    private fun unwatchNetwork() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        underlyingNetwork = null
+        val manager = getSystemService(ConnectivityManager::class.java)
+        runCatching { manager?.unregisterNetworkCallback(callback) }
+    }
+
+    /**
+     * Переподключение с задержкой: при переходе между сетями события приходят
+     * пачкой, и каждое новое отменяет предыдущее ожидание.
+     */
+    private fun scheduleReconnect() {
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            delay(RECONNECT_DELAY_MS)
+            vpnMutex.withLock {
+                // пока ждали, человек мог отключиться сам — тогда не лезем
+                val state = VpnStateStore.state.value
+                if (state != VpnState.CONNECTED && state != VpnState.CONNECTING) return@withLock
+                val profile = readSavedProfile() ?: return@withLock
+                startVpn(profile)
+            }
+        }
+    }
+
+    /** Профиль последнего подключения; null — файла нет или он испорчен. */
+    private fun readSavedProfile(): ProxyProfile? = try {
+        Json.decodeFromString(
+            ProxyProfile.serializer(),
+            File(filesDir, PROFILE_FILE).readText(),
+        )
+    } catch (_: Exception) {
+        null
     }
 
     private fun startStatsLoop(profile: ProxyProfile) {
@@ -268,6 +370,12 @@ class XVpnService : VpnService() {
     }
 
     private fun stopVpn() {
+        // Слежение снимаем здесь, а не в teardown: teardown вызывается и при
+        // переподключении, а подписку на сеть там терять нельзя.
+        unwatchNetwork()
+        reconnectJob?.cancel()
+        reconnectJob = null
+        AppLog.write("отключено")
         teardown()
         if (VpnStateStore.state.value != VpnState.ERROR) {
             VpnStateStore.setState(VpnState.DISCONNECTED)
@@ -284,6 +392,7 @@ class XVpnService : VpnService() {
     }
 
     override fun onRevoke() {
+        AppLog.write("разрешение на VPN отозвано системой")
         scope.launch { vpnMutex.withLock { stopVpn() } }
     }
 
