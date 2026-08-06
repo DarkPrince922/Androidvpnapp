@@ -3,6 +3,7 @@ package com.darkprince.vpn.ui
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
@@ -36,7 +37,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -63,7 +67,8 @@ import com.darkprince.vpn.ui.screens.SupportTicketScreen
 import com.darkprince.vpn.ui.theme.AnimatedBackground
 import androidx.compose.ui.unit.dp
 import com.darkprince.vpn.ui.theme.AppTheme
-import com.darkprince.vpn.ui.theme.BrandColors
+import com.darkprince.vpn.ui.theme.LocalPalette
+import com.darkprince.vpn.ui.theme.paletteById
 import com.darkprince.vpn.ui.theme.NavPillItem
 import com.darkprince.vpn.ui.vm.AppsViewModel
 import com.darkprince.vpn.ui.vm.AuthViewModel
@@ -218,8 +223,34 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestNotificationPermission()
+
+        // Фон окна прибит в themes.xml тёмным — его видно, пока Compose не
+        // отрисовал первый кадр. При светлой теме это заметная вспышка,
+        // поэтому перекрашиваем окно до setContent, по сохранённому значению.
+        window.setBackgroundDrawable(
+            ColorDrawable(paletteById(ServiceLocator.prefs.cachedTheme).background.toArgb())
+        )
+
         setContent {
-            AppTheme {
+            val themeId by ServiceLocator.prefs.themeFlow.collectAsState(
+                initial = ServiceLocator.prefs.cachedTheme,
+            )
+            val palette = paletteById(themeId)
+
+            // Значки системных панелей темой Compose не управляются: на светлой
+            // теме белые часы и кнопки просто исчезают. Нижнюю панель заодно
+            // перекрашиваем — иначе под приложением остаётся тёмная полоса,
+            // прибитая в themes.xml на время запуска.
+            val view = LocalView.current
+            LaunchedEffect(palette) {
+                window.navigationBarColor = palette.background.toArgb()
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = palette.isLight
+                    isAppearanceLightNavigationBars = palette.isLight
+                }
+            }
+
+            AppTheme(palette) {
                 AnimatedBackground {
                     AppRoot(
                         activity = this@MainActivity,
@@ -306,7 +337,7 @@ private fun AppRoot(
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
-                        .background(BrandColors.Surface.copy(alpha = 0.9f))
+                        .background(LocalPalette.current.panel.copy(alpha = 0.9f))
                         .border(
                             1.dp,
                             MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
@@ -529,6 +560,10 @@ private fun AppRoot(
                     user = user,
                     guestMode = authState.guestMode,
                     usingSharedSubscription = authState.usingSharedSubscription,
+                    // тему берём из composition, а не читаем настройку заново:
+                    // так галочка в списке и экран под ней не разъезжаются
+                    selectedThemeId = LocalPalette.current.id,
+                    onSelectTheme = { scope.launch { prefs.setTheme(it.id) } },
                     onOpenReferral = { navController.navigate("referral") },
                     onOpenApps = { navController.navigate("apps") },
                     onOpenShare = { navController.navigate("share") },

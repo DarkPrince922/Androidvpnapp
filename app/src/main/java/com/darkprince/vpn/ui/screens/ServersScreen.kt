@@ -35,7 +35,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.core.model.ProxyProfile
-import com.darkprince.vpn.ui.theme.BrandColors
 import com.darkprince.vpn.ui.theme.EmojiTile
 import com.darkprince.vpn.ui.theme.PingChip
 import com.darkprince.vpn.ui.theme.SectionHeader
@@ -147,7 +146,7 @@ internal fun ServerRow(
             )
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TagChip(server.transportLabel, tint = BrandColors.Glow)
+                TagChip(server.transportLabel, tint = MaterialTheme.colorScheme.secondary)
                 if (server.rawConfig != null) {
                     TagChip("JSON", tint = accent)
                 }

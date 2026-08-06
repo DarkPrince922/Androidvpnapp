@@ -69,7 +69,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.ui.theme.Appear
-import com.darkprince.vpn.ui.theme.BrandColors
+import com.darkprince.vpn.ui.theme.LocalPalette
 import com.darkprince.vpn.ui.theme.CircleActionButton
 import com.darkprince.vpn.ui.theme.EmojiTile
 import com.darkprince.vpn.ui.theme.GroupCard
@@ -329,7 +329,7 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit) {
                 .size(230.dp)
                 .scale(scale)
                 .clip(CircleShape)
-                .background(BrandColors.Surface.copy(alpha = 0.7f))
+                .background(LocalPalette.current.panel.copy(alpha = 0.7f))
                 .border(2.dp, accent.copy(alpha = 0.55f), CircleShape)
                 .clickable(enabled = vpnState != VpnState.CONNECTING, onClick = onClick),
             contentAlignment = Alignment.Center,
@@ -519,7 +519,7 @@ private fun SubscriptionCard(
                 selected?.let {
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TagChip(it.transportLabel, tint = BrandColors.Glow)
+                        TagChip(it.transportLabel, tint = MaterialTheme.colorScheme.secondary)
                         if (it.rawConfig != null) TagChip("JSON", tint = accent)
                     }
                 }

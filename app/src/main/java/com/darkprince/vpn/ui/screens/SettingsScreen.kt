@@ -23,11 +23,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.darkprince.vpn.data.api.dto.UserDto
-import com.darkprince.vpn.ui.theme.BrandColors
+import com.darkprince.vpn.ui.theme.AppPalette
 import com.darkprince.vpn.ui.theme.GroupCard
 import com.darkprince.vpn.ui.theme.RowDivider
 import com.darkprince.vpn.ui.theme.SectionHeader
 import com.darkprince.vpn.ui.theme.SettingsRow
+import com.darkprince.vpn.ui.theme.ThemePicker
 
 @Composable
 fun SettingsScreen(
@@ -43,6 +44,8 @@ fun SettingsScreen(
     onCreateAccount: () -> Unit,
     onDropSharedSubscription: () -> Unit,
     onLogout: () -> Unit,
+    selectedThemeId: String,
+    onSelectTheme: (AppPalette) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -101,9 +104,30 @@ fun SettingsScreen(
                     guestMode -> "Написать нам в Telegram"
                     else -> "Обращения и переписка с поддержкой"
                 },
-                tint = if (supportUnreadCount > 0) BrandColors.Glow else MaterialTheme.colorScheme.primary,
+                tint = if (supportUnreadCount > 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                 onClick = onOpenSupport,
             )
+        }
+
+        Spacer(Modifier.height(22.dp))
+
+        // --- Оформление ---
+        SectionHeader("Оформление")
+        GroupCard {
+            Column(Modifier.padding(16.dp)) {
+                Text(
+                    "Тема",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Меняется сразу, перезапускать не нужно",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(14.dp))
+                ThemePicker(selectedId = selectedThemeId, onSelect = onSelectTheme)
+            }
         }
 
         Spacer(Modifier.height(22.dp))
@@ -143,7 +167,7 @@ fun SettingsScreen(
                     icon = Icons.Default.PersonAdd,
                     title = "Пригласить друга",
                     subtitle = "Бонусы с платежей приглашённых",
-                    tint = BrandColors.Glow,
+                    tint = MaterialTheme.colorScheme.secondary,
                     onClick = onOpenReferral,
                 )
             }

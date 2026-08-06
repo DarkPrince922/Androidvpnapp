@@ -38,6 +38,7 @@ class AppPrefs(private val context: Context) {
         val SPLIT_APPS = stringSetPreferencesKey("split_apps")
         val GUEST_SUB_URL = stringPreferencesKey("guest_sub_url")
         val HIDDEN_UPDATE = intPreferencesKey("hidden_update_code")
+        val THEME = stringPreferencesKey("theme")
     }
 
     @Volatile var cachedBaseUrl: String = ""
@@ -55,6 +56,10 @@ class AppPrefs(private val context: Context) {
     @Volatile var cachedAccessExpiresAt: Long = 0L
         private set
 
+    /** Идентификатор выбранной темы, прочитанный на старте. */
+    @Volatile var cachedTheme: String? = null
+        private set
+
     fun warmUp() = runBlocking {
         val p = context.dataStore.data.first()
         // если адрес ещё не сохранён — берём вшитый в сборку адрес кабинета
@@ -64,6 +69,9 @@ class AppPrefs(private val context: Context) {
         cachedRefreshToken = p[Keys.REFRESH_TOKEN]
         cachedAccessExpiresAt = p[Keys.ACCESS_EXPIRES_AT] ?: 0L
         cachedGuestSubUrl = p[Keys.GUEST_SUB_URL]
+        // тема нужна синхронно: окно красится до первой отрисовки Compose,
+        // иначе при светлой теме запуск начинается с тёмной вспышки
+        cachedTheme = p[Keys.THEME]
         // идентификатор устройства для учёта в панели: один на установку
         cachedHwid = p[Keys.HWID] ?: java.util.UUID.randomUUID().toString().also { generated ->
             context.dataStore.edit { it[Keys.HWID] = generated }
@@ -83,6 +91,17 @@ class AppPrefs(private val context: Context) {
         context.dataStore.data.map { it[Keys.SELECTED_SUBSCRIPTION] }
 
     /** Режим раздельного туннелирования: ALL / ONLY_SELECTED / EXCEPT_SELECTED. */
+    /**
+     * Выбранная тема оформления. Пусто — значит человек её не трогал: тогда
+     * тему подбирает сам экран, а не хранилище.
+     */
+    val themeFlow: Flow<String?> = context.dataStore.data.map { it[Keys.THEME] }
+
+    suspend fun setTheme(id: String) {
+        cachedTheme = id
+        context.dataStore.edit { it[Keys.THEME] = id }
+    }
+
     val splitModeFlow: Flow<String> =
         context.dataStore.data.map { it[Keys.SPLIT_MODE] ?: "ALL" }
 

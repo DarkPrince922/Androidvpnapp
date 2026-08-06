@@ -20,7 +20,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Живой фон приложения: несколько мягких световых пятен в цветах логотипа
+ * Живой фон приложения: два мягких световых пятна в цветах текущей темы
  * медленно плывут по экрану. Рисуется на Canvas, поэтому не создаёт
  * дополнительных слоёв композиции и почти не нагружает отрисовку.
  */
@@ -29,6 +29,7 @@ fun AnimatedBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val palette = LocalPalette.current
     val transition = rememberInfiniteTransition(label = "background")
 
     val phase by transition.animateFloat(
@@ -55,16 +56,16 @@ fun AnimatedBackground(
         modifier = modifier
             .fillMaxSize()
             .drawBehind {
-                drawRect(BrandColors.Background)
+                drawRect(palette.background)
 
                 val w = size.width
                 val h = size.height
                 val radius = maxOf(w, h) * 0.55f * breath
 
-                // золотое пятно — движется по широкой дуге сверху
+                // первое пятно — движется по широкой дуге сверху
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(BrandColors.Gold.copy(alpha = 0.16f), Color.Transparent),
+                        colors = listOf(palette.glowA.copy(alpha = palette.glowAlpha), Color.Transparent),
                         center = Offset(
                             x = w * (0.5f + 0.28f * cos(phase)),
                             y = h * (0.22f + 0.10f * sin(phase)),
@@ -78,10 +79,13 @@ fun AnimatedBackground(
                     ),
                 )
 
-                // холодное свечение — в противофазе, ближе к низу
+                // второе — в противофазе, ближе к низу
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(BrandColors.Glow.copy(alpha = 0.14f), Color.Transparent),
+                        colors = listOf(
+                            palette.glowB.copy(alpha = palette.glowAlpha * 0.9f),
+                            Color.Transparent,
+                        ),
                         center = Offset(
                             x = w * (0.5f - 0.32f * cos(phase * 0.7f)),
                             y = h * (0.78f + 0.09f * sin(phase * 0.9f)),
