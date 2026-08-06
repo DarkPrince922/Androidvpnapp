@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -137,6 +138,69 @@ fun TagChip(
             .background(tint.copy(alpha = 0.13f))
             .padding(horizontal = 10.dp, vertical = 5.dp),
     )
+}
+
+/**
+ * Задержка до сервера — «таблеткой» со шкалой качества.
+ *
+ * Голое число рядом с названием читалось как случайная цифра: чтобы понять,
+ * хороший это сервер или плохой, приходилось сравнивать строки глазами.
+ * Здесь то же значение, но сразу с ответом: три палочки показывают качество,
+ * подложка — цветом. Пороги те же, что были у текста.
+ *
+ * Отрицательное значение означает, что узел не ответил.
+ */
+@Composable
+fun PingChip(millis: Long, modifier: Modifier = Modifier) {
+    val unreachable = millis < 0
+    val tint = when {
+        unreachable -> MaterialTheme.colorScheme.error
+        millis < 300 -> BrandColors.Success
+        millis < 700 -> BrandColors.Warning
+        else -> MaterialTheme.colorScheme.error
+    }
+    // сколько палочек горит: чем меньше задержка, тем выше шкала
+    val bars = when {
+        unreachable -> 0
+        millis < 300 -> 3
+        millis < 700 -> 2
+        else -> 1
+    }
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(9.dp))
+            .background(tint.copy(alpha = 0.13f))
+            .border(1.dp, tint.copy(alpha = 0.3f), RoundedCornerShape(9.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp)
+            // ширина под «1000 мс»: без неё строки списка дёргались бы,
+            // когда у соседних серверов разное число цифр
+            .widthIn(min = 68.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            listOf(5.dp, 8.dp, 11.dp).forEachIndexed { index, barHeight ->
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(barHeight)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(if (index < bars) tint else tint.copy(alpha = 0.25f)),
+                )
+            }
+        }
+        Text(
+            text = if (unreachable) "нет" else "$millis мс",
+            style = MaterialTheme.typography.labelMedium,
+            color = tint,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+    }
 }
 
 /**

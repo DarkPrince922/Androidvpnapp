@@ -32,12 +32,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.ui.theme.BrandColors
 import com.darkprince.vpn.ui.theme.EmojiTile
+import com.darkprince.vpn.ui.theme.PingChip
 import com.darkprince.vpn.ui.theme.SectionHeader
 import com.darkprince.vpn.ui.theme.TagChip
 import com.darkprince.vpn.ui.theme.leadingEmoji
@@ -156,16 +156,7 @@ internal fun ServerRow(
 
         ping?.let {
             Spacer(Modifier.width(8.dp))
-            Text(
-                text = if (it < 0) "—" else "$it мс",
-                style = MaterialTheme.typography.labelLarge,
-                color = when {
-                    it < 0 -> MaterialTheme.colorScheme.error
-                    it < 300 -> Color(0xFF34A853)
-                    it < 700 -> Color(0xFFF9A825)
-                    else -> MaterialTheme.colorScheme.error
-                },
-            )
+            PingChip(it)
         }
         if (selected) {
             Spacer(Modifier.width(8.dp))

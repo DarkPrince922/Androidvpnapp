@@ -18,6 +18,9 @@ object BrandColors {
     val TextPrimary = Color(0xFFEDF0F7)
     val TextSecondary = Color(0xFF9AA6BD)
     val Success = Color(0xFF3FB68B)
+    // «средне»: между Success и Danger, приглушённый под остальную палитру —
+    // чистый жёлтый рядом с золотым акцентом выглядел бы грязно
+    val Warning = Color(0xFFE0A94A)
     val Danger = Color(0xFFE05B5B)
 }
 
