@@ -27,6 +27,7 @@ import okhttp3.WebSocketListener
 import org.json.JSONObject
 import retrofit2.HttpException
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
 
 data class PendingSupportAttachment(
