@@ -51,25 +51,21 @@ jobs:
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
 
+      # Собираем, но не выгружаем: неподписанный APK всё равно не установить,
+      # зато сама сборка проверяет то, чего не видно в debug — минификацию и
+      # правила R8. Ломается это регулярно, поэтому шаг остаётся.
       - name: Build release APK (unsigned)
         run: ./gradlew --no-daemon assembleRelease
 
-      # retention-days у всех выгрузок: по умолчанию GitHub держит артефакты
-      # 90 дней, а квота хранилища общая на весь аккаунт — пары сотен мегабайт
-      # с каждого пуша хватало, чтобы она кончилась и прогоны начали падать.
-      # Неделя перекрывает всё, ради чего эти файлы вообще качают.
+      # retention-days: по умолчанию GitHub держит артефакты 90 дней, а квота
+      # хранилища общая на весь аккаунт — пары сотен мегабайт с каждого пуша
+      # хватало, чтобы она кончилась и прогоны начали падать на выгрузке.
+      # Неделя перекрывает всё, ради чего этот файл вообще качают.
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 7
-
-      - name: Upload release APK (unsigned)
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release-unsigned
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 7
 
       - name: Publish build status
