@@ -94,7 +94,7 @@ fun ServersScreen(viewModel: HomeViewModel) {
                     ServerRow(
                         server = server,
                         selected = index == state.selectedServer,
-                        ping = state.pings[index],
+                        ping = state.pings[server.key],
                         onClick = { viewModel.selectServer(index) },
                     )
                 }

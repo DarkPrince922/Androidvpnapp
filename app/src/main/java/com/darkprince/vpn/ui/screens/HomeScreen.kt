@@ -596,7 +596,7 @@ private fun ServerPickerDialog(
                             ServerRow(
                                 server = server,
                                 selected = index == state.selectedServer,
-                                ping = state.pings[index],
+                                ping = state.pings[server.key],
                                 onClick = {
                                     if (index == state.selectedServer) onDismiss()
                                     else onSelect(index)

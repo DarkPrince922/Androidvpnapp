@@ -34,7 +34,8 @@ data class HomeUiState(
     val selectedServer: Int = 0,
     val loading: Boolean = false,
     val error: String? = null,
-    val pings: Map<Int, Long> = emptyMap(),
+    /** Задержки по устойчивому имени узла, а не по номеру в списке. */
+    val pings: Map<String, Long> = emptyMap(),
     val pinging: Boolean = false,
     /** Подписки пользователя; переключатель показываем, когда их больше одной. */
     val subscriptions: List<SubscriptionListItem> = emptyList(),
@@ -84,8 +85,7 @@ class HomeViewModel : ViewModel() {
             // 1) мгновенно показываем сохранённую подписку (работает офлайн)
             val cachedId = prefs.selectedSubscriptionFlow.first()
             subRepo.cachedServersFor(cachedId)?.let { (cachedServers, cachedInfo) ->
-                val selected = prefs.selectedServerFor(cachedId)
-                    .coerceIn(0, (cachedServers.size - 1).coerceAtLeast(0))
+                val selected = resolveSelected(cachedId, cachedServers)
                 _state.value = _state.value.copy(
                     servers = cachedServers,
                     subUserInfo = cachedInfo ?: _state.value.subUserInfo,
@@ -95,7 +95,9 @@ class HomeViewModel : ViewModel() {
 
             // 2) фоном обновляем из сети
             var error: String? = null
-            val subs = subRepo.subscriptions()
+            // null — список спросить не удалось; оставляем прежний, иначе
+            // подписки пропадут с экрана из-за одной сетевой заминки
+            val subs = subRepo.subscriptions() ?: _state.value.subscriptions
             var selectedId = prefs.selectedSubscriptionFlow.first()
             if (subs.isNotEmpty() && subs.none { it.id == selectedId }) {
                 // выбранной подписки больше нет — берём активную, иначе первую
@@ -122,8 +124,7 @@ class HomeViewModel : ViewModel() {
             val userInfo = fresh?.second ?: _state.value.subUserInfo
             // если данные в итоге есть — сетевую ошибку не показываем
             if (servers.isNotEmpty()) error = null
-            val selected = prefs.selectedServerFor(selectedId)
-                .coerceIn(0, (servers.size - 1).coerceAtLeast(0))
+            val selected = resolveSelected(selectedId, servers)
             _state.value = _state.value.copy(
                 subscription = sub,
                 subUserInfo = userInfo,
@@ -153,23 +154,49 @@ class HomeViewModel : ViewModel() {
             subRepo.selectSubscription(id)
             // серверы этой подписки уже могут лежать в кэше — показываем сразу
             val cached = subRepo.cachedServersFor(id)
+            val cachedServers = cached?.first ?: emptyList()
             _state.value = _state.value.copy(
                 selectedSubscriptionId = id,
-                servers = cached?.first ?: emptyList(),
+                servers = cachedServers,
                 subUserInfo = cached?.second,
-                selectedServer = prefs.selectedServerFor(id),
+                selectedServer = resolveSelected(id, cachedServers),
                 pings = emptyMap(),
             )
             refresh(forceServers = true)
         }
     }
 
+    /**
+     * Номер выбранного узла в текущем списке.
+     *
+     * Хранится имя, а не номер: в панели узлы переставляют, и номер после
+     * этого указывал бы на другую страну. Если сохранённого имени в списке
+     * нет — узел убрали или переименовали, берём первый.
+     *
+     * Заодно переносит старый выбор, сохранённый номером, на имя — один раз
+     * при первом запуске после обновления.
+     */
+    private suspend fun resolveSelected(subId: Long?, servers: List<ProxyProfile>): Int {
+        if (servers.isEmpty()) return 0
+        val savedKey = prefs.selectedServerKeyFor(subId)
+        if (savedKey != null) {
+            // -1 от indexOfFirst означает «такого узла больше нет» — берём первый
+            return servers.indexOfFirst { it.key == savedKey }.coerceAtLeast(0)
+        }
+        val legacy = prefs.selectedServerFor(subId).coerceIn(0, servers.size - 1)
+        prefs.setSelectedServerKeyFor(subId, servers[legacy].key)
+        return legacy
+    }
+
     fun selectServer(index: Int) {
         viewModelScope.launch {
-            prefs.setSelectedServerFor(_state.value.selectedSubscriptionId, index)
+            val subId = _state.value.selectedSubscriptionId
+            val chosen = _state.value.servers.getOrNull(index)
+            prefs.setSelectedServerFor(subId, index)
+            if (chosen != null) prefs.setSelectedServerKeyFor(subId, chosen.key)
             _state.value = _state.value.copy(selectedServer = index)
             // при активном VPN сразу переключаемся на выбранный сервер
-            val profile = _state.value.servers.getOrNull(index)
+            val profile = chosen
             val vpnActive = VpnStateStore.state.value == VpnState.CONNECTED ||
                 VpnStateStore.state.value == VpnState.CONNECTING
             if (profile != null && vpnActive) {
@@ -192,10 +219,10 @@ class HomeViewModel : ViewModel() {
         _state.value = _state.value.copy(pinging = true, pings = emptyMap())
         viewModelScope.launch(Dispatchers.IO) {
             CoreEnv.ensure(ServiceLocator.appContext)
-            val results = ConcurrentHashMap<Int, Long>()
+            val results = ConcurrentHashMap<String, Long>()
             val semaphore = Semaphore(3)
             coroutineScope {
-                servers.forEachIndexed { index, profile ->
+                servers.forEach { profile ->
                     launch {
                         semaphore.withPermit {
                             val ms = try {
@@ -206,7 +233,7 @@ class HomeViewModel : ViewModel() {
                             } catch (_: Throwable) {
                                 -1L
                             }
-                            results[index] = ms
+                            results[profile.key] = ms
                             _state.value = _state.value.copy(pings = results.toMap())
                         }
                     }

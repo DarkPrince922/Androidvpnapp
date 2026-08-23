@@ -61,13 +61,20 @@ class SubscriptionRepository(
 
     suspend fun status(): SubscriptionStatusResponse = api.subscription()
 
-    /** Список подписок пользователя; пусто без аккаунта и без мультитарифа. */
-    suspend fun subscriptions(): List<SubscriptionListItem> {
+    /**
+     * Список подписок пользователя. Пустой — подписок правда нет; null —
+     * спросить не удалось.
+     *
+     * Разница принципиальна: раньше сетевая заминка возвращала пустой список,
+     * и подписки пропадали с экрана у человека, у которого они есть. Теперь
+     * при неудаче экран оставляет прежний список.
+     */
+    suspend fun subscriptions(): List<SubscriptionListItem>? {
         if (!isLoggedIn) return emptyList()
         return try {
             api.subscriptions().subscriptions
         } catch (_: Exception) {
-            emptyList()
+            null
         }
     }
 
@@ -125,7 +132,7 @@ class SubscriptionRepository(
      * и работало без сети. Ошибки по отдельной подписке не прерывают остальные.
      */
     suspend fun prefetchAllSubscriptions() = withContext(Dispatchers.IO) {
-        for (sub in subscriptions()) {
+        for (sub in subscriptions().orEmpty()) {
             val url = sub.subscriptionUrl ?: continue
             try {
                 downloadSubscription(sub.id, url)

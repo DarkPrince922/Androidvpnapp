@@ -143,6 +143,7 @@ class AppPrefs(private val context: Context) {
     private fun subUrlKey(subId: Long?) = stringPreferencesKey("sub_url_${subId ?: "default"}")
     private fun userInfoKey(subId: Long?) = stringPreferencesKey("sub_userinfo_${subId ?: "default"}")
     private fun serverIndexKey(subId: Long?) = intPreferencesKey("selected_server_${subId ?: "default"}")
+    private fun serverKeyKey(subId: Long?) = stringPreferencesKey("selected_server_key_${subId ?: "default"}")
 
     suspend fun serversRawFor(subId: Long?): String? =
         context.dataStore.data.first()[serversKey(subId)] ?: context.dataStore.data.first()[Keys.SERVERS_RAW]
@@ -185,6 +186,14 @@ class AppPrefs(private val context: Context) {
 
     suspend fun setSelectedServerFor(subId: Long?, index: Int) {
         context.dataStore.edit { it[serverIndexKey(subId)] = index }
+    }
+
+    /** Выбранный узел по имени. null — выбор ещё не переносили со старого формата. */
+    suspend fun selectedServerKeyFor(subId: Long?): String? =
+        context.dataStore.data.first()[serverKeyKey(subId)]
+
+    suspend fun setSelectedServerKeyFor(subId: Long?, key: String) {
+        context.dataStore.edit { it[serverKeyKey(subId)] = key }
     }
     val selectedServerFlow: Flow<Int> = context.dataStore.data.map { it[Keys.SELECTED_SERVER] ?: 0 }
 
@@ -243,12 +252,32 @@ class AppPrefs(private val context: Context) {
         context.dataStore.edit { it[Keys.SELECTED_SERVER] = index }
     }
 
+    /**
+     * Полностью забывает всё, что относилось к прошлому аккаунту.
+     *
+     * Данные подписок лежат под ключами, в имя которых входит её номер, —
+     * перечислить их заранее нельзя, поэтому идём по префиксам. Без этого
+     * человек выходил из аккаунта, заходил в другой и видел чужую подписку:
+     * остаток трафика, срок и список серверов оставались от предыдущего.
+     */
     suspend fun clearSession() {
         setTokens(null, null, null)
         context.dataStore.edit { p: androidx.datastore.preferences.core.MutablePreferences ->
             p.remove(Keys.USER_JSON)
             p.remove(Keys.SUB_URL)
             p.remove(Keys.SERVERS_RAW)
+            p.remove(Keys.SUB_USERINFO)
+            p.remove(Keys.SELECTED_SUBSCRIPTION)
+            p.remove(Keys.SELECTED_SERVER)
+            val prefixes = listOf(
+                "servers_raw_",
+                "sub_url_",
+                "sub_userinfo_",
+                "selected_server_",
+                "selected_server_key_",
+            )
+            val stale = p.asMap().keys.filter { key -> prefixes.any { key.name.startsWith(it) } }
+            stale.forEach { p.remove(it) }
         }
     }
 }
