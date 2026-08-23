@@ -46,6 +46,14 @@ data class HomeUiState(
             ?: subscriptions.firstOrNull()
 }
 
+/**
+ * Короткое сообщение об итоге ручного обновления.
+ *
+ * Раньше нажатие на «обновить» заканчивалось молча: если данные не менялись,
+ * человек не мог отличить успешное обновление от того, что кнопка не сработала.
+ */
+data class Notice(val text: String, val ok: Boolean)
+
 class HomeViewModel : ViewModel() {
     private val subRepo = ServiceLocator.subscriptionRepository
     private val prefs = ServiceLocator.prefs
@@ -74,13 +82,27 @@ class HomeViewModel : ViewModel() {
     private val _updateProgress = MutableStateFlow(0L to 0L)
     val updateProgress: StateFlow<Pair<Long, Long>> = _updateProgress
 
+    /** Итог последнего обновления по кнопке. null — показывать нечего. */
+    private val _notice = MutableStateFlow<Notice?>(null)
+    val notice: StateFlow<Notice?> = _notice
+
+    fun consumeNotice() {
+        _notice.value = null
+    }
+
     init {
         checkUpdate()
         refresh(forceServers = true)
     }
 
-    fun refresh(forceServers: Boolean = false) {
+    /**
+     * @param notify показать итог сообщением. Нужно, когда обновление запросил
+     * человек кнопкой: автоматическое обновление при открытии экрана молчит,
+     * иначе сообщение всплывало бы при каждом входе.
+     */
+    fun refresh(forceServers: Boolean = false, notify: Boolean = false) {
         _state.value = _state.value.copy(loading = true, error = null)
+        if (notify) _notice.value = null
         viewModelScope.launch {
             // 1) мгновенно показываем сохранённую подписку (работает офлайн)
             val cachedId = prefs.selectedSubscriptionFlow.first()
@@ -122,6 +144,16 @@ class HomeViewModel : ViewModel() {
             }
             val servers = fresh?.first ?: _state.value.servers
             val userInfo = fresh?.second ?: _state.value.subUserInfo
+            // Итог считаем до того, как ошибку погасит кэш: для полосы «ошибка
+            // или нет» важно, дошли ли мы до сервера, а не осталось ли что
+            // показать на экране.
+            if (notify) {
+                _notice.value = if (fresh != null) {
+                    Notice("Подписка обновлена", ok = true)
+                } else {
+                    Notice(error ?: "Не удалось обновить подписку", ok = false)
+                }
+            }
             // если данные в итоге есть — сетевую ошибку не показываем
             if (servers.isNotEmpty()) error = null
             val selected = resolveSelected(selectedId, servers)

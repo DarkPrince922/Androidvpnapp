@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -169,24 +170,23 @@ fun PingChip(millis: Long, modifier: Modifier = Modifier) {
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(9.dp))
-            .background(tint.copy(alpha = 0.13f))
-            .border(1.dp, tint.copy(alpha = 0.3f), RoundedCornerShape(9.dp))
-            .padding(horizontal = 8.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(tint.copy(alpha = 0.12f))
+            .padding(horizontal = 7.dp, vertical = 4.dp)
             // ширина под «1000 мс»: без неё строки списка дёргались бы,
             // когда у соседних серверов разное число цифр
-            .widthIn(min = 68.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .widthIn(min = 58.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            listOf(5.dp, 8.dp, 11.dp).forEachIndexed { index, barHeight ->
+            listOf(4.dp, 6.5.dp, 9.dp).forEachIndexed { index, barHeight ->
                 Box(
                     Modifier
-                        .width(3.dp)
+                        .width(2.5.dp)
                         .height(barHeight)
                         .clip(RoundedCornerShape(2.dp))
                         .background(if (index < bars) tint else tint.copy(alpha = 0.25f)),
@@ -195,10 +195,36 @@ fun PingChip(millis: Long, modifier: Modifier = Modifier) {
         }
         Text(
             text = if (unreachable) "нет" else "$millis мс",
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
             color = tint,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Место под задержку, пока идёт замер.
+ *
+ * Занимает ровно столько же, сколько готовый чип: иначе строки списка
+ * прыгали бы по мере того, как узлы отвечают один за другим.
+ */
+@Composable
+fun PingPendingChip(modifier: Modifier = Modifier) {
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(tint.copy(alpha = 0.10f))
+            .padding(horizontal = 7.dp, vertical = 4.dp)
+            .widthIn(min = 58.dp)
+            .height(17.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(11.dp),
+            strokeWidth = 1.5.dp,
+            color = tint,
         )
     }
 }

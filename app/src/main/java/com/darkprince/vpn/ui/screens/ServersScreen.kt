@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,15 +38,24 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.ui.theme.EmojiTile
 import com.darkprince.vpn.ui.theme.PingChip
+import com.darkprince.vpn.ui.theme.PingPendingChip
 import com.darkprince.vpn.ui.theme.SectionHeader
 import com.darkprince.vpn.ui.theme.TagChip
 import com.darkprince.vpn.ui.theme.leadingEmoji
 import com.darkprince.vpn.ui.theme.nameWithoutEmoji
 import com.darkprince.vpn.ui.vm.HomeViewModel
+import kotlinx.coroutines.delay
 
 @Composable
 fun ServersScreen(viewModel: HomeViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val notice by viewModel.notice.collectAsStateWithLifecycle()
+
+    LaunchedEffect(notice) {
+        val shown = notice ?: return@LaunchedEffect
+        delay(if (shown.ok) 2500 else 4500)
+        viewModel.consumeNotice()
+    }
 
     Column(
         modifier = Modifier
@@ -71,11 +81,15 @@ fun ServersScreen(viewModel: HomeViewModel) {
                         Icon(Icons.Default.Speed, contentDescription = "Проверить пинг")
                     }
                 }
-                IconButton(onClick = { viewModel.refresh(forceServers = true) }) {
+                IconButton(onClick = { viewModel.refresh(forceServers = true, notify = true) }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Обновить список")
                 }
             }
         }
+
+        // тот же итог обновления, что и на главной: кнопка здесь такая же,
+        // и молчать в ответ на неё было бы так же непонятно
+        notice?.let { NoticeBar(it) }
 
         Spacer(Modifier.height(4.dp))
 
@@ -95,6 +109,7 @@ fun ServersScreen(viewModel: HomeViewModel) {
                         server = server,
                         selected = index == state.selectedServer,
                         ping = state.pings[server.key],
+                        pinging = state.pinging,
                         onClick = { viewModel.selectServer(index) },
                     )
                 }
@@ -113,6 +128,7 @@ internal fun ServerRow(
     selected: Boolean,
     ping: Long?,
     onClick: () -> Unit,
+    pinging: Boolean = false,
 ) {
     val accent = MaterialTheme.colorScheme.primary
     val borderColor by animateColorAsState(
@@ -153,9 +169,16 @@ internal fun ServerRow(
             }
         }
 
-        ping?.let {
-            Spacer(Modifier.width(8.dp))
-            PingChip(it)
+        // пока идёт замер — заглушка того же размера, чтобы строки не прыгали
+        when {
+            ping != null -> {
+                Spacer(Modifier.width(8.dp))
+                PingChip(ping)
+            }
+            pinging -> {
+                Spacer(Modifier.width(8.dp))
+                PingPendingChip()
+            }
         }
         if (selected) {
             Spacer(Modifier.width(8.dp))

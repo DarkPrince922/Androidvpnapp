@@ -22,24 +22,22 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
@@ -55,6 +53,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,7 +77,9 @@ import com.darkprince.vpn.ui.theme.TagChip
 import com.darkprince.vpn.ui.theme.leadingEmoji
 import com.darkprince.vpn.ui.theme.nameWithoutEmoji
 import com.darkprince.vpn.ui.vm.HomeViewModel
+import com.darkprince.vpn.ui.vm.Notice
 import com.darkprince.vpn.vpn.VpnState
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 fun formatBytes(bytes: Long): String {
@@ -104,7 +105,17 @@ fun HomeScreen(
     val updateBusy by viewModel.updateBusy.collectAsStateWithLifecycle()
     val updateError by viewModel.updateError.collectAsStateWithLifecycle()
     val updateProgress by viewModel.updateProgress.collectAsStateWithLifecycle()
-    var serverPickerOpen by remember { mutableStateOf(false) }
+    val notice by viewModel.notice.collectAsStateWithLifecycle()
+
+    // Текст переживает саму полосу: пока она уезжает, ей нужно что-то рисовать.
+    var lastNotice by remember { mutableStateOf<Notice?>(null) }
+    LaunchedEffect(notice) {
+        val shown = notice ?: return@LaunchedEffect
+        lastNotice = shown
+        // ошибку читать дольше, чем «обновлено»
+        delay(if (shown.ok) 2500 else 4500)
+        viewModel.consumeNotice()
+    }
 
     // Приложения нет в Google Play, и кроме нас сказать о новой версии
     // некому — поэтому спрашиваем окном, а не строкой где-то внизу.
@@ -120,26 +131,16 @@ fun HomeScreen(
         )
     }
 
-    if (serverPickerOpen) {
-        ServerPickerDialog(
-            state = state,
-            onSelect = { index ->
-                viewModel.selectServer(index)
-                serverPickerOpen = false
-            },
-            onRefresh = { viewModel.refresh(forceServers = true) },
-            onPing = viewModel::pingAll,
-            onDismiss = { serverPickerOpen = false },
-        )
-    }
-
-    Column(
+    // LazyColumn, а не прокручиваемая Column: список серверов теперь живёт
+    // прямо здесь, и при полусотне узлов рисовать их все разом незачем.
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+      item {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(12.dp))
 
         PowerButton(
@@ -181,20 +182,38 @@ fun HomeScreen(
         }
 
         Spacer(Modifier.height(28.dp))
+        }
+      }
 
+      item {
         Column(Modifier.fillMaxWidth()) {
             SectionHeader("Текущая подписка")
             Appear {
                 SubscriptionCard(
                     state = state,
-                    onRefresh = { viewModel.refresh(forceServers = true) },
+                    onRefresh = { viewModel.refresh(forceServers = true, notify = true) },
                     onPing = { viewModel.pingAll() },
                     onSelectSubscription = { viewModel.selectSubscription(it) },
-                    onChooseServer = { serverPickerOpen = true },
                 )
             }
         }
+      }
 
+      item {
+        // Полоса гаснет сама: держать её до следующего нажатия незачем,
+        // а закрывать вручную — лишнее действие ради сообщения на секунду.
+        AnimatedVisibility(
+            visible = notice != null,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            // при исчезновении показываем последний непустой текст, иначе
+            // строка успела бы опустеть до конца анимации
+            lastNotice?.let { NoticeBar(it) }
+        }
+      }
+
+      item {
         state.error?.let {
             Spacer(Modifier.height(12.dp))
             Text(
@@ -204,8 +223,63 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+      }
 
-        Spacer(Modifier.height(24.dp))
+      // --- Серверы прямо на главной, без отдельного окна ---
+      item {
+        Spacer(Modifier.height(22.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SectionHeader(
+                if (state.servers.isEmpty()) "Серверы"
+                else "Серверы · ${state.servers.size}"
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (state.pinging) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                } else {
+                    IconButton(onClick = { viewModel.pingAll() }) {
+                        Icon(Icons.Default.Speed, contentDescription = "Проверить пинг")
+                    }
+                }
+                IconButton(onClick = { viewModel.refresh(forceServers = true, notify = true) }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Обновить список")
+                }
+            }
+        }
+      }
+
+      if (state.servers.isEmpty()) {
+        item {
+            Text(
+                "Список серверов пуст. Проверьте подписку.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+      } else {
+        itemsIndexed(state.servers, key = { _, server -> server.key }) { index, server ->
+            Box(Modifier.padding(bottom = 10.dp)) {
+                ServerRow(
+                    server = server,
+                    selected = index == state.selectedServer,
+                    ping = state.pings[server.key],
+                    pinging = state.pinging,
+                    onClick = { viewModel.selectServer(index) },
+                )
+            }
+        }
+      }
+
+      item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -358,7 +432,6 @@ private fun SubscriptionCard(
     onRefresh: () -> Unit,
     onPing: () -> Unit,
     onSelectSubscription: (Long) -> Unit,
-    onChooseServer: () -> Unit,
 ) {
     val accent = MaterialTheme.colorScheme.primary
     // при нескольких подписках общий статус кабинета относится не к той,
@@ -497,12 +570,12 @@ private fun SubscriptionCard(
 
         Spacer(Modifier.height(10.dp))
 
-        // выбранный сервер — тем же видом, что и строки на экране серверов
+        // Текущий сервер — просто напоминание, куда подключаемся. Выбирают
+        // теперь в списке ниже на этом же экране, поэтому строка не нажимается.
         val selected = state.servers.getOrNull(state.selectedServer)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onChooseServer)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -524,93 +597,44 @@ private fun SubscriptionCard(
                     }
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                Icons.Default.ExpandMore,
-                contentDescription = "Выбрать сервер",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
 
 /**
- * Выбор сервера поверх главного экрана. Пользователь остаётся в контексте
- * подключения, а при активном VPN HomeViewModel сразу переключает узел.
+ * Итог обновления подписки одной строкой.
+ *
+ * Обновление чаще всего ничего не меняет на экране, и без такой строки
+ * нажатие на кнопку выглядит как «ничего не произошло» — что при ошибке
+ * сети неотличимо от успеха.
  */
 @Composable
-private fun ServerPickerDialog(
-    state: com.darkprince.vpn.ui.vm.HomeUiState,
-    onSelect: (Int) -> Unit,
-    onRefresh: () -> Unit,
-    onPing: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Выберите сервер") },
-        text = {
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Доступно: ${state.servers.size}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (state.pinging) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        IconButton(onClick = onPing) {
-                            Icon(Icons.Default.Speed, contentDescription = "Проверить пинг")
-                        }
-                    }
-                    IconButton(onClick = onRefresh) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Обновить список")
-                    }
-                }
+internal fun NoticeBar(notice: Notice) {
+    val tint = if (notice.ok) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.error
 
-                Spacer(Modifier.height(8.dp))
-
-                if (state.servers.isEmpty()) {
-                    Text(
-                        "Список серверов пуст. Обновите подписку.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 440.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 2.dp),
-                    ) {
-                        itemsIndexed(
-                            items = state.servers,
-                            key = { index, server -> "${server.name}:$index" },
-                        ) { index, server ->
-                            ServerRow(
-                                server = server,
-                                selected = index == state.selectedServer,
-                                ping = state.pings[server.key],
-                                onClick = {
-                                    if (index == state.selectedServer) onDismiss()
-                                    else onSelect(index)
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Закрыть") }
-        },
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(tint.copy(alpha = 0.12f))
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            if (notice.ok) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            notice.text,
+            style = MaterialTheme.typography.bodySmall,
+            color = tint,
+        )
+    }
 }
 
 /**
