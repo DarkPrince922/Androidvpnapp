@@ -39,7 +39,7 @@ class DevicesViewModel : ViewModel() {
     fun load(subscriptionId: Long? = _state.value.selectedSubscriptionId) {
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            val subs = repo.subscriptions()
+            val subs = repo.subscriptions().orEmpty()
             val targetId = subscriptionId
                 ?: subs.firstOrNull { it.isActive }?.id
                 ?: subs.firstOrNull()?.id

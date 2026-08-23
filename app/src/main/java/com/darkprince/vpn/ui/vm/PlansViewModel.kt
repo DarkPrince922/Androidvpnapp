@@ -114,7 +114,7 @@ class PlansViewModel : ViewModel() {
                 val trial = trialDeferred.await()
                 val devices = devicesDeferred.await()
                 val trafficPackages = trafficDeferred.await()
-                val subs = subsDeferred.await()
+                val subs = subsDeferred.await().orEmpty()
                 val owned = subs.filter { it.isActive }.mapNotNull { it.tariffId }.toSet()
                 val deviceLimit = devices?.deviceLimit
                     ?: subs.firstOrNull { it.isActive }?.deviceLimit

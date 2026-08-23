@@ -57,7 +57,9 @@ fun ShareSubscriptionScreen(
     // варианты для шаринга: каждая подписка со своей ссылкой
     val targets by produceState<List<ShareTarget>?>(initialValue = null) {
         val repo = ServiceLocator.subscriptionRepository
-        val subs: List<SubscriptionListItem> = repo.subscriptions()
+        // не смогли спросить — тот же путь, что и «подписок нет»: ниже есть
+        // запасной вариант с единственной ссылкой
+        val subs: List<SubscriptionListItem> = repo.subscriptions().orEmpty()
         value = if (subs.isNotEmpty()) {
             subs.filter { !it.subscriptionUrl.isNullOrBlank() }
                 .map { ShareTarget(it.displayName, it.subscriptionUrl!!) }

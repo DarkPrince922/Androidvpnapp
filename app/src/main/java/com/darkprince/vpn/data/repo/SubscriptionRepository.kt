@@ -158,7 +158,7 @@ class SubscriptionRepository(
     private suspend fun ownSubscriptionUrl(): String? {
         val selectedId = prefs.selectedSubscriptionFlow.first()
         if (selectedId != null) {
-            val fromList = subscriptions().firstOrNull { it.id == selectedId }?.subscriptionUrl
+            val fromList = subscriptions().orEmpty().firstOrNull { it.id == selectedId }?.subscriptionUrl
             if (fromList != null) {
                 prefs.setSubUrlFor(selectedId, fromList)
                 return fromList
