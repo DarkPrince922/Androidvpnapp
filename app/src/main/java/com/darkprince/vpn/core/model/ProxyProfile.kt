@@ -38,6 +38,13 @@ data class ProxyProfile(
      * панели; приложение только подменяет inbounds на свой SOCKS.
      */
     val rawConfig: String? = null,
+    /**
+     * Server Description — подпись узла из панели Remnawave.
+     *
+     * Задаётся каждому хосту отдельно и приходит только в формате
+     * XRAY_JSON: в ссылке vless:// такого поля нет вовсе.
+     */
+    val serverDescription: String? = null,
 ) {
     /**
      * Устойчивое имя узла: по нему запоминается выбор пользователя.

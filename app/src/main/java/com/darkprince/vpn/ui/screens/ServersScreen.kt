@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.core.model.ProxyProfile
@@ -160,6 +161,17 @@ internal fun ServerRow(
                 nameWithoutEmoji(server.name),
                 style = MaterialTheme.typography.titleSmall,
             )
+            // подпись узла из панели Remnawave, если её там задали
+            server.serverDescription?.let { note ->
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 TagChip(server.transportLabel, tint = MaterialTheme.colorScheme.secondary)

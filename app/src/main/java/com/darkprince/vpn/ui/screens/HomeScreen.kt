@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -65,11 +66,13 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.ui.theme.Appear
 import com.darkprince.vpn.ui.theme.LocalPalette
 import com.darkprince.vpn.ui.theme.CircleActionButton
+import com.darkprince.vpn.ui.theme.ConnectionMap
 import com.darkprince.vpn.ui.theme.EmojiTile
 import com.darkprince.vpn.ui.theme.GroupCard
 import com.darkprince.vpn.ui.theme.SectionHeader
@@ -141,14 +144,31 @@ fun HomeScreen(
     ) {
       item {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(4.dp))
 
-        PowerButton(
-            vpnState = vpnState,
-            onClick = { if (vpnState == VpnState.CONNECTED) onDisconnectClick() else onConnectClick() },
-        )
+        // Карта за кнопкой: пока туннель опущен, огни городов почти погашены,
+        // при подключении она разгорается и от региона устройства к стране
+        // узла тянется дуга. Кнопка смещена ниже центра полосы — дуга уходит
+        // в верхнюю треть, и они не перекрывают друг друга.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(320.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            ConnectionMap(
+                connected = vpnState == VpnState.CONNECTED,
+                serverName = state.servers.getOrNull(state.selectedServer)?.name,
+                modifier = Modifier.fillMaxSize(),
+            )
+            PowerButton(
+                vpnState = vpnState,
+                onClick = { if (vpnState == VpnState.CONNECTED) onDisconnectClick() else onConnectClick() },
+                modifier = Modifier.offset(y = 30.dp),
+            )
+        }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
         AnimatedContent(
             targetState = when (vpnState) {
@@ -355,7 +375,7 @@ private fun UpdateDialog(
 }
 
 @Composable
-private fun PowerButton(vpnState: VpnState, onClick: () -> Unit) {
+private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val targetColor = when (vpnState) {
         VpnState.CONNECTED -> MaterialTheme.colorScheme.primary
         VpnState.CONNECTING -> MaterialTheme.colorScheme.secondary
@@ -382,7 +402,7 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit) {
     )
 
     Box(
-        modifier = Modifier.size(268.dp),
+        modifier = modifier.size(268.dp),
         contentAlignment = Alignment.Center,
     ) {
         if (vpnState == VpnState.CONNECTED) {
@@ -590,6 +610,18 @@ private fun SubscriptionCard(
                     Text(name, style = MaterialTheme.typography.titleSmall)
                 }
                 selected?.let {
+                    // подпись узла из панели: там её пишут для людей — «1 Гбит»,
+                    // «для игр», — и это полезнее, чем набор меток транспорта
+                    it.serverDescription?.let { note ->
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            note,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         TagChip(it.transportLabel, tint = MaterialTheme.colorScheme.secondary)

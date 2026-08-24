@@ -92,12 +92,19 @@ object LinkParser {
             }
             val name = config["remarks"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
                 ?: address.ifBlank { "Конфиг ${index + 1}" }
+            // Server Description из панели Remnawave лежит в корне конфига.
+            // Оба написания: панель отдаёт camelCase, но в самодельных шаблонах
+            // подписки встречается и с подчёркиванием.
+            val description =
+                (config["serverDescription"] ?: config["server_description"])
+                    ?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             ProxyProfile(
                 protocol = protocol,
                 name = name,
                 address = address.ifBlank { "-" },
                 port = port,
                 userId = "",
+                serverDescription = description,
                 network = network,
                 security = security,
                 rawConfig = config.toString(),
