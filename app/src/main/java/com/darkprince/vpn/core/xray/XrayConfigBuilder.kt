@@ -220,6 +220,12 @@ object XrayConfigBuilder {
                     }
                 }
             }
+            // Hysteria2, TUIC и WireGuard ядро Xray не умеет: это отдельные
+            // протоколы, а не транспорт поверх него. Такие узлы приходят из
+            // панели готовым конфигом и идут в rawConfig — сюда попасть могут
+            // только если конфига не было, и собрать из них нечего.
+            Protocol.HYSTERIA2, Protocol.TUIC, Protocol.WIREGUARD, Protocol.OTHER ->
+                error("Протокол ${p.rawProtocol ?: p.protocol} не поддерживается ядром")
         }
         put("streamSettings", buildStreamSettings(p))
         putJsonObject("mux") { put("enabled", false) }

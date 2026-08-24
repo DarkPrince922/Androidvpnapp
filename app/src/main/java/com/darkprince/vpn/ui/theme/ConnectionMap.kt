@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,11 +16,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.TextLayoutResult
@@ -199,20 +203,33 @@ fun ConnectionMap(
         code?.let { "${flagOf(it)} ${countryTitle(it)}" }
     }
 
-    Canvas(modifier.fillMaxSize()) {
-        val frame = frameFor(source, target, size)
-
-        drawEarth(earth, frame, glow)
-        drawFade(palette.background)
-
-        val to = target?.let { frame.project(it.first, it.second) } ?: return@Canvas
-
-        if (source != null && glow > 0.01f) {
-            drawRoute(frame.project(source.first, source.second), to, accent, glow, spark)
+    Box(modifier) {
+        // Снимок отдельным слоем: его края растворяются в прозрачность, а не
+        // закрашиваются цветом фона. Закрашивание оставляло на экране заметный
+        // прямоугольник — под картой плывут световые пятна общего фона, и
+        // сплошная заливка поверх них читалась как дырка.
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+        ) {
+            drawEarth(earth, frameFor(source, target, size), glow)
+            drawEdgeMask()
         }
-        drawEndpoint(to, accent, glow)
-        if (label != null && glow > 0.05f) {
-            drawLabel(measurer, label, to, accent, glow, palette.panel, palette.scheme.onSurface)
+
+        // Маршрут и подпись — поверх и без маски: подпись у края карты должна
+        // оставаться читаемой, а не растворяться вместе с материками.
+        Canvas(Modifier.fillMaxSize()) {
+            val frame = frameFor(source, target, size)
+            val to = target?.let { frame.project(it.first, it.second) } ?: return@Canvas
+
+            if (source != null && glow > 0.01f) {
+                drawRoute(frame.project(source.first, source.second), to, accent, glow, spark)
+            }
+            drawEndpoint(to, accent, glow)
+            if (label != null && glow > 0.05f) {
+                drawLabel(measurer, label, to, accent, glow, palette.panel, palette.scheme.onSurface)
+            }
         }
     }
 }
@@ -310,23 +327,31 @@ private fun DrawScope.drawEarth(earth: ImageBitmap, frame: MapFrame, glow: Float
     )
 }
 
-/** Растворение краёв в фон, чтобы карта не обрывалась прямоугольником. */
-private fun DrawScope.drawFade(background: Color) {
+/**
+ * Растворение краёв снимка.
+ *
+ * Рисуем не цветом, а вычитанием прозрачности (DstIn): слой уходит в ничто, и
+ * сквозь него видно живой фон приложения. Поэтому Canvas и вынесен в
+ * отдельный слой с Offscreen — иначе вычитать было бы не из чего.
+ */
+private fun DrawScope.drawEdgeMask() {
     drawRect(
         brush = Brush.verticalGradient(
-            0f to background,
-            0.18f to background.copy(alpha = 0f),
-            0.72f to background.copy(alpha = 0f),
-            1f to background,
+            0f to Color.Transparent,
+            0.10f to Color.Black,
+            0.66f to Color.Black,
+            1f to Color.Transparent,
         ),
+        blendMode = BlendMode.DstIn,
     )
     drawRect(
         brush = Brush.horizontalGradient(
-            0f to background,
-            0.12f to background.copy(alpha = 0f),
-            0.88f to background.copy(alpha = 0f),
-            1f to background,
+            0f to Color.Transparent,
+            0.10f to Color.Black,
+            0.90f to Color.Black,
+            1f to Color.Transparent,
         ),
+        blendMode = BlendMode.DstIn,
     )
 }
 
@@ -415,4 +440,42 @@ private fun DrawScope.drawLabel(
         color = onSurface.copy(alpha = glow),
         topLeft = Offset(left + padX, top + padY),
     )
+}
+
+/**
+ * Тот же снимок очень тихим фоном — под список серверов.
+ *
+ * Без него нижняя половина экрана оставалась плоской чёрной плитой, и список
+ * висел в пустоте. Здесь взят другой кусок мира и почти сведён на нет: фон
+ * должен чувствоваться, а не читаться, иначе он спорил бы с названиями узлов.
+ */
+@Composable
+fun QuietMapBackdrop(modifier: Modifier = Modifier) {
+    val earth = ImageBitmap.imageResource(R.drawable.earth_night)
+    Canvas(
+        modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+    ) {
+        // кусок с Атлантикой и Европой: узнаваемо, но без плотных пятен огней
+        val sx = ((-70f + 180f) / 360f * earth.width).roundToInt()
+        val sw = (150f / 360f * earth.width).roundToInt()
+        val sy = ((90f - 62f) / 180f * earth.height).roundToInt()
+        val sh = (70f / 180f * earth.height).roundToInt()
+        drawImage(
+            image = earth,
+            srcOffset = IntOffset(sx, sy),
+            srcSize = IntSize(sw, sh),
+            dstOffset = IntOffset.Zero,
+            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+            alpha = 0.16f,
+            filterQuality = FilterQuality.High,
+        )
+        drawRect(
+            brush = Brush.verticalGradient(
+                0f to Color.Transparent,
+                0.35f to Color.Black,
+                1f to Color.Transparent,
+            ),
+            blendMode = BlendMode.DstIn,
+        )
+    }
 }

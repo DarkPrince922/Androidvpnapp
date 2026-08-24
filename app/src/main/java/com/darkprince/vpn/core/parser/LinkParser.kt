@@ -18,6 +18,12 @@ object LinkParser {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * Выходы, которые есть в любом конфиге Xray и узлом не являются: прямой
+     * выход в интернет, «чёрная дыра» для заблокированного и резолвер.
+     */
+    private val SERVICE_OUTBOUNDS = setOf("freedom", "blackhole", "dns", "loopback")
+
     fun parseSubscriptionContent(content: String): List<ProxyProfile> {
         val text = content.trim()
         // Формат Xray JSON (Happ): массив полных конфигов или один конфиг
@@ -61,6 +67,7 @@ object LinkParser {
             val outbounds = config["outbounds"] as? kotlinx.serialization.json.JsonArray
                 ?: return@mapIndexedNotNull null
             var protocol = Protocol.VLESS
+            var rawProtocol: String? = null
             var address = ""
             var port = 443
             // транспорт и шифрование показываем в списке серверов вместо адреса
@@ -68,22 +75,34 @@ object LinkParser {
             var security = "none"
             for (outbound in outbounds) {
                 val obj = outbound as? kotlinx.serialization.json.JsonObject ?: continue
-                val proto = obj["protocol"]?.jsonPrimitive?.contentOrNull ?: continue
-                val parsed = when (proto) {
+                val proto = obj["protocol"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: continue
+                // служебные выходы есть в каждом конфиге и узлом не являются
+                if (proto in SERVICE_OUTBOUNDS) continue
+                protocol = when (proto) {
                     "vless" -> Protocol.VLESS
                     "vmess" -> Protocol.VMESS
                     "trojan" -> Protocol.TROJAN
                     "shadowsocks" -> Protocol.SHADOWSOCKS
-                    else -> null
-                } ?: continue
-                protocol = parsed
+                    "hysteria2", "hy2" -> Protocol.HYSTERIA2
+                    "tuic" -> Protocol.TUIC
+                    "wireguard" -> Protocol.WIREGUARD
+                    // Незнакомый протокол раньше просто пропускался, и узел
+                    // оставался с заготовкой «vless · tcp» — в списке он врал
+                    // про себя. Теперь показываем то, что прислала панель.
+                    else -> Protocol.OTHER
+                }
+                rawProtocol = proto
                 val settings = obj["settings"] as? kotlinx.serialization.json.JsonObject
+                // vnext — у vless/vmess, servers — у trojan/ss/hysteria2
                 val server = (settings?.get("vnext") as? kotlinx.serialization.json.JsonArray)?.firstOrNull()
                     ?: (settings?.get("servers") as? kotlinx.serialization.json.JsonArray)?.firstOrNull()
                 (server as? kotlinx.serialization.json.JsonObject)?.let { s ->
                     address = s["address"]?.jsonPrimitive?.contentOrNull ?: address
                     port = s["port"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: port
                 }
+                // Hysteria2 и TUIC кладут адрес прямо в settings, без списка
+                address = settings?.get("address")?.jsonPrimitive?.contentOrNull ?: address
+                port = settings?.get("port")?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: port
                 (obj["streamSettings"] as? kotlinx.serialization.json.JsonObject)?.let { stream ->
                     network = stream["network"]?.jsonPrimitive?.contentOrNull ?: network
                     security = stream["security"]?.jsonPrimitive?.contentOrNull ?: security
@@ -105,6 +124,7 @@ object LinkParser {
                 port = port,
                 userId = "",
                 serverDescription = description,
+                rawProtocol = rawProtocol,
                 network = network,
                 security = security,
                 rawConfig = config.toString(),

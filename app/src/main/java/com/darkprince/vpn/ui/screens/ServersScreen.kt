@@ -41,7 +41,7 @@ import com.darkprince.vpn.ui.theme.EmojiTile
 import com.darkprince.vpn.ui.theme.PingChip
 import com.darkprince.vpn.ui.theme.PingPendingChip
 import com.darkprince.vpn.ui.theme.SectionHeader
-import com.darkprince.vpn.ui.theme.TagChip
+import com.darkprince.vpn.ui.theme.TransportBadge
 import com.darkprince.vpn.ui.theme.leadingEmoji
 import com.darkprince.vpn.ui.theme.nameWithoutEmoji
 import com.darkprince.vpn.ui.vm.HomeViewModel
@@ -173,11 +173,8 @@ internal fun ServerRow(
                 )
             }
             Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TagChip(server.transportLabel, tint = MaterialTheme.colorScheme.secondary)
-                if (server.rawConfig != null) {
-                    TagChip("JSON", tint = accent)
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                server.transportParts.forEach { TransportBadge(it) }
             }
         }
 

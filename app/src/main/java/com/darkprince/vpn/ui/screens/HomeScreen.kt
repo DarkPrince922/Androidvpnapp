@@ -70,13 +70,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.ui.theme.Appear
+import com.darkprince.vpn.ui.theme.bleedHorizontally
 import com.darkprince.vpn.ui.theme.LocalPalette
 import com.darkprince.vpn.ui.theme.CircleActionButton
 import com.darkprince.vpn.ui.theme.ConnectionMap
 import com.darkprince.vpn.ui.theme.EmojiTile
 import com.darkprince.vpn.ui.theme.GroupCard
+import com.darkprince.vpn.ui.theme.QuietMapBackdrop
 import com.darkprince.vpn.ui.theme.SectionHeader
-import com.darkprince.vpn.ui.theme.TagChip
+import com.darkprince.vpn.ui.theme.TransportBadge
 import com.darkprince.vpn.ui.theme.leadingEmoji
 import com.darkprince.vpn.ui.theme.nameWithoutEmoji
 import com.darkprince.vpn.ui.vm.HomeViewModel
@@ -134,6 +136,17 @@ fun HomeScreen(
         )
     }
 
+    Box(Modifier.fillMaxSize()) {
+      // Тихий фон у нижнего края: без него низ экрана оставался плоской
+      // чёрной плитой, и список серверов висел в пустоте. Он лежит под
+      // списком и не прокручивается — это фон комнаты, а не часть списка.
+      QuietMapBackdrop(
+          modifier = Modifier
+              .align(Alignment.BottomCenter)
+              .fillMaxWidth()
+              .height(240.dp),
+      )
+
     // LazyColumn, а не прокручиваемая Column: список серверов теперь живёт
     // прямо здесь, и при полусотне узлов рисовать их все разом незачем.
     LazyColumn(
@@ -153,13 +166,17 @@ fun HomeScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(320.dp),
+                .height(306.dp),
             contentAlignment = Alignment.Center,
         ) {
             ConnectionMap(
                 connected = vpnState == VpnState.CONNECTED,
                 serverName = state.servers.getOrNull(state.selectedServer)?.name,
-                modifier = Modifier.fillMaxSize(),
+                // на всю ширину экрана: с полями списка у карты появлялись
+                // боковые обрезы, и она читалась как вставленная картинка
+                modifier = Modifier
+                    .fillMaxSize()
+                    .bleedHorizontally(16.dp),
             )
             PowerButton(
                 vpnState = vpnState,
@@ -168,7 +185,7 @@ fun HomeScreen(
             )
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(2.dp))
 
         AnimatedContent(
             targetState = when (vpnState) {
@@ -201,7 +218,7 @@ fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(18.dp))
         }
       }
 
@@ -247,7 +264,7 @@ fun HomeScreen(
 
       // --- Серверы прямо на главной, без отдельного окна ---
       item {
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(18.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -300,6 +317,7 @@ fun HomeScreen(
       }
 
       item { Spacer(Modifier.height(24.dp)) }
+    }
     }
 }
 
@@ -623,9 +641,8 @@ private fun SubscriptionCard(
                         )
                     }
                     Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TagChip(it.transportLabel, tint = MaterialTheme.colorScheme.secondary)
-                        if (it.rawConfig != null) TagChip("JSON", tint = accent)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        it.transportParts.forEach { part -> TransportBadge(part) }
                     }
                 }
             }

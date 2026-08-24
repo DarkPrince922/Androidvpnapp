@@ -30,11 +30,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 
 /**
@@ -120,24 +122,79 @@ fun EmojiTile(
     }
 }
 
-/** Мелкая метка под названием: транспорт, формат подписки и т.п. */
+/**
+ * Растягивает содержимое за горизонтальные поля родителя.
+ *
+ * Списку экрана поля нужны — карточки не должны лепиться к краю. А карте,
+ * наоборот, нужен весь экран: с полями у неё появлялись боковые обрезы, и
+ * фон читался как вставленная картинка, а не как фон.
+ *
+ * Проще было бы снять поля со списка и раздать их каждому пункту, но тогда
+ * про них пришлось бы помнить в каждом новом пункте.
+ */
+fun Modifier.bleedHorizontally(margin: Dp): Modifier = layout { measurable, constraints ->
+    val extra = margin.roundToPx() * 2
+    val placeable = measurable.measure(
+        constraints.copy(
+            minWidth = constraints.minWidth + extra,
+            maxWidth = constraints.maxWidth + extra,
+        )
+    )
+    layout(placeable.width - extra, placeable.height) {
+        placeable.place(-margin.roundToPx(), 0)
+    }
+}
+
+/**
+ * Цвет метки транспорта по её тексту.
+ *
+ * Цвет закреплён за словом, а не за местом в строке: reality всегда сиреневая,
+ * grpc всегда коралловая. Тогда взгляд находит нужное, не читая — а если у
+ * двух узлов совпал протокол, разницу видно по цвету второй метки.
+ *
+ * Цвета одни на все темы: это не оформление, а признак. Если менять их вместе
+ * с темой, список серверов пришлось бы учить заново.
+ */
+private fun badgeTint(text: String, fallback: Color): Color = when (text.lowercase()) {
+    "vless", "vmess", "trojan", "ss" -> Color(0xFFD9A94E)
+    "hysteria2", "tuic" -> Color(0xFF35BFB8)
+    "wireguard" -> Color(0xFF7C9AE0)
+    "reality" -> Color(0xFF9B6BE0)
+    "tls" -> Color(0xFF4E93D9)
+    "grpc" -> Color(0xFFDE6A78)
+    "xhttp" -> Color(0xFF3FB3C4)
+    "websocket" -> Color(0xFF49B183)
+    "httpupgrade" -> Color(0xFF6FA36B)
+    "quic" -> Color(0xFFB07AD6)
+    "mkcp" -> Color(0xFFC08A5A)
+    "tcp" -> Color(0xFF7E8CA6)
+    else -> fallback
+}
+
+/**
+ * Мелкая метка транспорта: тонкая рамка, приглушённая подложка, буквы в
+ * половину обычных.
+ *
+ * Намеренно тише соседних меток: этих значков в строке до трёх, и в полный
+ * голос они забивали бы название узла, ради которого строка и существует.
+ */
 @Composable
-fun TagChip(
-    text: String,
-    tint: Color = MaterialTheme.colorScheme.primary,
-    modifier: Modifier = Modifier,
-) {
+fun TransportBadge(text: String, modifier: Modifier = Modifier) {
+    val tint = badgeTint(text, MaterialTheme.colorScheme.onSurfaceVariant)
     Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
+        text = text.uppercase(),
+        fontSize = 8.5.sp,
+        lineHeight = 10.sp,
+        letterSpacing = 0.4.sp,
         color = tint,
         fontWeight = FontWeight.SemiBold,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(tint.copy(alpha = 0.13f))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .clip(RoundedCornerShape(5.dp))
+            .background(tint.copy(alpha = 0.09f))
+            .border(1.dp, tint.copy(alpha = 0.42f), RoundedCornerShape(5.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp),
     )
 }
 
