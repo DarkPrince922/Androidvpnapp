@@ -88,13 +88,21 @@ data class ProxyProfile(
             protocolLabel,
             security.takeIf { it.isNotBlank() && it != "none" },
             networkLabel.takeIf { carriesOwnTransport.not() },
-        )
+        ).distinctBy { it.lowercase() }
 
-    /** Протоколы, которые сами являются транспортом: сети поверх них нет. */
+    /**
+     * Протоколы, которые сами являются транспортом: сети поверх них нет.
+     *
+     * Плюс общая защита от повтора: у Hysteria панель кладёт одно и то же имя
+     * и в протокол, и в сеть, и метка выходила «HYSTERIA · TLS · HYSTERIA».
+     * Поэтому здесь сравнение по имени, а не только по нашему перечислению —
+     * узел с незнакомым протоколом ведёт себя так же.
+     */
     private val carriesOwnTransport: Boolean
         get() = protocol == Protocol.HYSTERIA2 ||
             protocol == Protocol.TUIC ||
-            protocol == Protocol.WIREGUARD
+            protocol == Protocol.WIREGUARD ||
+            networkLabel.equals(protocolLabel, ignoreCase = true)
 
     private val protocolLabel: String
         get() = when (protocol) {

@@ -165,6 +165,16 @@ private fun centerOf(code: String?): Pair<Float, Float>? {
 }
 
 /**
+ * Какой снимок брать под тему.
+ *
+ * Ночной снимок на светлой теме читался как чёрная плита посреди экрана.
+ * Поэтому для светлых тем испечён дневной: та же карта наоборот — светлая
+ * бумага, а огни городов тем темнее, чем ярче они были в исходнике.
+ */
+private fun earthTextureFor(palette: AppPalette): Int =
+    if (palette.isLight) R.drawable.earth_day else R.drawable.earth_night
+
+/**
  * @param connected туннель поднят: зажигаем огни и ведём дугу
  * @param serverName имя выбранного узла — из его флага берётся страна
  */
@@ -177,7 +187,7 @@ fun ConnectionMap(
     val palette = LocalPalette.current
     val accent = palette.scheme.primary
     val measurer = rememberTextMeasurer()
-    val earth = ImageBitmap.imageResource(R.drawable.earth_night)
+    val earth = ImageBitmap.imageResource(earthTextureFor(palette))
 
     // Переход тянем плавно: мгновенная смена яркости всей карты читается как
     // мигание экрана, а не как отклик на нажатие.
@@ -199,6 +209,9 @@ fun ConnectionMap(
     val target = centerOf(code)
     val source = centerOf(Locale.getDefault().country)
 
+    // тёмная графика по светлой бумаге и так заметна — её приглушаем
+    val mapStrength = if (palette.isLight) 0.62f else 1f
+
     val label = remember(code) {
         code?.let { "${flagOf(it)} ${countryTitle(it)}" }
     }
@@ -213,7 +226,7 @@ fun ConnectionMap(
                 .fillMaxSize()
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
         ) {
-            drawEarth(earth, frameFor(source, target, size), glow)
+            drawEarth(earth, frameFor(source, target, size), glow, mapStrength)
             drawEdgeMask()
         }
 
@@ -306,7 +319,12 @@ private fun frameFor(source: Pair<Float, Float>?, target: Pair<Float, Float>?, s
  * материков видны — иначе экран выглядел бы просто чёрным и было бы непонятно,
  * что там вообще карта.
  */
-private fun DrawScope.drawEarth(earth: ImageBitmap, frame: MapFrame, glow: Float) {
+private fun DrawScope.drawEarth(
+    earth: ImageBitmap,
+    frame: MapFrame,
+    glow: Float,
+    strength: Float,
+) {
     val sx = ((frame.lonLeft + 180f) / 360f * earth.width).roundToInt()
     val sy = ((90f - frame.latTop) / 180f * earth.height).roundToInt()
     val sw = (frame.lonSpan / 360f * earth.width).roundToInt()
@@ -321,7 +339,7 @@ private fun DrawScope.drawEarth(earth: ImageBitmap, frame: MapFrame, glow: Float
         ),
         dstOffset = IntOffset.Zero,
         dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
-        alpha = 0.34f + 0.66f * glow,
+        alpha = (0.34f + 0.66f * glow) * strength,
         // снимок растягивается в несколько раз: без сглаживания вылезли бы пиксели
         filterQuality = FilterQuality.High,
     )
@@ -451,7 +469,10 @@ private fun DrawScope.drawLabel(
  */
 @Composable
 fun QuietMapBackdrop(modifier: Modifier = Modifier) {
-    val earth = ImageBitmap.imageResource(R.drawable.earth_night)
+    val palette = LocalPalette.current
+    val earth = ImageBitmap.imageResource(earthTextureFor(palette))
+    // на светлой теме та же плотность выглядела бы грязью на бумаге
+    val quiet = if (palette.isLight) 0.10f else 0.16f
     Canvas(
         modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
     ) {
@@ -466,7 +487,7 @@ fun QuietMapBackdrop(modifier: Modifier = Modifier) {
             srcSize = IntSize(sw, sh),
             dstOffset = IntOffset.Zero,
             dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
-            alpha = 0.16f,
+            alpha = quiet,
             filterQuality = FilterQuality.High,
         )
         drawRect(

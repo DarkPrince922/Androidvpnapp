@@ -83,7 +83,8 @@ object LinkParser {
                     "vmess" -> Protocol.VMESS
                     "trojan" -> Protocol.TROJAN
                     "shadowsocks" -> Protocol.SHADOWSOCKS
-                    "hysteria2", "hy2" -> Protocol.HYSTERIA2
+                    // панель пишет и «hysteria», и «hysteria2» — это один протокол
+                    "hysteria", "hysteria2", "hy2" -> Protocol.HYSTERIA2
                     "tuic" -> Protocol.TUIC
                     "wireguard" -> Protocol.WIREGUARD
                     // Незнакомый протокол раньше просто пропускался, и узел
