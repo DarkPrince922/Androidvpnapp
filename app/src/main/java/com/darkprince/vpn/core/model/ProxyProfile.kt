@@ -4,75 +4,56 @@ import kotlinx.serialization.Serializable
 
 enum class Protocol { VLESS, VMESS, TROJAN, SHADOWSOCKS }
 
-/**
- * Один сервер из подписки Remnawave (разобранная ссылка vless:// и т.п.).
- */
+/** Один сервер из подписки Remnawave. */
 @Serializable
 data class ProxyProfile(
     val protocol: Protocol,
     val name: String,
     val address: String,
     val port: Int,
-    // vless/vmess: uuid; trojan/ss: password
     val userId: String,
-    val flow: String? = null,          // vless: xtls-rprx-vision
-    val encryption: String? = null,    // vless: none; ss: метод шифрования
-    val network: String = "tcp",       // tcp / ws / grpc / httpupgrade / xhttp
-    val security: String = "none",     // none / tls / reality
+    val flow: String? = null,
+    val encryption: String? = null,
+    val network: String = "tcp",
+    val security: String = "none",
     val sni: String? = null,
     val alpn: String? = null,
     val fingerprint: String? = null,
     val allowInsecure: Boolean = false,
-    val publicKey: String? = null,     // reality pbk
-    val shortId: String? = null,       // reality sid
-    val spiderX: String? = null,       // reality spx
-    val host: String? = null,          // ws/httpupgrade/xhttp host
-    val path: String? = null,          // ws/httpupgrade/xhttp path
-    val serviceName: String? = null,   // grpc
+    val publicKey: String? = null,
+    val shortId: String? = null,
+    val spiderX: String? = null,
+    val host: String? = null,
+    val path: String? = null,
+    val serviceName: String? = null,
     val grpcMultiMode: Boolean = false,
-    val headerType: String? = null,    // tcp http-обфускация
+    val headerType: String? = null,
     val vmessSecurity: String = "auto",
-    /**
-     * Полный конфиг Xray из подписки (формат Xray JSON / Happ). Если задан,
-     * используется как есть — с роутингом, правилами и балансировщиками
-     * панели; приложение только подменяет inbounds на свой SOCKS.
-     */
+    /** Server Description из Remnawave XRAY_JSON. */
+    val serverDescription: String? = null,
+    /** Полный Xray JSON, если сервер пришёл в формате XRAY_JSON. */
     val rawConfig: String? = null,
 ) {
-    /**
-     * Устойчивое имя узла: по нему запоминается выбор пользователя.
-     *
-     * Раньше выбранный сервер хранился номером в списке, и это ломалось от
-     * любой перестановки узлов в панели: номер оставался прежним, а указывал
-     * уже на другую страну. Человек видел «подключено к Германии», хотя
-     * выбирал Польшу. Имя вместе с адресом переживает перестановку — а если
-     * узел переименуют или уберут, выбор просто сбросится на первый, что
-     * честнее молчаливой подмены.
-     */
     val key: String get() = "$name|$address:$port"
 
-    /**
-     * Как узел выглядит в списке серверов: протокол, шифрование и транспорт.
-     * Адрес и домен намеренно не показываем — пользователю они ничего не
-     * говорят, а на чужом экране или скриншоте выдают инфраструктуру.
-     */
-    val transportLabel: String
-        get() = listOfNotNull(
-            protocol.name.lowercase(),
-            security.takeIf { it.isNotBlank() && it != "none" },
-            networkLabel,
-        ).joinToString(" · ")
+    val protocolLabel: String get() = protocol.name
 
-    private val networkLabel: String
+    val securityLabel: String?
+        get() = security.takeIf { it.isNotBlank() && it.lowercase() != "none" }?.uppercase()
+
+    val networkLabel: String
         get() = when (network.lowercase()) {
-            "ws" -> "websocket"
+            "ws" -> "WS"
             "grpc" -> "gRPC"
-            "xhttp" -> "xhttp"
-            "httpupgrade" -> "httpupgrade"
-            "h2", "http" -> "http/2"
-            "quic" -> "quic"
-            "kcp" -> "mkcp"
-            "" -> "tcp"
-            else -> network.lowercase()
+            "xhttp" -> "xHTTP"
+            "httpupgrade" -> "HTTPUPGRADE"
+            "h2", "http" -> "HTTP/2"
+            "quic" -> "QUIC"
+            "kcp" -> "mKCP"
+            "" -> "TCP"
+            else -> network.uppercase()
         }
+
+    val transportLabel: String
+        get() = listOfNotNull(protocolLabel, securityLabel, networkLabel).joinToString(" · ")
 }
