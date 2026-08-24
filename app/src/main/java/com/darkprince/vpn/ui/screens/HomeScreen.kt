@@ -402,10 +402,7 @@ private fun SubscriptionCard(
 
         Spacer(Modifier.height(10.dp))
         val selected = state.servers.getOrNull(state.selectedServer)
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             EmojiTile(emoji = selected?.name?.let(::leadingEmoji) ?: "🌐", tint = accent)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -414,13 +411,12 @@ private fun SubscriptionCard(
                     transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(150)) },
                     label = "server",
                 ) { name -> Text(name, style = MaterialTheme.typography.titleSmall) }
-                selected?.serverDescription?.let {
-                    Spacer(Modifier.height(3.dp))
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                }
                 selected?.let {
                     Spacer(Modifier.height(6.dp))
-                    ProtocolBadges(it)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TagChip(it.transportLabel, tint = MaterialTheme.colorScheme.secondary)
+                        if (it.rawConfig != null) TagChip("JSON", tint = accent)
+                    }
                 }
             }
         }
@@ -436,7 +432,8 @@ internal fun NoticeBar(notice: Notice) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(if (notice.ok) Icons.Default.CheckCircle else Icons.Default.ErrorOutline, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(8.dp)); Text(notice.text, style = MaterialTheme.typography.bodySmall, color = tint)
+        Spacer(Modifier.width(8.dp))
+        Text(notice.text, style = MaterialTheme.typography.bodySmall, color = tint)
     }
 }
 
