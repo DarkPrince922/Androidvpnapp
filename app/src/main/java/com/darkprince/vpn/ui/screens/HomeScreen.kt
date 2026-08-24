@@ -472,30 +472,36 @@ private fun SubscriptionCard(
     onSelectSubscription: (Long) -> Unit,
 ) {
     val accent = MaterialTheme.colorScheme.primary
-    // при нескольких подписках общий статус кабинета относится не к той,
-    // что выбрана, — сведения берём из самой выбранной подписки
-    val current = state.selectedSubscription.takeIf { state.subscriptions.size > 1 }
-    val sub = state.subscription
+    val current = state.selectedSubscription
     val userInfo = state.subUserInfo
 
+    // Общий статус кабинета — только когда конкретной подписки нет вовсе
+    // (гость, список не пришёл). Раньше он подставлялся в каждое пустое поле,
+    // и при нескольких подписках на карточке смешивались две: срок от одной,
+    // остаток трафика от другой. Заметнее всего это было с истёкшей — у неё
+    // панель половину полей не заполняет.
+    val account = state.subscription.takeIf { current == null }
+
     val title = current?.displayName
-        ?: sub?.tariffName
+        ?: account?.tariffName
         ?: "Подписка"
 
+    // userInfo относится к выбранной подписке: он приходит её же заголовком,
+    // поэтому смешения тут нет
     val daysLeft = current?.endDate?.let(::daysUntil)
-        ?: sub?.daysLeft
+        ?: account?.daysLeft
         ?: userInfo?.expireUnix?.takeIf { it > 0 }?.let {
-            ((it * 1000 - System.currentTimeMillis()) / 86_400_000L).toInt().coerceAtLeast(0)
+            ((it * 1000 - System.currentTimeMillis()) / 86_400_000L).toInt()
         }
 
     val usedGb = current?.trafficUsedGb
-        ?: sub?.trafficUsedGb
+        ?: account?.trafficUsedGb
         ?: userInfo?.let { info ->
             val total = (info.uploadBytes ?: 0) + (info.downloadBytes ?: 0)
             if (total > 0 || info.totalBytes != null) total / 1_073_741_824.0 else null
         }
     val limitGb = current?.trafficLimitGb
-        ?: sub?.trafficLimitGb
+        ?: account?.trafficLimitGb
         ?: userInfo?.totalBytes?.takeIf { it > 0 }?.let { it / 1_073_741_824.0 }
 
     var menuOpen by remember { mutableStateOf(false) }
@@ -570,10 +576,18 @@ private fun SubscriptionCard(
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // «Осталось 0 дн.» читается как «ещё работает сегодня», хотя подписка
+            // уже кончилась — поэтому у истёкшей отдельная надпись и цвет
+            val expired = daysLeft != null && daysLeft <= 0
             Text(
-                daysLeft?.let { "Осталось $it дн." } ?: "Срок неизвестен",
+                when {
+                    daysLeft == null -> "Срок неизвестен"
+                    expired -> "Истекла"
+                    else -> "Осталось $daysLeft дн."
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (expired) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.width(10.dp))
             LinearProgressIndicator(
@@ -693,10 +707,12 @@ internal fun NoticeBar(notice: Notice) {
  */
 private fun daysUntil(endDate: String): Int? = try {
     val date = java.time.LocalDate.parse(endDate.take(10))
+    // без обрезки по нулю: у истёкшей подписки число уходит в минус, и по
+    // нему её видно. Раньше и вчерашняя, и годовой давности показывались
+    // одинаково — «осталось 0 дней»
     java.time.temporal.ChronoUnit.DAYS
         .between(java.time.LocalDate.now(), date)
         .toInt()
-        .coerceAtLeast(0)
 } catch (_: Exception) {
     null
 }

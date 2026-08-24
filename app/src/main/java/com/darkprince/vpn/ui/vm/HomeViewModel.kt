@@ -41,8 +41,17 @@ data class HomeUiState(
     val subscriptions: List<SubscriptionListItem> = emptyList(),
     val selectedSubscriptionId: Long? = null,
 ) {
+    /**
+     * Выбранная подписка, а если её в списке уже нет — активная.
+     *
+     * Раньше запасным вариантом был просто первый элемент, то есть тот, что
+     * панель отдала первым. У человека с истёкшей и действующей подпиской
+     * первой запросто оказывалась истёкшая, и карточка показывала её: ноль
+     * дней и чужой остаток трафика — при живой второй подписке.
+     */
     val selectedSubscription: SubscriptionListItem?
         get() = subscriptions.firstOrNull { it.id == selectedSubscriptionId }
+            ?: subscriptions.firstOrNull { it.isActive }
             ?: subscriptions.firstOrNull()
 }
 
