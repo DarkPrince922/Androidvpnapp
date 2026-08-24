@@ -20,4 +20,12 @@ val GraphitePalette=AppPalette("graphite","Графит","Светлая, поч
 val AppPalettes=listOf(NightPalette,SunsetPalette,IndigoPalette,GraphitePalette)
 fun paletteById(id:String?)=AppPalettes.firstOrNull{it.id==id}?:NightPalette
 val LocalPalette=staticCompositionLocalOf{NightPalette}
-@Composable fun AppTheme(palette:AppPalette=NightPalette,content:@Composable()->Unit){CompositionLocalProvider(LocalPalette provides palette){MaterialTheme(colorScheme=palette.scheme,content=content)}}
+@Composable
+fun AppTheme(
+    palette: AppPalette = NightPalette,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(LocalPalette provides palette) {
+        MaterialTheme(colorScheme = palette.scheme, content = content)
+    }
+}
