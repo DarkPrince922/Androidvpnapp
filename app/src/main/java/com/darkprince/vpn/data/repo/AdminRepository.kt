@@ -28,13 +28,25 @@ class AdminRepository(
 
     val isLoggedIn: Boolean get() = prefs.cachedRefreshToken != null
 
-    /** Админ ли текущий аккаунт. Гостю и обычному человеку — false. */
-    suspend fun isAdmin(): Boolean = try {
-        isLoggedIn && api.isAdmin().isAdmin
-    } catch (_: Exception) {
-        // Ошибку здесь глотаем намеренно: вкладка просто не появится, а
-        // ронять из-за неё загрузку приложения нельзя.
-        false
+    /**
+     * Админ ли текущий аккаунт.
+     *
+     * Ошибку не глотаем: «вкладки нет» и «вкладку не удалось спросить» — это
+     * разные вещи, и без различия между ними непонятно, куда смотреть.
+     * Ронять из-за неё запуск всё равно нельзя, поэтому причина возвращается
+     * рядом с ответом, а не бросается наверх.
+     */
+    suspend fun isAdmin(): AdminCheck {
+        if (!isLoggedIn) return AdminCheck(admin = false, reason = "нет входа в аккаунт")
+        return try {
+            val admin = api.isAdmin().isAdmin
+            AdminCheck(
+                admin = admin,
+                reason = if (admin) "доступ есть" else "сервер ответил: не админ",
+            )
+        } catch (error: Exception) {
+            AdminCheck(admin = false, reason = adminErrorMessage(error))
+        }
     }
 
     suspend fun permissions(): AdminPermissionsDto = api.adminPermissions()
@@ -63,6 +75,9 @@ class AdminRepository(
         const val TICKETS_CLOSE = "tickets:close"
     }
 }
+
+/** Ответ на вопрос «админ ли я» вместе с причиной, если нет. */
+data class AdminCheck(val admin: Boolean, val reason: String)
 
 /**
  * Человеческий текст ошибки.

@@ -23,6 +23,8 @@ enum class TicketFilter(val api: String?, val title: String) {
 
 data class AdminUiState(
     val isAdmin: Boolean = false,
+    /** Почему вкладки нет. Показывается только в отладочной сборке. */
+    val checkReason: String = "ещё не спрашивали",
     val unlocked: Boolean = false,
     val permissions: AdminPermissionsDto = AdminPermissionsDto(),
     val filter: TicketFilter = TicketFilter.ACTIVE,
@@ -63,10 +65,23 @@ class AdminViewModel : ViewModel() {
 
     private fun checkAdmin() {
         viewModelScope.launch {
-            val admin = repository.isAdmin()
-            _state.update { it.copy(isAdmin = admin) }
-            if (admin) loadCount()
+            val check = repository.isAdmin()
+            _state.update { it.copy(isAdmin = check.admin, checkReason = check.reason) }
+            if (check.admin) loadCount()
         }
+    }
+
+    /**
+     * Спросить заново.
+     *
+     * Первая проверка идёт при запуске и может не удаться на ровном месте:
+     * сети ещё нет, токен просрочен. Одной неудачи не должно хватать, чтобы
+     * панель пропала до перезапуска приложения, поэтому «Ещё» переспрашивает
+     * при каждом открытии.
+     */
+    fun recheck() {
+        if (_state.value.isAdmin) return
+        checkAdmin()
     }
 
     /** Счётчик открытых обращений для точки на вкладке. */

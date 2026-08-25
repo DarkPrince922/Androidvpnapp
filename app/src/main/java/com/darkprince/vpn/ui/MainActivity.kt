@@ -605,6 +605,10 @@ private fun AppRoot(
                 }
             }
             composable("settings") {
+                // Первая проверка идёт при запуске и может не удаться на
+                // ровном месте — сети ещё нет, токен просрочен. Переспрашиваем
+                // здесь, чтобы одна неудача не прятала панель до перезапуска.
+                LaunchedEffect(Unit) { adminViewModel.recheck() }
                 val userJson by prefs.userJsonFlow.collectAsState(initial = null)
                 val user = userJson?.let {
                     try {
@@ -631,6 +635,8 @@ private fun AppRoot(
                     supportUnreadCount = supportState.unreadCount,
                     onOpenNews = { navController.navigate("news") },
                     newsUnreadCount = newsState.unread,
+                    adminCheckReason = adminState.checkReason,
+                    onRecheckAdmin = adminViewModel::recheck,
                     onCreateAccount = { navController.navigate("upgrade") },
                     onDropSharedSubscription = {
                         scope.launch {
