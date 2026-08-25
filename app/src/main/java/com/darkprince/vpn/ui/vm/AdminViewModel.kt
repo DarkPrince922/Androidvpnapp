@@ -9,6 +9,7 @@ import com.darkprince.vpn.data.api.dto.AdminTicketDto
 import com.darkprince.vpn.data.api.dto.AdminUserDto
 import com.darkprince.vpn.data.repo.AdminRepository
 import com.darkprince.vpn.data.repo.adminErrorMessage
+import com.darkprince.vpn.data.repo.rejectedParameter
 import com.darkprince.vpn.di.ServiceLocator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +43,26 @@ enum class PeopleSort(val api: String?, val title: String) {
     EXPIRING("subscription_end_date", "Скоро истекут"),
     BALANCE("balance", "По балансу"),
     SPENT("total_spent", "По тратам"),
-    ACTIVITY("last_activity", "По активности"),
+    ACTIVITY("last_activity", "По активности");
+
+    /**
+     * Тот же порядок своими силами.
+     *
+     * Нужен, когда панель не знает такой сортировки и отвечает 422: у разных
+     * версий бота набор различается. Работает по тем полям, что уже пришли в
+     * списке, поэтому «по активности» так не отсортировать — этого поля в
+     * выдаче нет, и придумывать его нельзя.
+     */
+    fun sortLocally(people: List<AdminUserDto>): List<AdminUserDto>? = when (this) {
+        NEW -> people
+        // Без подписки срока нет — таких в конец, а не в начало с нулём
+        EXPIRING -> people.sortedWith(
+            compareBy<AdminUserDto> { !it.hasSubscription }.thenBy { it.daysRemaining }
+        )
+        BALANCE -> people.sortedByDescending { it.balanceKopeks }
+        SPENT -> people.sortedByDescending { it.totalSpentKopeks }
+        ACTIVITY -> null
+    }
 }
 
 /** Фильтр по состоянию подписки. */
@@ -75,6 +95,8 @@ data class AdminUiState(
     val peopleSort: PeopleSort = PeopleSort.NEW,
     val peopleFilter: PeopleFilter = PeopleFilter.ANY,
     val loadingMore: Boolean = false,
+    /** Порядок пришлось задать своими силами — страниц в этом режиме нет. */
+    val sortedLocally: Boolean = false,
     val search: String = "",
     val tickets: List<AdminTicketDto> = emptyList(),
     val openCount: Int = 0,
@@ -94,7 +116,7 @@ data class AdminUiState(
 
     /** Разделы, которые роль вообще позволяет открыть. */
     /** Есть ли ещё страницы. */
-    val hasMorePeople: Boolean get() = people.size < peopleTotal
+    val hasMorePeople: Boolean get() = !sortedLocally && people.size < peopleTotal
 
     val sections: List<AdminSection>
         get() = AdminSection.entries.filter { permissions.allows(it.permission) }
@@ -223,13 +245,67 @@ class AdminViewModel : ViewModel() {
                 it.copy(
                     people = if (offset == 0) page.users else it.people + page.users,
                     peopleTotal = page.total,
+                    sortedLocally = false,
                     loading = false,
                     loadingMore = false,
                 )
             }
         } catch (error: Exception) {
+            if (rejectedParameter(error, "sort_by")) {
+                sortPeopleLocally(error)
+            } else {
+                _state.update {
+                    it.copy(loading = false, loadingMore = false, error = adminErrorMessage(error))
+                }
+            }
+        }
+    }
+
+    /**
+     * Запасной путь: панель не знает такой сортировки.
+     *
+     * Берём одной выдачей столько, сколько кабинет отдаёт за раз, и
+     * раскладываем сами. Сортировать одну страницу из тридцати было бы
+     * обманом — «скоро истекут» показывало бы ближайших только среди тех
+     * тридцати, кто попал в выдачу по другому признаку. Поэтому здесь
+     * страниц нет вовсе, и мы честно говорим, что список ограничен.
+     */
+    private suspend fun sortPeopleLocally(cause: Throwable) {
+        val state = _state.value
+        val sort = state.peopleSort
+        try {
+            val page = repository.users(
+                search = state.search,
+                sortBy = null,
+                subscriptionStatus = state.peopleFilter.api,
+                offset = 0,
+                limit = AdminRepository.MAX_PAGE,
+            )
+            val sorted = sort.sortLocally(page.users)
+            if (sorted == null) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        loadingMore = false,
+                        error = "Панель не поддерживает сортировку «${sort.title}»",
+                    )
+                }
+                return
+            }
             _state.update {
-                it.copy(loading = false, loadingMore = false, error = adminErrorMessage(error))
+                it.copy(
+                    people = sorted,
+                    peopleTotal = page.total,
+                    sortedLocally = true,
+                    loading = false,
+                    loadingMore = false,
+                    error = null,
+                )
+            }
+        } catch (_: Exception) {
+            // запасной путь тоже не прошёл — показываем исходную причину
+            _state.update {
+                it.copy(loading = false, loadingMore = false, error = adminErrorMessage(cause))
             }
         }
     }

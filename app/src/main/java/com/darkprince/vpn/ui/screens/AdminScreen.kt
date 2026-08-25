@@ -87,7 +87,10 @@ fun AdminScreen(viewModel: AdminViewModel, onOpenTicket: (Long) -> Unit) {
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Обращения", style = MaterialTheme.typography.headlineSmall)
+                // Заголовок называет открытый раздел, а не всегда обращения:
+                // подпись, которая спорит с выбранной кнопкой, читается как
+                // ошибка приложения.
+                Text(state.section.title, style = MaterialTheme.typography.headlineSmall)
                 val roles = state.permissions.roles.joinToString(", ").takeIf { it.isNotBlank() }
                 Text(
                     roles?.let { "Роль: $it" } ?: "Панель управления",
@@ -331,7 +334,12 @@ private fun PeopleSection(viewModel: AdminViewModel, state: AdminUiState) {
 
     if (state.peopleTotal > 0) {
         Text(
-            "Показано ${state.people.size} из ${state.peopleTotal}",
+            if (state.sortedLocally) {
+                "Показано ${state.people.size} из ${state.peopleTotal} — " +
+                    "панель не умеет так сортировать, порядок задан на телефоне"
+            } else {
+                "Показано ${state.people.size} из ${state.peopleTotal}"
+            },
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

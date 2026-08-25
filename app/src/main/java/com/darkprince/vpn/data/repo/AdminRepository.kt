@@ -13,6 +13,7 @@ import com.darkprince.vpn.data.api.dto.AdminTicketDto
 import com.darkprince.vpn.data.api.dto.AdminUsersListDto
 import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
 import com.darkprince.vpn.data.prefs.AppPrefs
+import org.json.JSONObject
 import retrofit2.HttpException
 import java.io.IOException
 
@@ -129,5 +130,30 @@ fun adminErrorMessage(error: Throwable): String = when {
     error.code() == 403 -> "Недостаточно прав — роль могли изменить в панели"
     error.code() == 404 -> "Обращение не найдено"
     error.code() == 400 -> "Сервер не принял запрос: проверьте текст"
+    error.code() == 422 -> rejectedField(error)
+        ?.let { "Панель не приняла параметр «$it» — возможно, версия бота старее" }
+        ?: "Панель не приняла запрос (422)"
     else -> "Ошибка сервера (${error.code()})"
 }
+
+/**
+ * Имя параметра, который не понравился серверу.
+ *
+ * Кабинет на FastAPI отвечает на 422 разбором по полям:
+ * `{"detail":[{"loc":["query","sort_by"], ...}]}`. Название параметра здесь
+ * важнее текста ошибки: «не приняли sort_by» сразу говорит, где смотреть,
+ * а «unprocessable entity» не говорит ничего.
+ */
+private fun rejectedField(error: HttpException): String? = try {
+    val body = error.response()?.errorBody()?.string().orEmpty()
+    val detail = JSONObject(body).optJSONArray("detail")
+    val loc = detail?.optJSONObject(0)?.optJSONArray("loc")
+    // последний элемент loc — само поле, до него идёт «query» или «body»
+    loc?.optString(loc.length() - 1)?.takeIf { it.isNotBlank() }
+} catch (_: Exception) {
+    null
+}
+
+/** Сервер отклонил именно этот параметр запроса. */
+fun rejectedParameter(error: Throwable, name: String): Boolean =
+    error is HttpException && error.code() == 422 && rejectedField(error) == name
