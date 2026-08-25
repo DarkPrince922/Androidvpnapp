@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- фон логотипа (тёмно-синий из углов картинки) -->
-    <color name="ic_launcher_background">#0B0E15</color>
+    <!-- фон адаптивной иконки: тот же тёмно-синий, что у самого знака, —
+         иначе под круглой маской по краю проступал бы чужой цвет -->
+    <color name="ic_launcher_background">#040C1E</color>
 </resources>
