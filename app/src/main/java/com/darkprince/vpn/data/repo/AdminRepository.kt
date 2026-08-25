@@ -1,11 +1,16 @@
 package com.darkprince.vpn.data.repo
 
 import com.darkprince.vpn.data.api.ApiClient
+import com.darkprince.vpn.data.api.dto.AdminBalanceRequest
+import com.darkprince.vpn.data.api.dto.AdminBalanceResponse
+import com.darkprince.vpn.data.api.dto.AdminDashboardDto
+import com.darkprince.vpn.data.api.dto.AdminExtendRequest
 import com.darkprince.vpn.data.api.dto.AdminPermissionsDto
 import com.darkprince.vpn.data.api.dto.AdminReplyRequest
 import com.darkprince.vpn.data.api.dto.AdminStatusRequest
 import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketDto
+import com.darkprince.vpn.data.api.dto.AdminUserDto
 import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
 import com.darkprince.vpn.data.prefs.AppPrefs
 import retrofit2.HttpException
@@ -66,6 +71,20 @@ class AdminRepository(
         api.adminTicketStatus(id, AdminStatusRequest(status))
     }
 
+    // ---------- сводка и люди ----------
+
+    suspend fun dashboard(): AdminDashboardDto = api.adminDashboard()
+
+    suspend fun users(search: String?): List<AdminUserDto> =
+        api.adminUsers(search = search?.takeIf { it.isNotBlank() }, limit = PAGE).users
+
+    suspend fun addBalance(userId: Long, amountKopeks: Long): AdminBalanceResponse =
+        api.adminUpdateBalance(userId, AdminBalanceRequest(amountKopeks))
+
+    suspend fun extendSubscription(userId: Long, days: Int) {
+        api.adminExtendSubscription(userId, AdminExtendRequest(days = days))
+    }
+
     companion object {
         const val PAGE = 30
 
@@ -73,6 +92,10 @@ class AdminRepository(
         const val TICKETS_READ = "tickets:read"
         const val TICKETS_REPLY = "tickets:reply"
         const val TICKETS_CLOSE = "tickets:close"
+        const val STATS_READ = "stats:read"
+        const val USERS_READ = "users:read"
+        const val USERS_BALANCE = "users:balance"
+        const val USERS_SUBSCRIPTION = "users:subscription"
     }
 }
 

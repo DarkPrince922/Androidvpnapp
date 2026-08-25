@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +26,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,8 +52,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.util.Locale
 import com.darkprince.vpn.data.api.dto.AdminTicketDto
+import com.darkprince.vpn.data.api.dto.AdminUserDto
 import com.darkprince.vpn.data.api.dto.SupportMessageDto
+import com.darkprince.vpn.ui.vm.AdminSection
+import com.darkprince.vpn.ui.vm.AdminUiState
 import com.darkprince.vpn.ui.vm.AdminViewModel
 import com.darkprince.vpn.ui.vm.TicketFilter
 
@@ -93,20 +101,25 @@ fun AdminScreen(viewModel: AdminViewModel, onOpenTicket: (Long) -> Unit) {
 
         Spacer(Modifier.height(10.dp))
 
-        if (!state.canReadTickets) {
-            AdminNotice(
-                "Ваша роль не даёт доступа к обращениям. Права выдаются в панели " +
-                    "бота — попросите владельца сервиса."
+        if (state.sections.isEmpty()) {
+            // Права спрашиваются при входе во вкладку, и до ответа разделов
+            // тоже нет. Показывать в эту секунду «роль не даёт доступа»
+            // значит обвинить человека в том, чего ещё не знаем.
+            if (state.loading) Loader() else AdminNotice(
+                "Ваша роль не даёт доступа ни к одному разделу панели. Права " +
+                    "выдаются в панели бота — попросите владельца сервиса."
             )
             return@Column
         }
 
+        // Разделы, которых роль не даёт, не показываем вовсе: переключатель
+        // с недоступными кнопками обещал бы то, чего нет.
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            TicketFilter.entries.forEach { filter ->
+            state.sections.forEach { section ->
                 FilterChip(
-                    selected = state.filter == filter,
-                    onClick = { viewModel.setFilter(filter) },
-                    label = { Text(filter.title, fontSize = 12.sp) },
+                    selected = state.section == section,
+                    onClick = { viewModel.setSection(section) },
+                    label = { Text(section.title, fontSize = 12.sp) },
                 )
             }
         }
@@ -117,23 +130,351 @@ fun AdminScreen(viewModel: AdminViewModel, onOpenTicket: (Long) -> Unit) {
             AdminNotice(it)
             Spacer(Modifier.height(8.dp))
         }
+        state.info?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(8.dp))
+        }
 
-        when {
-            state.loading && state.tickets.isEmpty() -> Box(
-                Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+        when (state.section) {
+            AdminSection.SUMMARY -> SummarySection(state)
+            AdminSection.TICKETS -> TicketsSection(viewModel, state, onOpenTicket)
+            AdminSection.PEOPLE -> PeopleSection(viewModel, state)
+        }
+    }
+}
 
-            state.tickets.isEmpty() && state.error == null ->
-                AdminNotice("Обращений в этой выборке нет.")
+@Composable
+private fun TicketsSection(
+    viewModel: AdminViewModel,
+    state: AdminUiState,
+    onOpenTicket: (Long) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        TicketFilter.entries.forEach { filter ->
+            FilterChip(
+                selected = state.filter == filter,
+                onClick = { viewModel.setFilter(filter) },
+                label = { Text(filter.title, fontSize = 12.sp) },
+            )
+        }
+    }
 
-            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.tickets, key = { it.id }) { ticket ->
-                    AdminTicketRow(ticket) { onOpenTicket(ticket.id) }
+    Spacer(Modifier.height(10.dp))
+
+    when {
+        state.loading && state.tickets.isEmpty() -> Loader()
+
+        state.tickets.isEmpty() && state.error == null ->
+            AdminNotice("Обращений в этой выборке нет.")
+
+        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(state.tickets, key = { it.id }) { ticket ->
+                AdminTicketRow(ticket) { onOpenTicket(ticket.id) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Loader() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
+    }
+}
+
+/**
+ * Деньги в панели считаются в копейках — переводим у самого края.
+ *
+ * Формат собираем на английской локали и разделители расставляем сами.
+ * На русской «%,.2f» ставит запятую дробным разделителем, и попытка
+ * заменить разделитель разрядов пробелом испортила бы копейки.
+ */
+private fun rubles(kopeks: Long): String =
+    String.format(Locale.US, "%,.2f", kopeks / 100.0)
+        .replace(',', ' ')
+        .replace('.', ',') + " ₽"
+
+@Composable
+private fun SummarySection(state: AdminUiState) {
+    val dashboard = state.dashboard
+    when {
+        state.loading && dashboard == null -> Loader()
+        dashboard == null -> AdminNotice("Сводка не загрузилась.")
+        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item {
+                SummaryCard("Деньги") {
+                    SummaryLine("Сегодня", rubles(dashboard.financial.incomeTodayKopeks))
+                    SummaryLine("За месяц", rubles(dashboard.financial.incomeMonthKopeks))
+                    SummaryLine("Всего", rubles(dashboard.financial.incomeTotalKopeks))
+                }
+            }
+            item {
+                SummaryCard("Подписки") {
+                    SummaryLine("Активных", dashboard.subscriptions.active.toString())
+                    SummaryLine("Пробных", dashboard.subscriptions.trial.toString())
+                    SummaryLine("Истекших", dashboard.subscriptions.expired.toString())
+                    SummaryLine("Куплено сегодня", dashboard.subscriptions.purchasedToday.toString())
+                    SummaryLine("Куплено за месяц", dashboard.subscriptions.purchasedMonth.toString())
+                }
+            }
+            item {
+                val nodes = dashboard.nodes
+                SummaryCard("Узлы") {
+                    SummaryLine("Онлайн", "${nodes.online} из ${nodes.total}")
+                    SummaryLine("Пользователей сейчас", nodes.totalUsersOnline.toString())
+                    // Упавшие называем поимённо: число «офлайн: 2» ничего не
+                    // говорит, а имя узла говорит, куда идти.
+                    nodes.nodes.filter { it.isDown }.forEach { node ->
+                        SummaryLine(
+                            node.name.ifBlank { node.uuid },
+                            "не отвечает",
+                            alarm = true,
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SummaryCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(8.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SummaryLine(label: String, value: String, alarm: Boolean = false) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (alarm) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun PeopleSection(viewModel: AdminViewModel, state: AdminUiState) {
+    var target by remember { mutableStateOf<AdminUserDto?>(null) }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = state.search,
+            onValueChange = viewModel::setSearch,
+            placeholder = { Text("Имя, @ник или Telegram ID") },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(6.dp))
+        IconButton(onClick = viewModel::searchPeople, enabled = !state.loading) {
+            Icon(Icons.Default.Search, contentDescription = "Искать")
+        }
+    }
+
+    Spacer(Modifier.height(10.dp))
+
+    when {
+        state.loading && state.people.isEmpty() -> Loader()
+        state.people.isEmpty() -> AdminNotice("Никого не нашлось. Попробуйте другой запрос.")
+        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(state.people, key = { it.id }) { person ->
+                PersonRow(person) { target = person }
+            }
+        }
+    }
+
+    target?.let { person ->
+        PersonActionsDialog(
+            person = person,
+            state = state,
+            onDismiss = { target = null },
+            onAddBalance = { kopeks ->
+                viewModel.addBalance(person.id, kopeks)
+                target = null
+            },
+            onExtend = { days ->
+                viewModel.extendSubscription(person.id, days)
+                target = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun PersonRow(person: AdminUserDto, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    person.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    rubles(person.balanceKopeks),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                subscriptionSummary(person),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Одна строка про подписку: то, что чаще всего и спрашивают в поддержке. */
+private fun subscriptionSummary(person: AdminUserDto): String {
+    if (!person.hasSubscription) return "Подписки нет"
+    val kind = when {
+        person.subscriptionIsTrial -> "пробная"
+        person.tariffName != null -> person.tariffName
+        else -> "платная"
+    }
+    val left = when {
+        person.daysRemaining > 0 -> "${person.daysRemaining} дн."
+        else -> "истекла"
+    }
+    val traffic = if (person.trafficLimitGb > 0) {
+        " · %.1f из %d ГБ".format(person.trafficUsedGb, person.trafficLimitGb)
+    } else {
+        ""
+    }
+    return "$kind · $left$traffic"
+}
+
+/**
+ * Действия над человеком.
+ *
+ * Начисление и продление спрашивают подтверждение суммой и сроком: промах
+ * пальцем здесь стоит чужих денег, а откатывать это придётся руками через
+ * веб-панель.
+ */
+@Composable
+private fun PersonActionsDialog(
+    person: AdminUserDto,
+    state: AdminUiState,
+    onDismiss: () -> Unit,
+    onAddBalance: (Long) -> Unit,
+    onExtend: (Int) -> Unit,
+) {
+    var amount by remember { mutableStateOf("") }
+    var days by remember { mutableStateOf("30") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(person.displayName) },
+        text = {
+            Column {
+                Text(
+                    "Баланс: ${rubles(person.balanceKopeks)} · ${subscriptionSummary(person)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                if (state.canAddBalance) {
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = amount,
+                        onValueChange = { text ->
+                            // минус разрешаем: списание — то же действие
+                            if (text.all { it.isDigit() || it == '-' }) amount = text
+                        },
+                        label = { Text("Начислить, ₽") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    val rub = amount.toLongOrNull()
+                    if (rub != null && rub != 0L) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Станет: ${rubles(person.balanceKopeks + rub * 100)}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = { onAddBalance(rub * 100) },
+                            enabled = !state.sending,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(if (rub > 0) "Начислить $rub ₽" else "Списать ${-rub} ₽") }
+                    }
+                }
+
+                if (state.canExtend) {
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = days,
+                        onValueChange = { text ->
+                            if (text.all { it.isDigit() } && text.length <= 4) days = text
+                        },
+                        label = { Text("Продлить, дней") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    val count = days.toIntOrNull()
+                    if (count != null && count > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = { onExtend(count) },
+                            enabled = !state.sending,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Продлить на $count дн.") }
+                    }
+                }
+
+                if (!state.canAddBalance && !state.canExtend) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Ваша роль позволяет смотреть, но не менять.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Закрыть") }
+        },
+    )
 }
 
 @Composable

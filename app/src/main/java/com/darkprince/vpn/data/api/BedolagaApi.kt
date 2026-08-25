@@ -1,11 +1,16 @@
 package com.darkprince.vpn.data.api
 
+import com.darkprince.vpn.data.api.dto.AdminBalanceRequest
+import com.darkprince.vpn.data.api.dto.AdminBalanceResponse
+import com.darkprince.vpn.data.api.dto.AdminDashboardDto
+import com.darkprince.vpn.data.api.dto.AdminExtendRequest
 import com.darkprince.vpn.data.api.dto.AdminPermissionsDto
 import com.darkprince.vpn.data.api.dto.AdminReplyRequest
 import com.darkprince.vpn.data.api.dto.AdminStatusRequest
 import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketListDto
 import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
+import com.darkprince.vpn.data.api.dto.AdminUsersListDto
 import com.darkprince.vpn.data.api.dto.AuthResponse
 import com.darkprince.vpn.data.api.dto.BalanceResponse
 import com.darkprince.vpn.data.api.dto.ConnectionLinkResponse
@@ -216,6 +221,28 @@ interface BedolagaApi {
     suspend fun adminTicketStatus(
         @Path("ticketId") ticketId: Long,
         @Body body: AdminStatusRequest,
+    ): JsonElement
+
+    @GET("cabinet/admin/stats/dashboard")
+    suspend fun adminDashboard(): AdminDashboardDto
+
+    @GET("cabinet/admin/users")
+    suspend fun adminUsers(
+        @Query("search") search: String? = null,
+        @Query("limit") limit: Int = 30,
+        @Query("offset") offset: Int = 0,
+    ): AdminUsersListDto
+
+    @POST("cabinet/admin/users/{userId}/balance")
+    suspend fun adminUpdateBalance(
+        @Path("userId") userId: Long,
+        @Body body: AdminBalanceRequest,
+    ): AdminBalanceResponse
+
+    @POST("cabinet/admin/users/{userId}/subscription")
+    suspend fun adminExtendSubscription(
+        @Path("userId") userId: Long,
+        @Body body: AdminExtendRequest,
     ): JsonElement
 
     // ---------- Новости ----------
