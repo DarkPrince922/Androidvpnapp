@@ -229,6 +229,8 @@ interface BedolagaApi {
     @GET("cabinet/admin/users")
     suspend fun adminUsers(
         @Query("search") search: String? = null,
+        @Query("sort_by") sortBy: String? = null,
+        @Query("subscription_status") subscriptionStatus: String? = null,
         @Query("limit") limit: Int = 30,
         @Query("offset") offset: Int = 0,
     ): AdminUsersListDto

@@ -10,7 +10,7 @@ import com.darkprince.vpn.data.api.dto.AdminReplyRequest
 import com.darkprince.vpn.data.api.dto.AdminStatusRequest
 import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketDto
-import com.darkprince.vpn.data.api.dto.AdminUserDto
+import com.darkprince.vpn.data.api.dto.AdminUsersListDto
 import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
 import com.darkprince.vpn.data.prefs.AppPrefs
 import retrofit2.HttpException
@@ -75,8 +75,19 @@ class AdminRepository(
 
     suspend fun dashboard(): AdminDashboardDto = api.adminDashboard()
 
-    suspend fun users(search: String?): List<AdminUserDto> =
-        api.adminUsers(search = search?.takeIf { it.isNotBlank() }, limit = PAGE).users
+    suspend fun users(
+        search: String?,
+        sortBy: String?,
+        subscriptionStatus: String?,
+        offset: Int,
+        limit: Int = PAGE,
+    ): AdminUsersListDto = api.adminUsers(
+        search = search?.takeIf { it.isNotBlank() },
+        sortBy = sortBy,
+        subscriptionStatus = subscriptionStatus,
+        limit = limit.coerceIn(1, MAX_PAGE),
+        offset = offset,
+    )
 
     suspend fun addBalance(userId: Long, amountKopeks: Long): AdminBalanceResponse =
         api.adminUpdateBalance(userId, AdminBalanceRequest(amountKopeks))
@@ -87,6 +98,9 @@ class AdminRepository(
 
     companion object {
         const val PAGE = 30
+
+        /** Предел кабинета на одну выдачу списка людей. */
+        const val MAX_PAGE = 200
 
         // права, которые нас интересуют
         const val TICKETS_READ = "tickets:read"

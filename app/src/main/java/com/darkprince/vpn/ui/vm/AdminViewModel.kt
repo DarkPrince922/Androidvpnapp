@@ -28,6 +28,31 @@ enum class AdminSection(val title: String, val permission: String) {
     PEOPLE("Люди", AdminRepository.USERS_READ),
 }
 
+/**
+ * Порядок в списке людей.
+ *
+ * Значения — те, что понимает кабинет; свои придумывать нельзя, сортировка
+ * идёт в базе. Направление у каждой задано на сервере и по смыслу очевидно:
+ * баланс и траты по убыванию, а дата окончания по возрастанию — «скоро
+ * истечёт» имеет смысл только так.
+ */
+enum class PeopleSort(val api: String?, val title: String) {
+    // Пустое значение — умолчание кабинета, дата регистрации по убыванию
+    NEW(null, "Новые"),
+    EXPIRING("subscription_end_date", "Скоро истекут"),
+    BALANCE("balance", "По балансу"),
+    SPENT("total_spent", "По тратам"),
+    ACTIVITY("last_activity", "По активности"),
+}
+
+/** Фильтр по состоянию подписки. */
+enum class PeopleFilter(val api: String?, val title: String) {
+    ANY(null, "Все"),
+    ACTIVE("active", "С подпиской"),
+    TRIAL("trial", "Пробные"),
+    EXPIRED("expired", "Истекшие"),
+}
+
 /** Какие обращения показывать в списке. */
 enum class TicketFilter(val api: String?, val title: String) {
     ACTIVE(null, "Все"),
@@ -46,6 +71,10 @@ data class AdminUiState(
     val filter: TicketFilter = TicketFilter.ACTIVE,
     val dashboard: AdminDashboardDto? = null,
     val people: List<AdminUserDto> = emptyList(),
+    val peopleTotal: Int = 0,
+    val peopleSort: PeopleSort = PeopleSort.NEW,
+    val peopleFilter: PeopleFilter = PeopleFilter.ANY,
+    val loadingMore: Boolean = false,
     val search: String = "",
     val tickets: List<AdminTicketDto> = emptyList(),
     val openCount: Int = 0,
@@ -64,6 +93,9 @@ data class AdminUiState(
     val canExtend: Boolean get() = permissions.allows(AdminRepository.USERS_SUBSCRIPTION)
 
     /** Разделы, которые роль вообще позволяет открыть. */
+    /** Есть ли ещё страницы. */
+    val hasMorePeople: Boolean get() = people.size < peopleTotal
+
     val sections: List<AdminSection>
         get() = AdminSection.entries.filter { permissions.allows(it.permission) }
 }
@@ -141,15 +173,63 @@ class AdminViewModel : ViewModel() {
         _state.update { it.copy(search = query) }
     }
 
+    fun setPeopleSort(sort: PeopleSort) {
+        if (_state.value.peopleSort == sort) return
+        _state.update { it.copy(peopleSort = sort) }
+        searchPeople()
+    }
+
+    fun setPeopleFilter(filter: PeopleFilter) {
+        if (_state.value.peopleFilter == filter) return
+        _state.update { it.copy(peopleFilter = filter) }
+        searchPeople()
+    }
+
     /** Поиск по людям: запускается кнопкой, а не на каждую букву. */
     fun searchPeople() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            try {
-                val people = repository.users(_state.value.search)
-                _state.update { it.copy(people = people, loading = false) }
-            } catch (error: Exception) {
-                _state.update { it.copy(loading = false, error = adminErrorMessage(error)) }
+            loadPeople(offset = 0)
+        }
+    }
+
+    /**
+     * Следующая страница.
+     *
+     * Дозагружаем к тому, что уже показано, а не перелистываем: на телефоне
+     * листать вверх привычнее, чем прыгать по номерам страниц, а место в
+     * списке при этом не теряется.
+     */
+    fun loadMorePeople() {
+        val state = _state.value
+        if (state.loading || state.loadingMore || !state.hasMorePeople) return
+        viewModelScope.launch {
+            _state.update { it.copy(loadingMore = true, error = null) }
+            loadPeople(offset = state.people.size)
+        }
+    }
+
+    private suspend fun loadPeople(offset: Int, limit: Int = AdminRepository.PAGE) {
+        val state = _state.value
+        try {
+            val page = repository.users(
+                search = state.search,
+                sortBy = state.peopleSort.api,
+                subscriptionStatus = state.peopleFilter.api,
+                offset = offset,
+                limit = limit,
+            )
+            _state.update {
+                it.copy(
+                    people = if (offset == 0) page.users else it.people + page.users,
+                    peopleTotal = page.total,
+                    loading = false,
+                    loadingMore = false,
+                )
+            }
+        } catch (error: Exception) {
+            _state.update {
+                it.copy(loading = false, loadingMore = false, error = adminErrorMessage(error))
             }
         }
     }
@@ -198,8 +278,8 @@ class AdminViewModel : ViewModel() {
                     }
 
                     AdminSection.PEOPLE -> {
-                        val people = repository.users(_state.value.search)
-                        _state.update { it.copy(people = people) }
+                        loadPeople(offset = 0)
+                        return@launch
                     }
                 }
                 _state.update { it.copy(loading = false) }
@@ -214,6 +294,20 @@ class AdminViewModel : ViewModel() {
      * Возвращаем текст для подтверждения: человеку важно увидеть, что
      * получилось, а не только что «успешно».
      */
+    /**
+     * Перечитать ровно то, что человек уже пролистал.
+     *
+     * После правки баланса или продления список должен показать новое
+     * значение, но сбрасывать его на первую страницу нельзя: догруженные
+     * страницы пропали бы, и место в списке вместе с ними.
+     */
+    private fun refreshPeopleInPlace() {
+        viewModelScope.launch {
+            val shown = _state.value.people.size
+            loadPeople(offset = 0, limit = shown.coerceAtLeast(AdminRepository.PAGE))
+        }
+    }
+
     fun addBalance(userId: Long, amountKopeks: Long) {
         viewModelScope.launch {
             _state.update { it.copy(sending = true, error = null) }
@@ -228,7 +322,7 @@ class AdminViewModel : ViewModel() {
                         ),
                     )
                 }
-                searchPeople()
+                refreshPeopleInPlace()
             } catch (error: Exception) {
                 _state.update { it.copy(sending = false, error = adminErrorMessage(error)) }
             }
@@ -241,7 +335,7 @@ class AdminViewModel : ViewModel() {
             try {
                 repository.extendSubscription(userId, days)
                 _state.update { it.copy(sending = false, info = "Подписка продлена на $days дн.") }
-                searchPeople()
+                refreshPeopleInPlace()
             } catch (error: Exception) {
                 _state.update { it.copy(sending = false, error = adminErrorMessage(error)) }
             }

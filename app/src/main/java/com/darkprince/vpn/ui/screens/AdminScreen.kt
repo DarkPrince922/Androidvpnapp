@@ -4,11 +4,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -59,6 +62,8 @@ import com.darkprince.vpn.data.api.dto.SupportMessageDto
 import com.darkprince.vpn.ui.vm.AdminSection
 import com.darkprince.vpn.ui.vm.AdminUiState
 import com.darkprince.vpn.ui.vm.AdminViewModel
+import com.darkprince.vpn.ui.vm.PeopleFilter
+import com.darkprince.vpn.ui.vm.PeopleSort
 import com.darkprince.vpn.ui.vm.TicketFilter
 
 /**
@@ -297,7 +302,41 @@ private fun PeopleSection(viewModel: AdminViewModel, state: AdminUiState) {
         }
     }
 
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(8.dp))
+
+    // Два ряда: сперва кого показывать, потом в каком порядке. Оба
+    // прокручиваются вбок — на узком экране они не помещаются, а прятать
+    // их в меню значит спрятать сортировку, ради которой сюда и заходят.
+    ChipRow {
+        PeopleFilter.entries.forEach { filter ->
+            FilterChip(
+                selected = state.peopleFilter == filter,
+                onClick = { viewModel.setPeopleFilter(filter) },
+                label = { Text(filter.title, fontSize = 12.sp) },
+            )
+        }
+    }
+    Spacer(Modifier.height(6.dp))
+    ChipRow {
+        PeopleSort.entries.forEach { sort ->
+            FilterChip(
+                selected = state.peopleSort == sort,
+                onClick = { viewModel.setPeopleSort(sort) },
+                label = { Text(sort.title, fontSize = 12.sp) },
+            )
+        }
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    if (state.peopleTotal > 0) {
+        Text(
+            "Показано ${state.people.size} из ${state.peopleTotal}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+    }
 
     when {
         state.loading && state.people.isEmpty() -> Loader()
@@ -305,6 +344,24 @@ private fun PeopleSection(viewModel: AdminViewModel, state: AdminUiState) {
         else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.people, key = { it.id }) { person ->
                 PersonRow(person) { target = person }
+            }
+            if (state.hasMorePeople) {
+                item {
+                    // Кнопкой, а не по достижению конца списка: подгрузка
+                    // «сама собой» на длинном списке легко уносит человека
+                    // дальше, чем он собирался, и обратно он уже не найдёт.
+                    OutlinedButton(
+                        onClick = viewModel::loadMorePeople,
+                        enabled = !state.loadingMore,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (state.loadingMore) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("Показать ещё")
+                        }
+                    }
+                }
             }
         }
     }
@@ -324,6 +381,18 @@ private fun PeopleSection(viewModel: AdminViewModel, state: AdminUiState) {
             },
         )
     }
+}
+
+/** Ряд чипов, который прокручивается вбок, если не помещается. */
+@Composable
+private fun ChipRow(content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        content = content,
+    )
 }
 
 @Composable
