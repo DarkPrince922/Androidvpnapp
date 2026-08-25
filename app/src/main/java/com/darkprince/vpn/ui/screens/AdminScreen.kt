@@ -76,7 +76,11 @@ import com.darkprince.vpn.ui.vm.TicketFilter
  * значит обещать впустую.
  */
 @Composable
-fun AdminScreen(viewModel: AdminViewModel, onOpenTicket: (Long) -> Unit) {
+fun AdminScreen(
+    viewModel: AdminViewModel,
+    onOpenTicket: (Long) -> Unit,
+    onOpenPerson: (AdminUserDto) -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(
@@ -144,9 +148,9 @@ fun AdminScreen(viewModel: AdminViewModel, onOpenTicket: (Long) -> Unit) {
         }
 
         when (state.section) {
-            AdminSection.SUMMARY -> SummarySection(state)
+            AdminSection.SUMMARY -> SummarySection(viewModel, state)
             AdminSection.TICKETS -> TicketsSection(viewModel, state, onOpenTicket)
-            AdminSection.PEOPLE -> PeopleSection(viewModel, state)
+            AdminSection.PEOPLE -> PeopleSection(viewModel, state, onOpenPerson)
         }
     }
 }
@@ -203,8 +207,9 @@ private fun rubles(kopeks: Long): String =
         .replace('.', ',') + " ₽"
 
 @Composable
-private fun SummarySection(state: AdminUiState) {
+private fun SummarySection(viewModel: AdminViewModel, state: AdminUiState) {
     val dashboard = state.dashboard
+    var promoOpen by remember { mutableStateOf(false) }
     when {
         state.loading && dashboard == null -> Loader()
         dashboard == null -> AdminNotice("Сводка не загрузилась.")
@@ -233,16 +238,162 @@ private fun SummarySection(state: AdminUiState) {
                     // Упавшие называем поимённо: число «офлайн: 2» ничего не
                     // говорит, а имя узла говорит, куда идти.
                     nodes.nodes.filter { it.isDown }.forEach { node ->
-                        SummaryLine(
-                            node.name.ifBlank { node.uuid },
-                            "не отвечает",
-                            alarm = true,
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                node.name.ifBlank { node.uuid },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            // Кнопка стоит там же, где имя упавшего узла:
+                            // узнать и поднять — одно действие, а не два.
+                            if (state.canRestartNode) {
+                                TextButton(
+                                    onClick = {
+                                        viewModel.restartNode(node.uuid, node.name)
+                                    },
+                                    enabled = !state.sending,
+                                ) { Text("Перезапустить", fontSize = 12.sp) }
+                            } else {
+                                Text(
+                                    "не отвечает",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
                     }
+                }
+            }
+            if (state.canCreatePromo) {
+                item {
+                    OutlinedButton(
+                        onClick = { promoOpen = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Создать промокод") }
                 }
             }
         }
     }
+
+    if (promoOpen) {
+        PromoDialog(
+            sending = state.sending,
+            onDismiss = { promoOpen = false },
+            onCreate = { code, days, rub, uses ->
+                viewModel.createPromo(code, days, rub, uses)
+                promoOpen = false
+            },
+        )
+    }
+}
+
+/**
+ * Промокод на дни или на баланс.
+ *
+ * Из шести типов, которые знает бот, здесь два. Остальные — скидки,
+ * промогруппы, привязка к тарифу — требуют выбора из справочников, которых
+ * на телефоне под рукой нет, и собирать их вслепую значит наплодить кодов,
+ * которые не сработают.
+ *
+ * Код предлагаем готовый, но даём переписать: чаще всего он идёт в ответ на
+ * обращение, и человеку приятнее получить «SORRY30», чем случайные буквы.
+ */
+@Composable
+private fun PromoDialog(
+    sending: Boolean,
+    onDismiss: () -> Unit,
+    onCreate: (code: String, days: Int?, rubles: Int?, uses: Int) -> Unit,
+) {
+    var code by remember { mutableStateOf(suggestPromoCode()) }
+    var byDays by remember { mutableStateOf(true) }
+    var value by remember { mutableStateOf("30") }
+    var uses by remember { mutableStateOf("1") }
+
+    val amount = value.toIntOrNull()
+    val usesCount = uses.toIntOrNull()
+    val valid = code.isNotBlank() && amount != null && amount > 0 &&
+        usesCount != null && usesCount > 0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Новый промокод") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { text ->
+                        if (text.length <= 50) code = text.uppercase()
+                    },
+                    label = { Text("Код") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                ChipRow {
+                    FilterChip(
+                        selected = byDays,
+                        onClick = { byDays = true },
+                        label = { Text("Дни подписки", fontSize = 12.sp) },
+                    )
+                    FilterChip(
+                        selected = !byDays,
+                        onClick = { byDays = false },
+                        label = { Text("Бонус на баланс", fontSize = 12.sp) },
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { text ->
+                        if (text.all { it.isDigit() } && text.length <= 6) value = text
+                    },
+                    label = { Text(if (byDays) "Дней" else "Рублей") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = uses,
+                    onValueChange = { text ->
+                        if (text.all { it.isDigit() } && text.length <= 5) uses = text
+                    },
+                    label = { Text("Сколько раз можно применить") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onCreate(
+                        code,
+                        if (byDays) amount else null,
+                        if (byDays) null else amount,
+                        usesCount ?: 1,
+                    )
+                },
+                enabled = valid && !sending,
+            ) { Text("Создать") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        },
+    )
+}
+
+/** Готовый код из букв и цифр — набирать вручную на телефоне мучительно. */
+private fun suggestPromoCode(): String {
+    val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return (1..8).map { alphabet.random() }.joinToString("")
 }
 
 @Composable
@@ -288,9 +439,11 @@ private fun SummaryLine(label: String, value: String, alarm: Boolean = false) {
 }
 
 @Composable
-private fun PeopleSection(viewModel: AdminViewModel, state: AdminUiState) {
-    var target by remember { mutableStateOf<AdminUserDto?>(null) }
-
+private fun PeopleSection(
+    viewModel: AdminViewModel,
+    state: AdminUiState,
+    onOpenPerson: (AdminUserDto) -> Unit,
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
             value = state.search,
@@ -351,7 +504,7 @@ private fun PeopleSection(viewModel: AdminViewModel, state: AdminUiState) {
         state.people.isEmpty() -> AdminNotice("Никого не нашлось. Попробуйте другой запрос.")
         else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.people, key = { it.id }) { person ->
-                PersonRow(person) { target = person }
+                PersonRow(person) { onOpenPerson(person) }
             }
             if (state.hasMorePeople) {
                 item {
@@ -374,33 +527,6 @@ private fun PeopleSection(viewModel: AdminViewModel, state: AdminUiState) {
         }
     }
 
-    target?.let { person ->
-        PersonActionsDialog(
-            person = person,
-            state = state,
-            onDismiss = { target = null },
-            onAddBalance = { kopeks ->
-                viewModel.addBalance(person.id, kopeks)
-                target = null
-            },
-            onExtend = { days ->
-                viewModel.extendSubscription(person.id, days)
-                target = null
-            },
-        )
-    }
-}
-
-/** Ряд чипов, который прокручивается вбок, если не помещается. */
-@Composable
-private fun ChipRow(content: @Composable RowScope.() -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        content = content,
-    )
 }
 
 @Composable
@@ -459,100 +585,7 @@ private fun subscriptionSummary(person: AdminUserDto): String {
     return "$kind · $left$traffic"
 }
 
-/**
- * Действия над человеком.
- *
- * Начисление и продление спрашивают подтверждение суммой и сроком: промах
- * пальцем здесь стоит чужих денег, а откатывать это придётся руками через
- * веб-панель.
- */
-@Composable
-private fun PersonActionsDialog(
-    person: AdminUserDto,
-    state: AdminUiState,
-    onDismiss: () -> Unit,
-    onAddBalance: (Long) -> Unit,
-    onExtend: (Int) -> Unit,
-) {
-    var amount by remember { mutableStateOf("") }
-    var days by remember { mutableStateOf("30") }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(person.displayName) },
-        text = {
-            Column {
-                Text(
-                    "Баланс: ${rubles(person.balanceKopeks)} · ${subscriptionSummary(person)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                if (state.canAddBalance) {
-                    Spacer(Modifier.height(14.dp))
-                    OutlinedTextField(
-                        value = amount,
-                        onValueChange = { text ->
-                            // минус разрешаем: списание — то же действие
-                            if (text.all { it.isDigit() || it == '-' }) amount = text
-                        },
-                        label = { Text("Начислить, ₽") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    val rub = amount.toLongOrNull()
-                    if (rub != null && rub != 0L) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "Станет: ${rubles(person.balanceKopeks + rub * 100)}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        OutlinedButton(
-                            onClick = { onAddBalance(rub * 100) },
-                            enabled = !state.sending,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(if (rub > 0) "Начислить $rub ₽" else "Списать ${-rub} ₽") }
-                    }
-                }
-
-                if (state.canExtend) {
-                    Spacer(Modifier.height(14.dp))
-                    OutlinedTextField(
-                        value = days,
-                        onValueChange = { text ->
-                            if (text.all { it.isDigit() } && text.length <= 4) days = text
-                        },
-                        label = { Text("Продлить, дней") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    val count = days.toIntOrNull()
-                    if (count != null && count > 0) {
-                        Spacer(Modifier.height(6.dp))
-                        OutlinedButton(
-                            onClick = { onExtend(count) },
-                            enabled = !state.sending,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Продлить на $count дн.") }
-                    }
-                }
-
-                if (!state.canAddBalance && !state.canExtend) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Ваша роль позволяет смотреть, но не менять.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Закрыть") }
-        },
-    )
-}
 
 @Composable
 private fun AdminNotice(text: String) {
@@ -829,5 +862,265 @@ private fun AdminMessageBubble(message: SupportMessageDto) {
                 }
             }
         }
+    }
+}
+
+/**
+ * Карточка человека.
+ *
+ * Отдельный экран, а не окно поверх списка: здесь и подписка, и устройства,
+ * и платежи, и переписка — в окно это не помещается, а листать окно поверх
+ * списка неудобно вдвойне.
+ */
+@Composable
+fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val person = state.person
+
+    if (person == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            AdminNotice("Карточка закрыта")
+        }
+        return
+    }
+
+    var amount by remember(person.id) { mutableStateOf("") }
+    var days by remember(person.id) { mutableStateOf("30") }
+    var message by remember(person.id) { mutableStateOf("") }
+    var dropping by remember(person.id) { mutableStateOf<String?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+            .padding(horizontal = 12.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    person.displayName,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${rubles(person.balanceKopeks)} · ${subscriptionSummary(person)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        state.error?.let {
+            AdminNotice(it)
+            Spacer(Modifier.height(6.dp))
+        }
+        state.info?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(6.dp))
+        }
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (state.canAddBalance) {
+                item {
+                    SummaryCard("Баланс") {
+                        OutlinedTextField(
+                            value = amount,
+                            onValueChange = { text ->
+                                // минус разрешаем: списание — то же действие
+                                if (text.all { it.isDigit() || it == '-' }) amount = text
+                            },
+                            label = { Text("Начислить, ₽") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        val rub = amount.toLongOrNull()
+                        if (rub != null && rub != 0L) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Станет: ${rubles(person.balanceKopeks + rub * 100)}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.addBalance(person.id, rub * 100)
+                                    amount = ""
+                                },
+                                enabled = !state.sending,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (rub > 0) "Начислить $rub ₽" else "Списать ${-rub} ₽")
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (state.canExtend) {
+                item {
+                    SummaryCard("Подписка") {
+                        OutlinedTextField(
+                            value = days,
+                            onValueChange = { text ->
+                                if (text.all { it.isDigit() } && text.length <= 4) days = text
+                            },
+                            label = { Text("Продлить, дней") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        val count = days.toIntOrNull()
+                        if (count != null && count > 0) {
+                            Spacer(Modifier.height(6.dp))
+                            OutlinedButton(
+                                onClick = { viewModel.extendSubscription(person.id, count) },
+                                enabled = !state.sending,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Продлить на $count дн.") }
+                        }
+                    }
+                }
+            }
+
+            item {
+                SummaryCard(
+                    if (state.deviceLimit > 0) {
+                        "Устройства · ${state.devices.size} из ${state.deviceLimit}"
+                    } else {
+                        "Устройства"
+                    },
+                ) {
+                    when {
+                        state.personLoading -> Text(
+                            "Загружаю…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        state.devices.isEmpty() -> Text(
+                            "Ни одного подключения",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        else -> state.devices.forEach { device ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        device.displayName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    device.platform.takeIf { it.isNotBlank() }?.let {
+                                        Text(
+                                            it,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                if (state.canDropDevice) {
+                                    TextButton(
+                                        onClick = { dropping = device.hwid },
+                                        enabled = !state.sending,
+                                    ) { Text("Отключить", fontSize = 12.sp) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                SummaryCard("Последние платежи") {
+                    when {
+                        state.personLoading -> Text(
+                            "Загружаю…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        state.transactions.isEmpty() -> Text(
+                            "Операций нет",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        else -> state.transactions.take(10).forEach { transaction ->
+                            SummaryLine(
+                                transaction.description?.takeIf { it.isNotBlank() }
+                                    ?: transaction.type,
+                                rubles(transaction.amountKopeks),
+                                // незавершённый платёж — то самое «я оплатил,
+                                // а не зачлось», ради чего сюда и смотрят
+                                alarm = !transaction.isCompleted,
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (state.canWrite) {
+                item {
+                    SummaryCard("Написать в Telegram") {
+                        OutlinedTextField(
+                            value = message,
+                            onValueChange = { if (it.length <= 4_000) message = it },
+                            label = { Text("Сообщение") },
+                            minLines = 2,
+                            maxLines = 5,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.sendMessage(message)
+                                message = ""
+                            },
+                            enabled = !state.sending && message.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Отправить") }
+                    }
+                }
+            }
+
+            item { Spacer(Modifier.height(16.dp)) }
+        }
+    }
+
+    dropping?.let { hwid ->
+        val device = state.devices.firstOrNull { it.hwid == hwid }
+        AlertDialog(
+            onDismissRequest = { dropping = null },
+            title = { Text("Отключить устройство") },
+            text = {
+                Text(
+                    "«${device?.displayName ?: hwid}» перестанет подключаться, место в " +
+                        "лимите освободится сразу. Заново подключиться человеку придётся " +
+                        "руками на самом устройстве.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.removeDevice(hwid)
+                    dropping = null
+                }) { Text("Отключить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { dropping = null }) { Text("Отмена") }
+            },
+        )
     }
 }

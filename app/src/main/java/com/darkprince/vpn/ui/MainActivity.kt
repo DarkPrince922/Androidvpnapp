@@ -58,6 +58,7 @@ import com.darkprince.vpn.ui.screens.DevicesScreen
 import com.darkprince.vpn.ui.screens.HomeScreen
 import com.darkprince.vpn.ui.screens.LoginScreen
 import com.darkprince.vpn.ui.screens.PlansScreen
+import com.darkprince.vpn.ui.screens.AdminPersonScreen
 import com.darkprince.vpn.ui.screens.AdminScreen
 import com.darkprince.vpn.ui.screens.AdminTicketScreen
 import com.darkprince.vpn.ui.screens.NewsArticleScreen
@@ -581,8 +582,24 @@ private fun AppRoot(
                     AdminScreen(
                         viewModel = adminViewModel,
                         onOpenTicket = { id -> navController.navigate("admin/ticket/$id") },
+                        onOpenPerson = { person ->
+                            // Человека кладём в состояние, а не в маршрут: в
+                            // карточке нужен весь объект из списка, а тащить
+                            // его через строку адреса значит собирать заново.
+                            adminViewModel.openPerson(person)
+                            navController.navigate("admin/person")
+                        },
                     )
                 }
+            }
+            composable("admin/person") {
+                AdminPersonScreen(
+                    viewModel = adminViewModel,
+                    onBack = {
+                        adminViewModel.closePerson()
+                        navController.popBackStack()
+                    },
+                )
             }
             composable("admin/ticket/{ticketId}") { entry ->
                 entry.arguments?.getString("ticketId")?.toLongOrNull()?.let { id ->

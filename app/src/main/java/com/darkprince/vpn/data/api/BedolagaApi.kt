@@ -3,13 +3,17 @@ package com.darkprince.vpn.data.api
 import com.darkprince.vpn.data.api.dto.AdminBalanceRequest
 import com.darkprince.vpn.data.api.dto.AdminBalanceResponse
 import com.darkprince.vpn.data.api.dto.AdminDashboardDto
+import com.darkprince.vpn.data.api.dto.AdminDevicesDto
 import com.darkprince.vpn.data.api.dto.AdminExtendRequest
+import com.darkprince.vpn.data.api.dto.AdminMessageRequest
 import com.darkprince.vpn.data.api.dto.AdminPermissionsDto
+import com.darkprince.vpn.data.api.dto.AdminPromoRequest
 import com.darkprince.vpn.data.api.dto.AdminReplyRequest
 import com.darkprince.vpn.data.api.dto.AdminStatusRequest
 import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketListDto
 import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
+import com.darkprince.vpn.data.api.dto.AdminTransactionsDto
 import com.darkprince.vpn.data.api.dto.AdminUsersListDto
 import com.darkprince.vpn.data.api.dto.AuthResponse
 import com.darkprince.vpn.data.api.dto.BalanceResponse
@@ -246,6 +250,33 @@ interface BedolagaApi {
         @Path("userId") userId: Long,
         @Body body: AdminExtendRequest,
     ): JsonElement
+
+    @GET("cabinet/admin/users/{userId}/devices")
+    suspend fun adminUserDevices(@Path("userId") userId: Long): AdminDevicesDto
+
+    @DELETE("cabinet/admin/users/{userId}/devices/{hwid}")
+    suspend fun adminDeleteDevice(
+        @Path("userId") userId: Long,
+        @Path("hwid") hwid: String,
+    ): JsonElement
+
+    @GET("cabinet/admin/users/{userId}/transactions")
+    suspend fun adminUserTransactions(
+        @Path("userId") userId: Long,
+        @Query("limit") limit: Int = 20,
+    ): AdminTransactionsDto
+
+    @POST("cabinet/admin/users/{userId}/send-message")
+    suspend fun adminSendMessage(
+        @Path("userId") userId: Long,
+        @Body body: AdminMessageRequest,
+    ): JsonElement
+
+    @POST("cabinet/admin/stats/nodes/{uuid}/restart")
+    suspend fun adminRestartNode(@Path("uuid") uuid: String): JsonElement
+
+    @POST("cabinet/admin/promocodes")
+    suspend fun adminCreatePromo(@Body body: AdminPromoRequest): JsonElement
 
     // ---------- Новости ----------
 

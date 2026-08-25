@@ -225,3 +225,65 @@ data class AdminExtendRequest(
     val days: Int,
     @SerialName("subscription_id") val subscriptionId: Long? = null,
 )
+
+// ---------- Устройства, платежи, сообщения ----------
+
+@Serializable
+data class AdminDeviceDto(
+    val hwid: String = "",
+    val platform: String = "",
+    @SerialName("device_model") val deviceModel: String = "",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("local_name") val localName: String? = null,
+) {
+    /** Имя, данное человеком, важнее модели: он по нему и узнаёт устройство. */
+    val displayName: String
+        get() = localName?.takeIf { it.isNotBlank() }
+            ?: deviceModel.takeIf { it.isNotBlank() }
+            ?: platform.takeIf { it.isNotBlank() }
+            ?: hwid.take(8)
+}
+
+@Serializable
+data class AdminDevicesDto(
+    val devices: List<AdminDeviceDto> = emptyList(),
+    val total: Int = 0,
+    @SerialName("device_limit") val deviceLimit: Int = 0,
+)
+
+@Serializable
+data class AdminTransactionDto(
+    val id: Long = 0,
+    val type: String = "",
+    @SerialName("amount_kopeks") val amountKopeks: Long = 0,
+    val description: String? = null,
+    @SerialName("payment_method") val paymentMethod: String? = null,
+    @SerialName("is_completed") val isCompleted: Boolean = true,
+    @SerialName("created_at") val createdAt: String? = null,
+)
+
+@Serializable
+data class AdminTransactionsDto(
+    val transactions: List<AdminTransactionDto> = emptyList(),
+    val total: Int = 0,
+)
+
+@Serializable
+data class AdminMessageRequest(val text: String)
+
+/**
+ * Промокод.
+ *
+ * Из шести типов, которые знает бот, в приложении даём два: бонус на баланс
+ * и дни подписки. Остальные — скидки, промогруппы, привязка к тарифу —
+ * требуют выбора из справочников, которых на телефоне под рукой нет.
+ */
+@Serializable
+data class AdminPromoRequest(
+    val code: String,
+    val type: String,
+    @SerialName("balance_bonus_kopeks") val balanceBonusKopeks: Int = 0,
+    @SerialName("subscription_days") val subscriptionDays: Int = 0,
+    @SerialName("max_uses") val maxUses: Int = 1,
+    @SerialName("is_active") val isActive: Boolean = true,
+)

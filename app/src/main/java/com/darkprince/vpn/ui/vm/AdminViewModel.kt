@@ -3,9 +3,11 @@ package com.darkprince.vpn.ui.vm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.data.api.dto.AdminDashboardDto
+import com.darkprince.vpn.data.api.dto.AdminDeviceDto
 import com.darkprince.vpn.data.api.dto.AdminPermissionsDto
 import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketDto
+import com.darkprince.vpn.data.api.dto.AdminTransactionDto
 import com.darkprince.vpn.data.api.dto.AdminUserDto
 import com.darkprince.vpn.data.repo.AdminRepository
 import com.darkprince.vpn.data.repo.adminErrorMessage
@@ -107,12 +109,22 @@ data class AdminUiState(
     val sending: Boolean = false,
     val ticketError: String? = null,
     val info: String? = null,
+    // карточка человека
+    val person: AdminUserDto? = null,
+    val devices: List<AdminDeviceDto> = emptyList(),
+    val deviceLimit: Int = 0,
+    val transactions: List<AdminTransactionDto> = emptyList(),
+    val personLoading: Boolean = false,
 ) {
     val canReply: Boolean get() = permissions.allows(AdminRepository.TICKETS_REPLY)
     val canClose: Boolean get() = permissions.allows(AdminRepository.TICKETS_CLOSE)
     val canReadTickets: Boolean get() = permissions.allows(AdminRepository.TICKETS_READ)
     val canAddBalance: Boolean get() = permissions.allows(AdminRepository.USERS_BALANCE)
     val canExtend: Boolean get() = permissions.allows(AdminRepository.USERS_SUBSCRIPTION)
+    val canDropDevice: Boolean get() = permissions.allows(AdminRepository.USERS_EDIT)
+    val canWrite: Boolean get() = permissions.allows(AdminRepository.USERS_SEND_MESSAGE)
+    val canRestartNode: Boolean get() = permissions.allows(AdminRepository.REMNAWAVE_MANAGE)
+    val canCreatePromo: Boolean get() = permissions.allows(AdminRepository.PROMOCODES_CREATE)
 
     /** Разделы, которые роль вообще позволяет открыть. */
     /** Есть ли ещё страницы. */
@@ -478,6 +490,113 @@ class AdminViewModel : ViewModel() {
             } catch (_: Exception) {
             }
             loadCount()
+        }
+    }
+
+    // ---------- карточка человека ----------
+
+    /**
+     * Открыть карточку. Устройства и платежи спрашиваем сразу обоими
+     * запросами: по отдельности карточка собиралась бы рывками.
+     */
+    fun openPerson(person: AdminUserDto) {
+        _state.update {
+            it.copy(
+                person = person,
+                devices = emptyList(),
+                transactions = emptyList(),
+                personLoading = true,
+                error = null,
+                info = null,
+            )
+        }
+        viewModelScope.launch {
+            val devices = runCatching { repository.devices(person.id) }.getOrNull()
+            val transactions = runCatching { repository.transactions(person.id) }.getOrNull()
+            _state.update {
+                it.copy(
+                    devices = devices?.devices.orEmpty(),
+                    deviceLimit = devices?.deviceLimit ?: person.deviceLimit,
+                    transactions = transactions.orEmpty(),
+                    personLoading = false,
+                )
+            }
+        }
+    }
+
+    fun closePerson() {
+        _state.update {
+            it.copy(person = null, devices = emptyList(), transactions = emptyList(), info = null)
+        }
+    }
+
+    fun removeDevice(hwid: String) {
+        val person = _state.value.person ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(sending = true, error = null) }
+            try {
+                repository.removeDevice(person.id, hwid)
+                val devices = repository.devices(person.id)
+                _state.update {
+                    it.copy(
+                        sending = false,
+                        devices = devices.devices,
+                        deviceLimit = devices.deviceLimit,
+                        info = "Устройство отключено",
+                    )
+                }
+            } catch (error: Exception) {
+                _state.update { it.copy(sending = false, error = adminErrorMessage(error)) }
+            }
+        }
+    }
+
+    fun sendMessage(text: String) {
+        val person = _state.value.person ?: return
+        val body = text.trim()
+        if (body.isEmpty()) return
+        viewModelScope.launch {
+            _state.update { it.copy(sending = true, error = null) }
+            try {
+                repository.sendMessage(person.id, body)
+                _state.update { it.copy(sending = false, info = "Сообщение отправлено") }
+            } catch (error: Exception) {
+                _state.update { it.copy(sending = false, error = adminErrorMessage(error)) }
+            }
+        }
+    }
+
+    // ---------- узлы и промокоды ----------
+
+    fun restartNode(uuid: String, name: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(sending = true, error = null) }
+            try {
+                repository.restartNode(uuid)
+                _state.update {
+                    it.copy(sending = false, info = "Узел «$name» перезапускается")
+                }
+            } catch (error: Exception) {
+                _state.update { it.copy(sending = false, error = adminErrorMessage(error)) }
+            }
+        }
+    }
+
+    /**
+     * Промокод. Код возвращаем в info, чтобы его можно было скопировать и
+     * вставить в ответ на обращение — ради этого он обычно и создаётся.
+     */
+    fun createPromo(code: String, days: Int?, rubles: Int?, maxUses: Int) {
+        val normalized = code.trim().uppercase()
+        if (normalized.isEmpty()) return
+        viewModelScope.launch {
+            _state.update { it.copy(sending = true, error = null) }
+            try {
+                repository.createPromo(normalized, days, rubles, maxUses)
+                _state.update { it.copy(sending = false, info = "Промокод $normalized создан") }
+            } catch (error: Exception) {
+                _state.update { it.copy(sending = false, error = adminErrorMessage(error)) }
+            }
         }
     }
 

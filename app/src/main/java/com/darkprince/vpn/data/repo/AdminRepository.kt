@@ -4,12 +4,16 @@ import com.darkprince.vpn.data.api.ApiClient
 import com.darkprince.vpn.data.api.dto.AdminBalanceRequest
 import com.darkprince.vpn.data.api.dto.AdminBalanceResponse
 import com.darkprince.vpn.data.api.dto.AdminDashboardDto
+import com.darkprince.vpn.data.api.dto.AdminDevicesDto
 import com.darkprince.vpn.data.api.dto.AdminExtendRequest
+import com.darkprince.vpn.data.api.dto.AdminMessageRequest
 import com.darkprince.vpn.data.api.dto.AdminPermissionsDto
+import com.darkprince.vpn.data.api.dto.AdminPromoRequest
 import com.darkprince.vpn.data.api.dto.AdminReplyRequest
 import com.darkprince.vpn.data.api.dto.AdminStatusRequest
 import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketDto
+import com.darkprince.vpn.data.api.dto.AdminTransactionDto
 import com.darkprince.vpn.data.api.dto.AdminUsersListDto
 import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
 import com.darkprince.vpn.data.prefs.AppPrefs
@@ -97,6 +101,53 @@ class AdminRepository(
         api.adminExtendSubscription(userId, AdminExtendRequest(days = days))
     }
 
+    // ---------- карточка человека ----------
+
+    suspend fun devices(userId: Long): AdminDevicesDto = api.adminUserDevices(userId)
+
+    suspend fun removeDevice(userId: Long, hwid: String) {
+        api.adminDeleteDevice(userId, hwid)
+    }
+
+    suspend fun transactions(userId: Long): List<AdminTransactionDto> =
+        api.adminUserTransactions(userId).transactions
+
+    suspend fun sendMessage(userId: Long, text: String) {
+        api.adminSendMessage(userId, AdminMessageRequest(text))
+    }
+
+    // ---------- узлы и промокоды ----------
+
+    suspend fun restartNode(uuid: String) {
+        api.adminRestartNode(uuid)
+    }
+
+    /**
+     * Промокод на баланс или на дни.
+     *
+     * Бонус на баланс кабинет считает в копейках, а дни — числом дней;
+     * поле у каждого типа своё, и заполнять оба нельзя: сервер такой набор
+     * отвергнет как противоречивый.
+     */
+    suspend fun createPromo(code: String, days: Int?, rubles: Int?, maxUses: Int) {
+        val request = if (days != null) {
+            AdminPromoRequest(
+                code = code,
+                type = "subscription_days",
+                subscriptionDays = days,
+                maxUses = maxUses,
+            )
+        } else {
+            AdminPromoRequest(
+                code = code,
+                type = "balance",
+                balanceBonusKopeks = (rubles ?: 0) * 100,
+                maxUses = maxUses,
+            )
+        }
+        api.adminCreatePromo(request)
+    }
+
     companion object {
         const val PAGE = 30
 
@@ -111,6 +162,10 @@ class AdminRepository(
         const val USERS_READ = "users:read"
         const val USERS_BALANCE = "users:balance"
         const val USERS_SUBSCRIPTION = "users:subscription"
+        const val USERS_EDIT = "users:edit"
+        const val USERS_SEND_MESSAGE = "users:send_message"
+        const val REMNAWAVE_MANAGE = "remnawave:manage"
+        const val PROMOCODES_CREATE = "promocodes:create"
     }
 }
 
