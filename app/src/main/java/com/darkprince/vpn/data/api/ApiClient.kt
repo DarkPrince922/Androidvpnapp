@@ -52,13 +52,33 @@ class ApiClient(private val prefs: AppPrefs) {
         chain.proceed(original.newBuilder().url(newUrl).build())
     }
 
+    /**
+     * Точки входа, которые ходят без токена: вход, регистрация, обновление
+     * сессии, восстановление пароля. Токена там либо ещё нет, либо он в теле
+     * запроса.
+     *
+     * Список именно такой — перечисляем безымянные, а не «всё под /auth/,
+     * кроме...». Раздел /cabinet/auth/ смешанный: рядом с входом там лежат
+     * и /me, и /me/permissions, которым токен обязателен. Правило «под auth
+     * токен не нужен» уже один раз молча сломало новый эндпоинт, и с
+     * исключениями оно сломается снова — каждый следующий придётся
+     * вспоминать вручную.
+     */
+    private val anonymousPaths = listOf(
+        "/cabinet/auth/deeplink/",
+        "/cabinet/auth/email/login",
+        "/cabinet/auth/email/register",
+        "/cabinet/auth/email/verify",
+        "/cabinet/auth/password/",
+        "/cabinet/auth/refresh",
+    )
+
     private val authInterceptor = Interceptor { chain ->
         val request = chain.request()
-        val isAuthPath = request.url.encodedPath.contains("/cabinet/auth/") &&
-            !request.url.encodedPath.endsWith("/cabinet/auth/me") &&
-            !request.url.encodedPath.contains("/cabinet/auth/logout")
+        val path = request.url.encodedPath
+        val anonymous = anonymousPaths.any { path.contains(it) }
         val token = validAccessToken()
-        val newRequest = if (!isAuthPath && token != null) {
+        val newRequest = if (!anonymous && token != null) {
             request.newBuilder().header("Authorization", "Bearer $token").build()
         } else request
         chain.proceed(newRequest)
