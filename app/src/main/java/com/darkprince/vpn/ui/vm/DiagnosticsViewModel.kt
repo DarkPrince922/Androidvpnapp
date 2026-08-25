@@ -316,4 +316,29 @@ class DiagnosticsViewModel : ViewModel() {
         )
     }
 
+    /** Дней до даты вида «2026-09-01T12:00:00Z». Не разобралась — null. */
+    private fun daysUntil(iso: String): Int? = try {
+        val end = runCatching { OffsetDateTime.parse(iso).toInstant() }
+            .getOrElse { LocalDateTime.parse(iso).toInstant(ZoneOffset.UTC) }
+        ChronoUnit.DAYS.between(Instant.now(), end).toInt()
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Запасной источник срока: отметка времени из заголовка подписки. */
+    private suspend fun cachedExpiryDays(): Int? {
+        val expire = runCatching { subscriptions.cachedServers()?.second?.expireUnix }
+            .getOrNull()
+            ?.takeIf { it > 0 }
+            ?: return null
+        return ((expire * 1000 - System.currentTimeMillis()) / 86_400_000L).toInt()
+    }
+
+    /** Короткая причина, почему запрос не прошёл. */
+    private fun reason(error: Throwable): String = when {
+        error is IOException -> "Нет соединения с сервером"
+        error is HttpException && error.code() == 401 -> "Сессия истекла"
+        error is HttpException -> "Сервер ответил ${error.code()}"
+        else -> "Не удалось спросить сервер"
+    }
 }
