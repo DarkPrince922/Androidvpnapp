@@ -44,10 +44,12 @@ import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import androidx.lifecycle.lifecycleScope
 import com.darkprince.vpn.core.qr.QrUtils
 import com.darkprince.vpn.data.api.dto.UserDto
@@ -533,7 +535,9 @@ private fun AppRoot(
                 }
                 PlansScreen(
                     viewModel = plansViewModel,
-                    onOpenDevices = { navController.navigate("devices") },
+                    // ведём в устройства именно той подписки, из карточки
+                    // которой нажали, — выбирать её заново незачем
+                    onOpenDevices = { subId -> navController.navigate("devices?sub=$subId") },
                 )
             }
             composable("balance") {
@@ -554,8 +558,17 @@ private fun AppRoot(
                 val appsViewModel: AppsViewModel = viewModel()
                 AppsScreen(viewModel = appsViewModel)
             }
-            composable("devices") {
+            composable(
+                route = "devices?sub={sub}",
+                arguments = listOf(
+                    navArgument("sub") { type = NavType.LongType; defaultValue = -1L },
+                ),
+            ) { entry ->
                 val devicesViewModel: DevicesViewModel = viewModel()
+                val subId = entry.arguments?.getLong("sub") ?: -1L
+                LaunchedEffect(subId) {
+                    if (subId > 0) devicesViewModel.select(subId)
+                }
                 DevicesScreen(viewModel = devicesViewModel)
             }
             composable("share") {

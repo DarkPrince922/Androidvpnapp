@@ -351,8 +351,8 @@ class SubscriptionRepository(
     }
 
     /** Варианты продления: список {period_days, price_kopeks}. */
-    suspend fun renewalOptions(): List<PeriodPrice> {
-        val root = api.renewalOptions()
+    suspend fun renewalOptions(subscriptionId: Long? = null): List<PeriodPrice> {
+        val root = api.renewalOptions(subscriptionId)
         val array = when (root) {
             is JsonArray -> root
             is JsonObject -> root["options"]?.jsonArray
@@ -370,8 +370,8 @@ class SubscriptionRepository(
         }.sortedBy { it.days }
     }
 
-    suspend fun renew(periodDays: Int): String? = try {
-        api.renew(RenewRequest(periodDays))
+    suspend fun renew(periodDays: Int, subscriptionId: Long? = null): String? = try {
+        api.renew(RenewRequest(periodDays), subscriptionId)
         null
     } catch (e: Exception) {
         e.userMessage()
@@ -476,8 +476,8 @@ class SubscriptionRepository(
     // --- Трафик ---
 
     /** Пакеты докупки трафика: [{gb, price_kopeks}]. */
-    suspend fun trafficPackages(): List<TrafficPackage> {
-        val root = api.trafficPackages()
+    suspend fun trafficPackages(subscriptionId: Long? = null): List<TrafficPackage> {
+        val root = api.trafficPackages(subscriptionId)
         val array = when (root) {
             is JsonArray -> root
             is JsonObject -> root["packages"]?.jsonArray
@@ -494,8 +494,8 @@ class SubscriptionRepository(
         }.sortedBy { it.gb }
     }
 
-    suspend fun buyTraffic(gb: Int): String? = try {
-        api.purchaseTraffic(TrafficPurchaseRequest(gb))
+    suspend fun buyTraffic(gb: Int, subscriptionId: Long? = null): String? = try {
+        api.purchaseTraffic(TrafficPurchaseRequest(gb), subscriptionId)
         null
     } catch (e: Exception) {
         e.userMessage()

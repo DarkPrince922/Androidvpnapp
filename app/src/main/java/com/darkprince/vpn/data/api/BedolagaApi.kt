@@ -180,17 +180,30 @@ interface BedolagaApi {
         @Query("subscription_id") subscriptionId: Long? = null,
     ): RawJson
 
+    // subscription_id обязателен при нескольких подписках: без него кабинет
+    // сам выбирает «текущую», и продление уходит не в ту, на которую нажали
+
     @GET("cabinet/subscription/traffic-packages")
-    suspend fun trafficPackages(): JsonElement
+    suspend fun trafficPackages(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): JsonElement
 
     @POST("cabinet/subscription/traffic")
-    suspend fun purchaseTraffic(@Body body: TrafficPurchaseRequest): RawJson
+    suspend fun purchaseTraffic(
+        @Body body: TrafficPurchaseRequest,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
 
     @GET("cabinet/subscription/renewal-options")
-    suspend fun renewalOptions(): JsonElement
+    suspend fun renewalOptions(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): JsonElement
 
     @POST("cabinet/subscription/renew")
-    suspend fun renew(@Body body: RenewRequest): RawJson
+    suspend fun renew(
+        @Body body: RenewRequest,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
 
     // --- Рефералка и промокоды ---
 

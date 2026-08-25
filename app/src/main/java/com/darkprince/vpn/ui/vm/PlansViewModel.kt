@@ -10,48 +10,77 @@ import com.darkprince.vpn.data.repo.TrafficPackage
 import com.darkprince.vpn.data.repo.userMessage
 import com.darkprince.vpn.di.ServiceLocator
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class PlansUiState(
-    val tariffs: List<TariffOffer> = emptyList(),
-    val renewalOptions: List<PeriodPrice> = emptyList(),
-    val trialAvailable: Boolean = false,
+/**
+ * Одна подписка человека со всем, что к ней относится.
+ *
+ * Всё, что кабинет считает по подписке — цены продления, устройства, пакеты
+ * трафика, — спрашивается с её номером. Раньше эти запросы уходили без
+ * номера, кабинет отвечал про подписку, которую сам считает текущей, и на
+ * карточке одного тарифа оказывались чужие цифры и чужая цена.
+ */
+data class OwnedSubscription(
+    val sub: SubscriptionListItem,
+    /** Тариф подписки — из него берём периоды, если кабинет не дал своих. */
+    val tariff: TariffOffer? = null,
     val devices: DevicesInfo? = null,
+    val renewalOptions: List<PeriodPrice> = emptyList(),
     val trafficPackages: List<TrafficPackage> = emptyList(),
+    val loading: Boolean = true,
+) {
+    val id: Long get() = sub.id
+    val title: String get() = sub.displayName
+
+    /** Периоды продления: свои у подписки, иначе тарифные. */
+    val periods: List<PeriodPrice>
+        get() = renewalOptions.ifEmpty { tariff?.periods.orEmpty() }
+
+    val unlimitedTraffic: Boolean get() = (sub.trafficLimitGb ?: 0.0) <= 0.0
+
+    /** Действующий лимит устройств: он может быть больше тарифного из-за докупки. */
+    val deviceLimit: Int? get() = devices?.deviceLimit ?: sub.deviceLimit
+
+    /** Сколько из лимита докуплено сверх тарифа. */
+    val extraDevices: Int?
+        get() {
+            val limit = deviceLimit ?: return null
+            val base = tariff?.deviceLimit ?: return null
+            return (limit - base).takeIf { it > 0 }
+        }
+
+    /** Дней до окончания. Отрицательное — подписка уже истекла. */
+    val daysLeft: Int? get() = sub.endDate?.let(::daysUntilDate)
+}
+
+data class PlansUiState(
+    /** Ваши подписки — сверху экрана. */
+    val cards: List<OwnedSubscription> = emptyList(),
+    /** Всё, что продаётся. */
+    val tariffs: List<TariffOffer> = emptyList(),
+    val trialAvailable: Boolean = false,
     val loading: Boolean = false,
     val purchasing: Boolean = false,
     val error: String? = null,
     val info: String? = null,
-    /** Тарифы, которые у пользователя уже куплены — их продлевают, а не покупают. */
-    val ownedTariffIds: Set<Long> = emptySet(),
-    /** Лимит устройств действующей подписки (может быть больше тарифного из-за докупки). */
-    val currentDeviceLimit: Int? = null,
-    /** Подписки пользователя и та, для которой сейчас правим устройства. */
-    val subscriptions: List<SubscriptionListItem> = emptyList(),
-    val deviceSubscriptionId: Long? = null,
-    val devicesLoading: Boolean = false,
 ) {
-    val deviceSubscription: SubscriptionListItem?
-        get() = subscriptions.firstOrNull { it.id == deviceSubscriptionId }
+    private val ownedTariffIds: Set<Long>
+        get() = cards.mapNotNull { it.sub.tariffId }.toSet()
 
     /**
-     * Действующий лимит устройств по каждому тарифу. Раньше в карточках
-     * показывался один общий лимит, из-за чего цифра у тарифа менялась при
-     * переключении подписки в блоке устройств.
+     * Магазин: только то, чего у человека ещё нет.
+     *
+     * Купленный тариф из магазина уходит — он живёт наверху своей карточкой,
+     * и продлевают его там. Три одинаковые карточки подряд, из которых две
+     * «ваши», читались как список, в котором непонятно, что делать.
      */
-    val deviceLimitByTariff: Map<Long, Int>
-        get() = subscriptions
-            .filter { it.isActive }
-            .mapNotNull { sub -> sub.tariffId?.let { id -> sub.deviceLimit?.let { id to it } } }
-            .toMap()
-
-    fun isOwned(tariffId: Long) = tariffId in ownedTariffIds
-
-    /** Цена продления за период: берём из вариантов продления, иначе тарифную. */
-    fun renewalPrice(days: Int): Long? = renewalOptions.firstOrNull { it.days == days }?.priceKopeks
+    val offers: List<TariffOffer>
+        get() = tariffs.filter { it.id !in ownedTariffIds }
 }
 
 class PlansViewModel : ViewModel() {
@@ -65,180 +94,157 @@ class PlansViewModel : ViewModel() {
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(loading = true, error = null)
+        _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
-            coroutineScope {
-                val tariffsDeferred = async {
-                    try {
-                        repo.tariffs()
-                    } catch (_: Exception) {
-                        emptyList()
-                    }
-                }
-                val renewalsDeferred = async {
-                    try {
-                        repo.renewalOptions()
-                    } catch (_: Exception) {
-                        emptyList()
-                    }
-                }
+            val (tariffs, trial, subs) = coroutineScope {
+                val tariffsDeferred = async { runOrNull { repo.tariffs() } ?: emptyList() }
                 val trialDeferred = async {
-                    try {
+                    runOrNull {
                         val info = repo.trialInfo()
                         info.available ?: info.isAvailable ?: false
-                    } catch (_: Exception) {
-                        false
-                    }
+                    } ?: false
                 }
-                val deviceSubId = _state.value.deviceSubscriptionId
-                val devicesDeferred = async {
-                    try {
-                        // «пустая» сводка (все поля недоступны) — карточку не показываем
-                        repo.devicesInfo(deviceSubId).takeIf {
-                            it.deviceLimit != null || it.purchaseAvailable || it.reduceAvailable
-                        }
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
-                val trafficDeferred = async {
-                    try {
-                        repo.trafficPackages()
-                    } catch (_: Exception) {
-                        emptyList()
-                    }
-                }
-                val subsDeferred = async { repo.subscriptions() }
-                val tariffs = tariffsDeferred.await()
-                val renewals = renewalsDeferred.await()
-                val trial = trialDeferred.await()
-                val devices = devicesDeferred.await()
-                val trafficPackages = trafficDeferred.await()
-                val subs = subsDeferred.await().orEmpty()
-                val owned = subs.filter { it.isActive }.mapNotNull { it.tariffId }.toSet()
-                val deviceLimit = devices?.deviceLimit
-                    ?: subs.firstOrNull { it.isActive }?.deviceLimit
-                val error = if (tariffs.isEmpty() && renewals.isEmpty() && !trial &&
-                    devices == null && trafficPackages.isEmpty()
-                ) {
-                    "Не удалось загрузить предложения. Проверьте соединение и потяните для обновления."
-                } else null
-                _state.value = PlansUiState(
-                    tariffs = tariffs,
-                    renewalOptions = renewals,
-                    trialAvailable = trial,
-                    devices = devices,
-                    trafficPackages = trafficPackages,
-                    loading = false,
-                    error = error,
-                    ownedTariffIds = owned,
-                    currentDeviceLimit = deviceLimit,
-                    subscriptions = subs,
-                    // по умолчанию правим устройства активной подписки
-                    deviceSubscriptionId = deviceSubId
-                        ?: subs.firstOrNull { it.isActive }?.id
-                        ?: subs.firstOrNull()?.id,
+                val subsDeferred = async { repo.subscriptions().orEmpty() }
+                Triple(tariffsDeferred.await(), trialDeferred.await(), subsDeferred.await())
+            }
+
+            // Действующие сверху, истёкшие следом: продлить истёкшую тоже надо
+            // где-то, но начинать список с неё незачем.
+            val ordered = subs.sortedWith(
+                compareByDescending<SubscriptionListItem> { it.isActive }
+                    .thenBy { it.endDate ?: "" }
+            )
+            val cards = ordered.map { sub ->
+                OwnedSubscription(
+                    sub = sub,
+                    tariff = tariffs.firstOrNull { it.id == sub.tariffId },
                 )
             }
-        }
-    }
 
-    fun purchase(tariff: TariffOffer, period: PeriodPrice) {
-        _state.value = _state.value.copy(purchasing = true, error = null, info = null)
-        viewModelScope.launch {
-            val error = repo.purchaseTariff(tariff.id, period.days)
-            if (error == null) {
-                _state.value = _state.value.copy(purchasing = false, info = "Подписка оформлена!")
-                refresh()
-            } else {
-                _state.value = _state.value.copy(purchasing = false, error = error)
+            val error = if (tariffs.isEmpty() && subs.isEmpty() && !trial) {
+                "Не удалось загрузить предложения. Проверьте соединение и потяните для обновления."
+            } else null
+
+            _state.update {
+                it.copy(
+                    cards = cards,
+                    tariffs = tariffs,
+                    trialAvailable = trial,
+                    loading = false,
+                    error = error,
+                )
+            }
+
+            // Подробности по каждой подписке — параллельно, и каждая ложится в
+            // свою карточку, как только пришла. Ждать самую медленную, чтобы
+            // показать все разом, незачем: карточки уже на экране.
+            coroutineScope {
+                cards.map { card -> async { loadDetails(card.id) } }.awaitAll()
             }
         }
     }
 
-    fun renew(period: PeriodPrice) {
-        _state.value = _state.value.copy(purchasing = true, error = null, info = null)
-        viewModelScope.launch {
-            val error = repo.renew(period.days)
-            if (error == null) {
-                _state.value = _state.value.copy(purchasing = false, info = "Подписка продлена!")
-                refresh()
-            } else {
-                _state.value = _state.value.copy(purchasing = false, error = error)
+    /** Догружает то, что кабинет считает по конкретной подписке. */
+    private suspend fun loadDetails(subId: Long) = coroutineScope {
+        val devicesDeferred = async {
+            runOrNull {
+                // «пустая» сводка (все поля недоступны) — блок не показываем
+                repo.devicesInfo(subId).takeIf {
+                    it.deviceLimit != null || it.purchaseAvailable || it.reduceAvailable
+                }
             }
         }
-    }
+        val renewalsDeferred = async { runOrNull { repo.renewalOptions(subId) } ?: emptyList() }
+        val trafficDeferred = async { runOrNull { repo.trafficPackages(subId) } ?: emptyList() }
 
-    /** Переключение подписки, для которой управляем устройствами. */
-    fun selectDeviceSubscription(id: Long) {
-        if (id == _state.value.deviceSubscriptionId) return
-        _state.value = _state.value.copy(deviceSubscriptionId = id, devicesLoading = true)
-        viewModelScope.launch {
-            val devices = try {
-                repo.devicesInfo(id)
-            } catch (_: Exception) {
-                null
-            }
-            _state.value = _state.value.copy(
+        val devices = devicesDeferred.await()
+        val renewals = renewalsDeferred.await()
+        val traffic = trafficDeferred.await()
+
+        updateCard(subId) {
+            it.copy(
                 devices = devices,
-                currentDeviceLimit = devices?.deviceLimit
-                    ?: _state.value.subscriptions.firstOrNull { it.id == id }?.deviceLimit,
-                devicesLoading = false,
+                renewalOptions = renewals,
+                trafficPackages = traffic,
+                loading = false,
             )
         }
     }
 
-    fun buyDevices(count: Int) {
+    private fun updateCard(subId: Long, block: (OwnedSubscription) -> OwnedSubscription) {
+        _state.update { state ->
+            state.copy(
+                cards = state.cards.map { if (it.id == subId) block(it) else it },
+            )
+        }
+    }
+
+    fun purchase(tariff: TariffOffer, period: PeriodPrice) = act("Подписка оформлена!") {
+        repo.purchaseTariff(tariff.id, period.days)
+    }
+
+    fun renew(subId: Long, period: PeriodPrice) = act("Подписка продлена!") {
+        repo.renew(period.days, subId)
+    }
+
+    fun buyDevices(subId: Long, count: Int) {
         if (count <= 0) return
-        _state.value = _state.value.copy(purchasing = true, error = null, info = null)
-        viewModelScope.launch {
-            val error = repo.buyDevices(count, _state.value.deviceSubscriptionId)
-            if (error == null) {
-                _state.value = _state.value.copy(purchasing = false, info = "Устройства добавлены!")
-                refresh()
-            } else {
-                _state.value = _state.value.copy(purchasing = false, error = error)
-            }
-        }
+        act("Устройства добавлены!") { repo.buyDevices(count, subId) }
     }
 
-    fun reduceDevices(newLimit: Int) {
+    fun reduceDevices(subId: Long, newLimit: Int) {
         if (newLimit <= 0) return
-        _state.value = _state.value.copy(purchasing = true, error = null, info = null)
+        act("Лимит устройств уменьшен") { repo.reduceDevices(newLimit, subId) }
+    }
+
+    fun buyTraffic(subId: Long, gb: Int) = act("Трафик добавлен!") {
+        repo.buyTraffic(gb, subId)
+    }
+
+    fun activateTrial() = act("Пробный период активирован!") {
+        if (repo.activateTrial()) null else "Не удалось активировать пробный период"
+    }
+
+    /**
+     * Общая обвязка покупок: заблокировать кнопки, сходить, показать итог.
+     *
+     * Удачная покупка всегда заканчивается перечитыванием: меняются и срок, и
+     * лимит устройств, и цены продления, а угадывать новое состояние на
+     * клиенте — верный способ показать не то, за что человек заплатил.
+     */
+    private fun act(success: String, block: suspend () -> String?) {
+        _state.update { it.copy(purchasing = true, error = null, info = null) }
         viewModelScope.launch {
-            val error = repo.reduceDevices(newLimit, _state.value.deviceSubscriptionId)
+            val error = try {
+                block()
+            } catch (e: Exception) {
+                e.userMessage()
+            }
             if (error == null) {
-                _state.value = _state.value.copy(purchasing = false, info = "Лимит устройств уменьшен")
+                _state.update { it.copy(purchasing = false, info = success) }
                 refresh()
             } else {
-                _state.value = _state.value.copy(purchasing = false, error = error)
+                _state.update { it.copy(purchasing = false, error = error) }
             }
         }
     }
 
-    fun buyTraffic(gb: Int) {
-        _state.value = _state.value.copy(purchasing = true, error = null, info = null)
-        viewModelScope.launch {
-            val error = repo.buyTraffic(gb)
-            if (error == null) {
-                _state.value = _state.value.copy(purchasing = false, info = "Трафик добавлен!")
-                refresh()
-            } else {
-                _state.value = _state.value.copy(purchasing = false, error = error)
-            }
-        }
+    private fun <T> runOrNull(block: () -> T): T? = try {
+        block()
+    } catch (_: Exception) {
+        null
     }
+}
 
-    fun activateTrial() {
-        _state.value = _state.value.copy(purchasing = true, error = null, info = null)
-        viewModelScope.launch {
-            val ok = repo.activateTrial()
-            _state.value = if (ok) {
-                _state.value.copy(purchasing = false, info = "Пробный период активирован!")
-            } else {
-                _state.value.copy(purchasing = false, error = "Не удалось активировать пробный период")
-            }
-            if (ok) refresh()
-        }
-    }
+/**
+ * Сколько дней осталось до даты окончания. Кабинет отдаёт дату строкой ISO —
+ * берём из неё только календарный день: время и часовой пояс для «осталось
+ * дней» роли не играют. Отрицательное число значит, что срок уже вышел.
+ */
+private fun daysUntilDate(endDate: String): Int? = try {
+    java.time.temporal.ChronoUnit.DAYS
+        .between(java.time.LocalDate.now(), java.time.LocalDate.parse(endDate.take(10)))
+        .toInt()
+} catch (_: Exception) {
+    null
 }

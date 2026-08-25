@@ -36,6 +36,17 @@ class DevicesViewModel : ViewModel() {
         load()
     }
 
+    /**
+     * Открыть устройства конкретной подписки — с карточки на «Тарифах».
+     *
+     * Молча ничего не делаем, если она уже открыта: экран грузится сам при
+     * создании, и второй такой же запрос был бы лишним.
+     */
+    fun select(subscriptionId: Long) {
+        if (subscriptionId == _state.value.selectedSubscriptionId) return
+        load(subscriptionId)
+    }
+
     fun load(subscriptionId: Long? = _state.value.selectedSubscriptionId) {
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
