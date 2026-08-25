@@ -59,6 +59,9 @@ data class DiagnosticsUiState(
 class DiagnosticsViewModel : ViewModel() {
     private val subscriptions = ServiceLocator.subscriptionRepository
 
+    /** Ответ кабинета: он же источник цифр по трафику. */
+    private var status: com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse? = null
+
     private val _state = MutableStateFlow(DiagnosticsUiState())
     val state: StateFlow<DiagnosticsUiState> = _state
 
@@ -85,9 +88,12 @@ class DiagnosticsViewModel : ViewModel() {
      *
      * Сколько осталось, панель может сказать тремя способами, и ни один не
      * обязателен: числом дней, датой окончания или отметкой времени в
-     * заголовке самой подписки. Берём первое, что нашлось. Раньше здесь
-     * стоял один необязательный `days_left`, и его отсутствие выглядело как
-     * «сервер не ответил» — хотя сервер отвечал прекрасно.
+     * заголовке самой подписки. Берём первое, что нашлось.
+     *
+     * Отдельно ловим случай с несколькими подписками: человек может сидеть
+     * на истёкшей, когда рядом есть живая. Приложение при этом честно
+     * показывает «подключено», а трафик не идёт — и понять, почему, без
+     * подсказки невозможно.
      */
     private suspend fun subscription() {
         val response = runCatching { subscriptions.status() }
@@ -104,31 +110,46 @@ class DiagnosticsViewModel : ViewModel() {
             return
         }
 
-        val status = response.getOrNull()
-        val days = status?.daysLeft
-            ?: status?.endDate?.let(::daysUntil)
-            ?: cachedExpiryDays()
+        status = response.getOrNull()
+        val list = runCatching { subscriptions.subscriptions() }.getOrNull().orEmpty()
+        val selectedId = ServiceLocator.prefs.selectedSubscriptionFlow.first()
+        // Тот же порядок, что и на главной, иначе проверка говорила бы про
+        // одну подписку, а человек смотрел бы на другую.
+        val current = list.firstOrNull { it.id == selectedId }
+            ?: list.firstOrNull { it.isActive }
+            ?: list.firstOrNull()
+        val title = current?.let { "Подписка «${it.displayName}»" } ?: "Подписка"
 
-        // Явный отказ панели весомее любой даты: подписка могла быть
-        // отключена вручную, и срок при этом остался в будущем.
-        if (status?.isActive == false && (days == null || days >= 0)) {
+        if (current != null && !current.isActive) {
+            val alive = list.firstOrNull { it.isActive }
             add(
                 Check(
-                    "Подписка",
+                    title,
                     CheckResult.FAIL,
-                    status.actualStatus ?: "Не активна",
-                    "Подписка не активна — туннель поднимется, но сервер не " +
-                        "пропустит трафик. Продлите на вкладке «Тарифы».",
+                    current.status ?: "Не активна",
+                    if (alive != null) {
+                        "Выбрана неактивная подписка, а «${alive.displayName}» работает. " +
+                            "Переключите её в карточке подписки на главной — трафик " +
+                            "пойдёт сразу."
+                    } else {
+                        "Подписка не активна: туннель поднимется, но сервер не " +
+                            "пропустит трафик. Продлите на вкладке «Тарифы»."
+                    },
                 )
             )
             return
         }
 
+        val days = status?.daysLeft
+            ?: status?.endDate?.let(::daysUntil)
+            ?: current?.endDate?.let(::daysUntil)
+            ?: cachedExpiryDays()
+
         if (days == null) {
-            val active = status?.isActive == true
+            val active = status?.isActive == true || current?.isActive == true
             add(
                 Check(
-                    "Подписка",
+                    title,
                     if (active) CheckResult.OK else CheckResult.SKIPPED,
                     if (active) "Активна" else "Срок не указан",
                     if (active) {
@@ -145,7 +166,7 @@ class DiagnosticsViewModel : ViewModel() {
         add(
             when {
                 days < 0 -> Check(
-                    "Подписка",
+                    title,
                     CheckResult.FAIL,
                     "Истекла",
                     "Подписка закончилась. Туннель поднимается, но сервер не " +
@@ -153,53 +174,43 @@ class DiagnosticsViewModel : ViewModel() {
                 )
 
                 days == 0 -> Check(
-                    "Подписка",
+                    title,
                     CheckResult.WARN,
                     "Заканчивается сегодня",
                     "Подписка заканчивается сегодня — продлите, чтобы не остаться " +
                         "без связи посреди дня.",
                 )
 
-                else -> Check("Подписка", CheckResult.OK, "Осталось $days дн.")
+                else -> Check(title, CheckResult.OK, "Осталось $days дн.")
             }
         )
     }
 
-    /** Дней до даты вида «2026-09-01T12:00:00Z». Не разобралась — null. */
-    private fun daysUntil(iso: String): Int? = try {
-        val end = runCatching { OffsetDateTime.parse(iso).toInstant() }
-            .getOrElse { LocalDateTime.parse(iso).toInstant(ZoneOffset.UTC) }
-        ChronoUnit.DAYS.between(Instant.now(), end).toInt()
-    } catch (_: Exception) {
-        null
-    }
-
-    /** Запасной источник срока: отметка времени из заголовка подписки. */
-    private suspend fun cachedExpiryDays(): Int? {
-        val expire = runCatching { subscriptions.cachedServers()?.second?.expireUnix }
-            .getOrNull()
-            ?.takeIf { it > 0 }
-            ?: return null
-        return ((expire * 1000 - System.currentTimeMillis()) / 86_400_000L).toInt()
-    }
-
-    /** Короткая причина, почему запрос не прошёл. */
-    private fun reason(error: Throwable): String = when {
-        error is IOException -> "Нет соединения с сервером"
-        error is HttpException && error.code() == 401 -> "Сессия истекла"
-        error is HttpException -> "Сервер ответил ${error.code()}"
-        else -> "Не удалось спросить сервер"
-    }
-
+    /**
+     * Трафик.
+     *
+     * Цифры берём из ответа кабинета, а не из локального кеша подписки:
+     * кеш заведён по выбранной подписке и вполне может быть пуст — например,
+     * если человек переключился на ту, которую ещё ни разу не скачивали.
+     * Раньше это выглядело как «нет данных о тарифе», хотя данные были.
+     */
     private suspend fun traffic() {
-        val info = runCatching { subscriptions.cachedServers()?.second }.getOrNull()
-        val limit = info?.totalBytes ?: 0
-        val used = (info?.uploadBytes ?: 0) + (info?.downloadBytes ?: 0)
+        val gb = 1024.0 * 1024 * 1024
+        val usedGb = status?.trafficUsedGb
+        val limitGb = status?.trafficLimitGb
+        val header = runCatching { subscriptions.cachedServers()?.second }.getOrNull()
+
+        val used = usedGb ?: header?.let { ((it.uploadBytes ?: 0) + (it.downloadBytes ?: 0)) / gb }
+        val limit = limitGb ?: header?.totalBytes?.let { it / gb }
+
         add(
             when {
-                info == null -> Check("Трафик", CheckResult.SKIPPED, "Нет данных о тарифе")
-                // Ноль в лимите у панели значит «без ограничения», а не «ничего нельзя»
+                used == null || limit == null ->
+                    Check("Трафик", CheckResult.SKIPPED, "Нет данных о тарифе")
+
+                // Ноль в лимите у панели значит «без ограничения»
                 limit <= 0 -> Check("Трафик", CheckResult.OK, "Без ограничения")
+
                 used >= limit -> Check(
                     "Трафик",
                     CheckResult.FAIL,
@@ -209,7 +220,7 @@ class DiagnosticsViewModel : ViewModel() {
                         "лимита.",
                 )
 
-                used > limit * 9 / 10 -> Check(
+                used > limit * 0.9 -> Check(
                     "Трафик",
                     CheckResult.WARN,
                     "Осталось меньше десятой части",
@@ -217,7 +228,7 @@ class DiagnosticsViewModel : ViewModel() {
                         "хотя VPN будет показывать «подключено».",
                 )
 
-                else -> Check("Трафик", CheckResult.OK, gigabytes(used, limit))
+                else -> Check("Трафик", CheckResult.OK, "%.1f из %.1f ГБ".format(used, limit))
             }
         )
     }
@@ -258,7 +269,11 @@ class DiagnosticsViewModel : ViewModel() {
      */
     private suspend fun server() {
         val profile = runCatching {
-            val (servers, _) = subscriptions.cachedServers() ?: return@runCatching null
+            // Пустой кеш — не повод сдаваться: диагностика затем и нужна,
+            // чтобы сходить и посмотреть, а не пересказать вчерашнее.
+            val (servers, _) = subscriptions.cachedServers()
+                ?: subscriptions.fetchServers(forceRefresh = true).takeIf { it.first.isNotEmpty() }
+                ?: return@runCatching null
             val prefs = ServiceLocator.prefs
             val subId = prefs.selectedSubscriptionFlow.first()
             // Ключ надёжнее номера: сервер могли переставить в панели, и
@@ -301,8 +316,4 @@ class DiagnosticsViewModel : ViewModel() {
         )
     }
 
-    private fun gigabytes(used: Long, limit: Long): String {
-        val gb = 1024.0 * 1024 * 1024
-        return "%.1f из %.1f ГБ".format(used / gb, limit / gb)
-    }
 }
