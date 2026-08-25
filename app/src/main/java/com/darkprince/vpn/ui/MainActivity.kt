@@ -58,6 +58,7 @@ import com.darkprince.vpn.ui.screens.DevicesScreen
 import com.darkprince.vpn.ui.screens.HomeScreen
 import com.darkprince.vpn.ui.screens.LoginScreen
 import com.darkprince.vpn.ui.screens.PlansScreen
+import com.darkprince.vpn.data.prefs.AppPrefs
 import com.darkprince.vpn.ui.screens.AdminPersonScreen
 import com.darkprince.vpn.ui.screens.AdminScreen
 import com.darkprince.vpn.ui.screens.AdminTicketScreen
@@ -82,6 +83,7 @@ import com.darkprince.vpn.ui.vm.BalanceViewModel
 import com.darkprince.vpn.ui.vm.DevicesViewModel
 import com.darkprince.vpn.ui.vm.HomeViewModel
 import com.darkprince.vpn.ui.vm.PlansViewModel
+import com.darkprince.vpn.work.AutoConnect
 import com.darkprince.vpn.ui.vm.AdminViewModel
 import com.darkprince.vpn.ui.vm.NewsViewModel
 import com.darkprince.vpn.ui.vm.SupportViewModel
@@ -138,6 +140,25 @@ class MainActivity : FragmentActivity() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(tgUri)))
         } catch (_: ActivityNotFoundException) {
             openExternal(webUri)
+        }
+    }
+
+    /**
+     * Системный экран постоянного VPN.
+     *
+     * Запрет сети без туннеля включается только там и только руками — за
+     * человека это не делает ни одно приложение, и правильно: иначе любое
+     * могло бы оставить телефон без интернета молча. Мы доводим до нужного
+     * экрана, дальше он решает сам.
+     */
+    fun openVpnSystemSettings() {
+        val intents = listOf(
+            Intent("android.net.vpn.SETTINGS"),
+            Intent(android.provider.Settings.ACTION_VPN_SETTINGS),
+            Intent(android.provider.Settings.ACTION_SETTINGS),
+        )
+        for (intent in intents) {
+            if (runCatching { startActivity(intent) }.isSuccess) return
         }
     }
 
@@ -622,6 +643,9 @@ private fun AppRoot(
                 }
             }
             composable("settings") {
+                val autoConnectMode by prefs.autoConnectFlow
+                    .collectAsState(initial = AppPrefs.AUTO_OFF)
+                val killSwitch by prefs.killSwitchFlow.collectAsState(initial = false)
                 // Первая проверка идёт при запуске и может не удаться на
                 // ровном месте — сети ещё нет, токен просрочен. Переспрашиваем
                 // здесь, чтобы одна неудача не прятала панель до перезапуска.
@@ -646,6 +670,19 @@ private fun AppRoot(
                     onSelectTheme = { scope.launch { prefs.setTheme(it.id) } },
                     onOpenReferral = { navController.navigate("referral") },
                     onOpenApps = { navController.navigate("apps") },
+                    autoConnectMode = autoConnectMode,
+                    onSelectAutoConnect = { mode ->
+                        scope.launch {
+                            prefs.setAutoConnect(mode)
+                            // Расписание правим сразу: настройка без снятого
+                            // ожидания оставила бы приложение подключаться
+                            // после того, как его об этом просить перестали.
+                            AutoConnect.sync(activity.applicationContext, mode)
+                        }
+                    },
+                    killSwitch = killSwitch,
+                    onToggleKillSwitch = { scope.launch { prefs.setKillSwitch(it) } },
+                    onOpenVpnSettings = { activity.openVpnSystemSettings() },
                     onOpenShare = { navController.navigate("share") },
                     onOpenDevices = { navController.navigate("devices") },
                     onOpenSupport = { navController.navigate("support") },

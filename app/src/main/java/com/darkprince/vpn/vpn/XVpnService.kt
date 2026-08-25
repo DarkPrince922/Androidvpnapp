@@ -50,6 +50,8 @@ class XVpnService : VpnService() {
          * перезапускался бы по разу на каждое.
          */
         private const val RECONNECT_DELAY_MS = 1500L
+        private const val RETRY_BASE_MS = 4_000L
+        private const val RETRY_MAX_MS = 120_000L
 
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "vpn_state"
@@ -93,6 +95,9 @@ class XVpnService : VpnService() {
     private var lastStartId = 0
     private var activeProfileName: String = ""
     private var lastPingMs: Long? = null
+
+    /** Сколько раз подряд не удалось подняться. Сбрасывается при успехе. */
+    private var attempt = 0
 
     /** Слежение за сетью под туннелем; null — не подписаны. */
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -145,7 +150,11 @@ class XVpnService : VpnService() {
     private fun startVpn(profile: ProxyProfile) {
         VpnStateStore.setState(VpnState.CONNECTING)
         VpnStateStore.setActiveProfile(profile.name)
-        teardown()
+        // При включённой защите интерфейс переживает пересборку туннеля:
+        // establish() ниже заменит его на новый, а до тех пор трафику
+        // по-прежнему некуда идти, кроме как в тупик.
+        val guarded = killSwitch()
+        teardown(keepTun = guarded)
         try {
             CoreEnv.ensure(this)
 
@@ -195,9 +204,22 @@ class XVpnService : VpnService() {
         } catch (e: Throwable) {
             AppLog.write("подключиться не удалось: ${e.javaClass.simpleName}: ${e.message}")
             VpnStateStore.setState(VpnState.ERROR, e.message)
-            stopVpn()
+            if (guarded && tunFd != null) {
+                // Защита включена и интерфейс жив: наружу ничего не уходит.
+                // Службу не гасим — иначе система снимет интерфейс, и дыра,
+                // от которой мы закрывались, откроется сама.
+                AppLog.write("трафик заблокирован до восстановления")
+                updateNotificationForce("Соединение потеряно · трафик заблокирован")
+                scheduleReconnect()
+            } else {
+                stopVpn()
+            }
         }
     }
+
+    /** Настройку читаем каждый раз: её могли переключить между попытками. */
+    private fun killSwitch(): Boolean =
+        runCatching { ServiceLocator.prefs.killSwitchBlocking() }.getOrDefault(false)
 
     /**
      * Следит за сетью под туннелем и переподнимает его при смене.
@@ -260,12 +282,26 @@ class XVpnService : VpnService() {
      */
     private fun scheduleReconnect() {
         reconnectJob?.cancel()
+        // Повтор после сбоя ждёт дольше обычной смены сети и с каждым разом
+        // ещё дольше: если сервер лежит, долбиться в него раз в полторы
+        // секунды значит греть телефон впустую.
+        val failed = VpnStateStore.state.value == VpnState.ERROR
+        if (failed) attempt += 1 else attempt = 0
+        val delayMs = if (failed) {
+            (RETRY_BASE_MS * (1L shl (attempt - 1).coerceAtMost(5))).coerceAtMost(RETRY_MAX_MS)
+        } else {
+            RECONNECT_DELAY_MS
+        }
+
         reconnectJob = scope.launch {
-            delay(RECONNECT_DELAY_MS)
+            delay(delayMs)
             vpnMutex.withLock {
                 // пока ждали, человек мог отключиться сам — тогда не лезем
                 val state = VpnStateStore.state.value
-                if (state != VpnState.CONNECTED && state != VpnState.CONNECTING) return@withLock
+                val retrying = state == VpnState.ERROR && tunFd != null && killSwitch()
+                if (state != VpnState.CONNECTED && state != VpnState.CONNECTING && !retrying) {
+                    return@withLock
+                }
                 val profile = readSavedProfile() ?: return@withLock
                 startVpn(profile)
             }
@@ -349,7 +385,17 @@ class XVpnService : VpnService() {
     }
 
     /** Гасит ядро и туннель, не трогая состояние сервиса (для смены сервера). */
-    private fun teardown() {
+    /**
+     * Останавливает ядро и мост.
+     *
+     * [keepTun] оставляет сетевой интерфейс поднятым. Это и есть защита от
+     * обрыва: пакеты продолжают уходить в туннель, а на том конце их никто
+     * не принимает — значит, они никуда не денутся. Закрыть интерфейс здесь
+     * означало бы отдать трафик напрямую в сеть ровно на то время, пока мы
+     * поднимаемся заново, — то есть именно тогда, когда человек этого меньше
+     * всего ждёт.
+     */
+    private fun teardown(keepTun: Boolean = false) {
         statsJob?.cancel()
         statsJob = null
         if (coreController == null && tunFd == null) return
@@ -362,6 +408,7 @@ class XVpnService : VpnService() {
         } catch (_: Throwable) {
         }
         coreController = null
+        if (keepTun) return
         try {
             tunFd?.close()
         } catch (_: Exception) {

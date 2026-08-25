@@ -1,35 +1,51 @@
 package com.darkprince.vpn.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.QrCode2
-import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.darkprince.vpn.BuildConfig
 import com.darkprince.vpn.data.api.dto.UserDto
+import com.darkprince.vpn.data.prefs.AppPrefs
 import com.darkprince.vpn.ui.theme.AppPalette
 import com.darkprince.vpn.ui.theme.GroupCard
 import com.darkprince.vpn.ui.theme.RowDivider
 import com.darkprince.vpn.ui.theme.SectionHeader
-import com.darkprince.vpn.BuildConfig
 import com.darkprince.vpn.ui.theme.SettingsRow
 import com.darkprince.vpn.ui.theme.ThemePicker
 
@@ -40,6 +56,11 @@ fun SettingsScreen(
     usingSharedSubscription: Boolean,
     onOpenReferral: () -> Unit,
     onOpenApps: () -> Unit,
+    autoConnectMode: String,
+    onSelectAutoConnect: (String) -> Unit,
+    killSwitch: Boolean,
+    onToggleKillSwitch: (Boolean) -> Unit,
+    onOpenVpnSettings: () -> Unit,
     onOpenShare: () -> Unit,
     onOpenDevices: () -> Unit,
     onOpenSupport: () -> Unit,
@@ -183,6 +204,54 @@ fun SettingsScreen(
                 subtitle = "Какие идут через VPN, а какие в обход",
                 onClick = onOpenApps,
             )
+
+            RowDivider()
+
+            var autoOpen by remember { mutableStateOf(false) }
+            SettingsRow(
+                icon = Icons.Default.PlayCircle,
+                title = "Автоподключение",
+                subtitle = autoConnectTitle(autoConnectMode),
+                onClick = { autoOpen = true },
+            )
+            if (autoOpen) {
+                AutoConnectDialog(
+                    selected = autoConnectMode,
+                    onSelect = {
+                        onSelectAutoConnect(it)
+                        autoOpen = false
+                    },
+                    onDismiss = { autoOpen = false },
+                )
+            }
+
+            RowDivider()
+
+            SettingsRow(
+                icon = Icons.Default.Shield,
+                title = "Блокировать трафик при обрыве",
+                subtitle = if (killSwitch) {
+                    "Пока туннель поднимается заново, сеть не работает"
+                } else {
+                    "Сейчас при обрыве трафик идёт напрямую"
+                },
+                showChevron = false,
+                onClick = { onToggleKillSwitch(!killSwitch) },
+                trailing = {
+                    Switch(checked = killSwitch, onCheckedChange = onToggleKillSwitch)
+                },
+            )
+
+            if (killSwitch) {
+                RowDivider()
+                SettingsRow(
+                    icon = Icons.Default.Lock,
+                    title = "Запретить сеть без VPN",
+                    subtitle = "Системная настройка: постоянный VPN и блокировка " +
+                        "соединений без него. Включается только вручную",
+                    onClick = onOpenVpnSettings,
+                )
+            }
         }
 
         if (!guestMode) {
@@ -240,4 +309,62 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(24.dp))
     }
+}
+
+/** Как назвать выбранный режим одной строкой. */
+private fun autoConnectTitle(mode: String): String = when (mode) {
+    AppPrefs.AUTO_BOOT -> "При включении телефона"
+    AppPrefs.AUTO_NETWORK -> "При включении телефона и появлении сети"
+    else -> "Выключено"
+}
+
+/**
+ * Выбор повода для автоподключения.
+ *
+ * Поводов ровно два, и второй включает первый: «при появлении сети» без
+ * подключения после перезагрузки был бы странным набором. Различать домашнюю
+ * сеть и чужую мы не умеем — для этого нужно читать имя сети, а его Android
+ * отдаёт только вместе с доступом к местоположению. Просить у людей
+ * геолокацию ради этого мы не будем, поэтому и не обещаем.
+ */
+@Composable
+private fun AutoConnectDialog(
+    selected: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = listOf(
+        AppPrefs.AUTO_OFF to "Подключаться только вручную",
+        AppPrefs.AUTO_BOOT to "После включения телефона",
+        AppPrefs.AUTO_NETWORK to "После включения и когда появляется сеть",
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Автоподключение") },
+        text = {
+            Column {
+                options.forEach { (mode, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(mode) }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = selected == mode, onClick = { onSelect(mode) })
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Приложение не будет спрашивать разрешение на VPN само — " +
+                        "если оно ещё не выдано, подключитесь один раз вручную.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } },
+    )
 }

@@ -3,6 +3,7 @@ package com.darkprince.vpn.data.prefs
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -40,6 +41,8 @@ class AppPrefs(private val context: Context) {
         val GUEST_SUB_URL = stringPreferencesKey("guest_sub_url")
         val HIDDEN_UPDATE = intPreferencesKey("hidden_update_code")
         val THEME = stringPreferencesKey("theme")
+        val AUTOCONNECT = stringPreferencesKey("autoconnect_mode")
+        val KILL_SWITCH = booleanPreferencesKey("kill_switch")
     }
 
     @Volatile var cachedBaseUrl: String = ""
@@ -61,6 +64,12 @@ class AppPrefs(private val context: Context) {
     @Volatile var cachedTheme: String? = null
         private set
 
+    companion object {
+        const val AUTO_OFF = "off"
+        const val AUTO_BOOT = "boot"
+        const val AUTO_NETWORK = "network"
+    }
+
     fun warmUp() = runBlocking {
         val p = context.dataStore.data.first()
         // если адрес ещё не сохранён — берём вшитый в сборку адрес кабинета
@@ -77,6 +86,35 @@ class AppPrefs(private val context: Context) {
         cachedHwid = p[Keys.HWID] ?: java.util.UUID.randomUUID().toString().also { generated ->
             context.dataStore.edit { it[Keys.HWID] = generated }
         }
+    }
+
+    /**
+     * Автоподключение и защита от обрыва.
+     *
+     * Оба читаются и из служб, которые поднимаются без интерфейса — при
+     * загрузке телефона Compose ещё нет, а решать, подключаться ли, уже надо.
+     * Поэтому рядом с потоками лежат и синхронные чтения.
+     */
+    val autoConnectFlow: Flow<String> =
+        context.dataStore.data.map { it[Keys.AUTOCONNECT] ?: AUTO_OFF }
+
+    suspend fun setAutoConnect(mode: String) {
+        context.dataStore.edit { it[Keys.AUTOCONNECT] = mode }
+    }
+
+    fun autoConnectBlocking(): String = runBlocking {
+        context.dataStore.data.first()[Keys.AUTOCONNECT] ?: AUTO_OFF
+    }
+
+    val killSwitchFlow: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.KILL_SWITCH] ?: false }
+
+    suspend fun setKillSwitch(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.KILL_SWITCH] = enabled }
+    }
+
+    fun killSwitchBlocking(): Boolean = runBlocking {
+        context.dataStore.data.first()[Keys.KILL_SWITCH] ?: false
     }
 
     val guestSubUrlFlow: Flow<String?> = context.dataStore.data.map { it[Keys.GUEST_SUB_URL] }

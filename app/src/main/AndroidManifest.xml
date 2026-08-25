@@ -8,6 +8,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Автоподключение при включении телефона. Другого повода, на котором
+         система сама будит приложение и разрешает поднять службу из фона,
+         у нас нет. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Приложения нет в Google Play, поэтому обновление ставим сами: качаем
          APK и отдаём системному установщику. Разрешение выдаётся отдельно
          каждому приложению — то, что человек когда-то разрешил браузеру, на
@@ -66,6 +71,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <receiver
+            android:name=".work.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".vpn.VpnTileService"
