@@ -463,6 +463,7 @@ private fun AppRoot(
                     onChangeServer = {
                         navController.navigate("setup") { popUpTo("login") { inclusive = true } }
                     },
+                    onSubscriptionLink = { link -> authViewModel.loginWithSubscriptionLink(link) },
                     onScanSubscription = {
                         activity.scanSubscriptionQr { link ->
                             authViewModel.loginWithSubscriptionLink(link)
@@ -503,6 +504,7 @@ private fun AppRoot(
                     onChangeServer = {},
                     onScanSubscription = {},
                     onPickQrImage = {},
+                    onSubscriptionLink = {},
                 )
             }
             composable("home") {

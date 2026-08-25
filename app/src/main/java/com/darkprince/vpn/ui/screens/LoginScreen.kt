@@ -16,9 +16,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
@@ -59,6 +61,8 @@ fun LoginScreen(
     onChangeServer: () -> Unit,
     onScanSubscription: () -> Unit,
     onPickQrImage: () -> Unit,
+    /** Гостевой доступ по присланной ссылке — без камеры и картинок. */
+    onSubscriptionLink: (String) -> Unit,
     /** Гость заводит собственный аккаунт, не теряя чужую подписку. */
     upgradeMode: Boolean = false,
     onBack: (() -> Unit)? = null,
@@ -67,6 +71,7 @@ fun LoginScreen(
     var password by rememberSaveable { mutableStateOf("") }
     var registerMode by rememberSaveable { mutableStateOf(upgradeMode) }
     var referralCode by rememberSaveable { mutableStateOf("") }
+    var guestSheet by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -194,12 +199,10 @@ fun LoginScreen(
             )
         }
 
-        Spacer(Modifier.height(24.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(20.dp))
 
         if (upgradeMode) {
-            // подписка по QR у гостя уже есть — здесь нужен только аккаунт
+            // подписка по ссылке у гостя уже есть — здесь нужен только аккаунт
             OutlinedButton(
                 onClick = { onBack?.invoke() },
                 modifier = Modifier.fillMaxWidth(),
@@ -207,29 +210,124 @@ fun LoginScreen(
                 Text("Вернуться")
             }
         } else {
-            OutlinedButton(
-                onClick = onScanSubscription,
+            // Одна строка вместо двух кнопок с пояснением: чужим доступом
+            // пользуется меньшинство, а место занимало это больше всего
+            // остального вместе взятого.
+            TextButton(onClick = { guestSheet = true }) {
+                Text("Вам дали доступ по ссылке или QR?")
+            }
+        }
+    }
+
+    if (guestSheet) {
+        GuestAccessSheet(
+            loading = state.loading,
+            onDismiss = { guestSheet = false },
+            onLink = { link ->
+                guestSheet = false
+                onSubscriptionLink(link)
+            },
+            onScan = {
+                guestSheet = false
+                onScanSubscription()
+            },
+            onPickImage = {
+                guestSheet = false
+                onPickQrImage()
+            },
+            onChangeServer = {
+                guestSheet = false
+                onChangeServer()
+            },
+        )
+    }
+}
+
+/**
+ * Чужой доступ и настройка адреса — всё, что нужно редко.
+ *
+ * Ссылка первой: её присылают в сообщении, и до сих пор её приходилось
+ * сначала превращать в картинку с кодом, чтобы приложение согласилось её
+ * прочитать.
+ *
+ * Смена адреса кабинета живёт здесь же не для красоты: это единственный
+ * выход, если адрес неверный. Экран настроек за входом, и без этой строки
+ * человек остался бы заперт — войти не может, поправить негде.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GuestAccessSheet(
+    loading: Boolean,
+    onDismiss: () -> Unit,
+    onLink: (String) -> Unit,
+    onScan: () -> Unit,
+    onPickImage: () -> Unit,
+    onChangeServer: () -> Unit,
+) {
+    var link by rememberSaveable { mutableStateOf("") }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
+        ) {
+            Text("Доступ к чужой подписке", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Вставьте присланную ссылку или считайте QR-код владельца. " +
+                    "Своя подписка при этом не нужна.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = link,
+                onValueChange = { link = it },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !state.loading,
+                label = { Text("Ссылка на подписку") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = { onLink(link.trim()) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !loading && link.isNotBlank(),
+            ) {
+                Text("Подключить по ссылке")
+            }
+
+            Spacer(Modifier.height(16.dp))
+            OrDivider()
+            Spacer(Modifier.height(16.dp))
+
+            OutlinedButton(
+                onClick = onScan,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !loading,
             ) {
                 Text("Сканировать QR камерой")
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
-                onClick = onPickQrImage,
+                onClick = onPickImage,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !state.loading,
+                enabled = !loading,
             ) {
                 Text("Загрузить QR из галереи")
             }
-            Text(
-                "Если вам дали доступ к подписке — отсканируйте QR владельца или " +
-                    "выберите присланную картинку",
-                style = MaterialTheme.typography.bodySmall,
-            )
 
-            Spacer(Modifier.height(24.dp))
-            TextButton(onClick = onChangeServer) { Text("Изменить адрес кабинета") }
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider()
+            TextButton(onClick = onChangeServer) {
+                Text(
+                    "Изменить адрес кабинета",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

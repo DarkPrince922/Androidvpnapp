@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">DarkPrince VPN</string>
+    <!-- Короткое имя: на рабочем столе длинное обрезается многоточием, а
+         «VPN» и так сказано иконкой -->
+    <string name="app_name">DPrince</string>
 
     <string name="setup_title">Подключение к сервису</string>
     <string name="setup_hint">Адрес кабинета (например https://cabinet.example.com/api)</string>
