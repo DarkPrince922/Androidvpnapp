@@ -62,6 +62,16 @@ class DiagnosticsViewModel : ViewModel() {
     /** Ответ кабинета: он же источник цифр по трафику. */
     private var status: com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse? = null
 
+    /**
+     * Подписка, про которую идёт весь разбор.
+     *
+     * Выбирается один раз в первой проверке, и дальше каждая следующая
+     * спрашивает кабинет именно про неё. Без этого получалась чепуха: в
+     * заголовке одна подписка, а лимит устройств от другой — той, которую
+     * кабинет считает текущей, когда его не спросили прямо.
+     */
+    private var subject: com.darkprince.vpn.data.api.dto.SubscriptionListItem? = null
+
     private val _state = MutableStateFlow(DiagnosticsUiState())
     val state: StateFlow<DiagnosticsUiState> = _state
 
@@ -72,6 +82,10 @@ class DiagnosticsViewModel : ViewModel() {
     fun run() {
         if (_state.value.running) return
         _state.value = DiagnosticsUiState(running = true, checks = emptyList())
+        // Повторная проверка начинается с чистого листа: вчерашние ответы
+        // тут хуже, чем их отсутствие.
+        status = null
+        subject = null
         viewModelScope.launch {
             subscription()
             traffic()
@@ -118,6 +132,7 @@ class DiagnosticsViewModel : ViewModel() {
         val current = list.firstOrNull { it.id == selectedId }
             ?: list.firstOrNull { it.isActive }
             ?: list.firstOrNull()
+        subject = current
         val title = current?.let { "Подписка «${it.displayName}»" } ?: "Подписка"
 
         if (current != null && !current.isActive) {
@@ -189,16 +204,21 @@ class DiagnosticsViewModel : ViewModel() {
     /**
      * Трафик.
      *
-     * Цифры берём из ответа кабинета, а не из локального кеша подписки:
-     * кеш заведён по выбранной подписке и вполне может быть пуст — например,
-     * если человек переключился на ту, которую ещё ни разу не скачивали.
-     * Раньше это выглядело как «нет данных о тарифе», хотя данные были.
+     * Первым делом смотрим на саму подписку из списка: она названа в
+     * заголовке, и её цифры относятся именно к ней. Ответ кабинета про
+     * «текущую» подписку идёт следом, а кеш — последним: он заведён по
+     * выбранной подписке и вполне может быть пуст, если человек переключился
+     * на ту, которую ещё ни разу не скачивали.
      */
     private suspend fun traffic() {
         val gb = 1024.0 * 1024 * 1024
-        val usedGb = status?.trafficUsedGb
-        val limitGb = status?.trafficLimitGb
-        val header = runCatching { subscriptions.cachedServers()?.second }.getOrNull()
+        val plan = subject
+        val usedGb = plan?.trafficUsedGb ?: status?.trafficUsedGb
+        val limitGb = plan?.trafficLimitGb ?: status?.trafficLimitGb
+        val header = runCatching {
+            if (plan != null) subscriptions.cachedServersFor(plan.id)?.second
+            else subscriptions.cachedServers()?.second
+        }.getOrNull()
 
         val used = usedGb ?: header?.let { ((it.uploadBytes ?: 0) + (it.downloadBytes ?: 0)) / gb }
         val limit = limitGb ?: header?.totalBytes?.let { it / gb }
@@ -233,9 +253,17 @@ class DiagnosticsViewModel : ViewModel() {
         )
     }
 
+    /**
+     * Лимит устройств.
+     *
+     * Номер подписки обязателен. Без него кабинет отвечает про ту, которую
+     * сам считает текущей, и на экране оказывались устройства одной подписки
+     * под именем другой — «занято 22 из 16» там, где на самом деле занято
+     * одно из пяти.
+     */
     private suspend fun devices() {
-        val info = runCatching { subscriptions.devicesInfo() }.getOrNull()
-        val limit = info?.deviceLimit ?: 0
+        val info = runCatching { subscriptions.devicesInfo(subject?.id) }.getOrNull()
+        val limit = info?.deviceLimit ?: subject?.deviceLimit ?: 0
         val used = info?.connectedCount ?: 0
         add(
             when {
@@ -271,11 +299,11 @@ class DiagnosticsViewModel : ViewModel() {
         val profile = runCatching {
             // Пустой кеш — не повод сдаваться: диагностика затем и нужна,
             // чтобы сходить и посмотреть, а не пересказать вчерашнее.
-            val (servers, _) = subscriptions.cachedServers()
+            val prefs = ServiceLocator.prefs
+            val subId = subject?.id ?: prefs.selectedSubscriptionFlow.first()
+            val (servers, _) = subscriptions.cachedServersFor(subId)
                 ?: subscriptions.fetchServers(forceRefresh = true).takeIf { it.first.isNotEmpty() }
                 ?: return@runCatching null
-            val prefs = ServiceLocator.prefs
-            val subId = prefs.selectedSubscriptionFlow.first()
             // Ключ надёжнее номера: сервер могли переставить в панели, и
             // тогда под старым номером окажется чужой узел.
             val key = prefs.selectedServerKeyFor(subId)
