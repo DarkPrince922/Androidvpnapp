@@ -529,6 +529,18 @@ private fun PeopleSection(
 
 }
 
+/** Ряд чипов, который прокручивается вбок, если не помещается. */
+@Composable
+private fun ChipRow(content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        content = content,
+    )
+}
+
 @Composable
 private fun PersonRow(person: AdminUserDto, onClick: () -> Unit) {
     Card(
