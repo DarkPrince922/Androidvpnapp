@@ -3,35 +3,34 @@ package com.darkprince.vpn.ui.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -39,6 +38,16 @@ import androidx.compose.ui.unit.dp
 import com.darkprince.vpn.R
 import com.darkprince.vpn.ui.vm.AuthUiState
 
+/**
+ * Вход.
+ *
+ * Почта — основной путь, и она сразу на экране: раньше вход был двумя
+ * равными вкладками, причём открывался на Telegram. Человеку без бота это
+ * показывало сначала тупик, а завести почту может кто угодно.
+ *
+ * Telegram остался внизу отдельной кнопкой. Он не хуже — он просто для
+ * тех, кто уже пользовался ботом, и таких меньше.
+ */
 @Composable
 fun LoginScreen(
     state: AuthUiState,
@@ -54,7 +63,6 @@ fun LoginScreen(
     upgradeMode: Boolean = false,
     onBack: (() -> Unit)? = null,
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var registerMode by rememberSaveable { mutableStateOf(upgradeMode) }
@@ -69,18 +77,17 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Image(
-            painter = painterResource(R.drawable.logo_mark),
-            contentDescription = null,
+            painter = painterResource(R.drawable.logo_wordmark),
+            contentDescription = "DarkPrince VPN",
             modifier = Modifier
-                .size(148.dp)
-                .clip(RoundedCornerShape(32.dp)),
+                .fillMaxWidth(0.88f)
+                // соотношение сторон исходника: иначе высота поедет от плотности
+                .aspectRatio(1200f / 280f),
         )
-        Spacer(Modifier.height(20.dp))
-        Text(
-            if (upgradeMode) "Свой аккаунт" else "Вход",
-            style = MaterialTheme.typography.headlineMedium,
-        )
+
         if (upgradeMode) {
+            Spacer(Modifier.height(20.dp))
+            Text("Свой аккаунт", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
             Text(
                 "Зарегистрируйтесь или войдите, чтобы купить собственную подписку. " +
@@ -89,90 +96,59 @@ fun LoginScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Spacer(Modifier.height(24.dp))
 
-        TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Telegram") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Почта") })
-        }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(28.dp))
 
-        if (tab == 0) {
-            if (state.waitingTelegram) {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Откройте Telegram и нажмите «Start», ждём подтверждения…",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(16.dp))
-                OutlinedButton(onClick = onCancelTelegram) { Text("Отмена") }
-            } else {
-                Button(
-                    onClick = onTelegramLogin,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.loading,
-                ) {
-                    Text("Войти через Telegram")
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Подойдёт, если вы уже пользовались нашим ботом в Telegram — подписка и баланс подтянутся автоматически.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        } else {
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("E-mail") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            )
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("E-mail") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Пароль") },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        )
+        if (registerMode) {
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
+                value = referralCode,
+                onValueChange = { referralCode = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Пароль") },
+                label = { Text("Реферальный код (необязательно)") },
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
-            if (registerMode) {
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = referralCode,
-                    onValueChange = { referralCode = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Реферальный код (необязательно)") },
-                    singleLine = true,
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    if (registerMode) {
-                        onEmailRegister(email, password, referralCode.takeIf { it.isNotBlank() })
-                    } else {
-                        onEmailLogin(email, password)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.loading && email.contains('@') && password.length >= 6,
-            ) {
-                Text(if (registerMode) "Зарегистрироваться" else "Войти")
-            }
-            TextButton(onClick = { registerMode = !registerMode }) {
-                Text(if (registerMode) "Уже есть аккаунт? Войти" else "Нет аккаунта? Зарегистрируйтесь")
-            }
-            if (!registerMode) {
-                TextButton(
-                    onClick = { if (email.contains('@')) onForgotPassword(email) },
-                ) {
-                    Text("Забыли пароль?")
+        }
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = {
+                if (registerMode) {
+                    onEmailRegister(email, password, referralCode.takeIf { it.isNotBlank() })
+                } else {
+                    onEmailLogin(email, password)
                 }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.loading && email.contains('@') && password.length >= 6,
+        ) {
+            Text(if (registerMode) "Зарегистрироваться" else "Войти")
+        }
+        TextButton(onClick = { registerMode = !registerMode }) {
+            Text(if (registerMode) "Уже есть аккаунт? Войти" else "Нет аккаунта? Зарегистрируйтесь")
+        }
+        if (!registerMode) {
+            TextButton(
+                onClick = { if (email.contains('@')) onForgotPassword(email) },
+            ) {
+                Text("Забыли пароль?")
             }
         }
 
@@ -183,6 +159,39 @@ fun LoginScreen(
         state.info?.let {
             Spacer(Modifier.height(16.dp))
             Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+        }
+
+        Spacer(Modifier.height(20.dp))
+        OrDivider()
+        Spacer(Modifier.height(16.dp))
+
+        if (state.waitingTelegram) {
+            CircularProgressIndicator()
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Откройте Telegram и нажмите «Start», ждём подтверждения…",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = onCancelTelegram) { Text("Отмена") }
+        } else {
+            OutlinedIconButton(
+                onClick = onTelegramLogin,
+                enabled = !state.loading,
+                modifier = Modifier.size(56.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_telegram),
+                    contentDescription = "Войти через Telegram",
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Войти через Telegram — если вы уже пользовались нашим ботом",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Spacer(Modifier.height(24.dp))
@@ -222,5 +231,23 @@ fun LoginScreen(
             Spacer(Modifier.height(24.dp))
             TextButton(onClick = onChangeServer) { Text("Изменить адрес кабинета") }
         }
+    }
+}
+
+/** Черта с «или» посередине: отделяет запасной вход от основного. */
+@Composable
+private fun OrDivider() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HorizontalDivider(Modifier.weight(1f))
+        Text(
+            "или",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+        HorizontalDivider(Modifier.weight(1f))
     }
 }
