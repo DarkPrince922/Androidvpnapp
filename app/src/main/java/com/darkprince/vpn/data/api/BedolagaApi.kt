@@ -9,6 +9,8 @@ import com.darkprince.vpn.data.api.dto.EmailLoginRequest
 import com.darkprince.vpn.data.api.dto.EmailRegisterRequest
 import com.darkprince.vpn.data.api.dto.ForgotPasswordRequest
 import com.darkprince.vpn.data.api.dto.LogoutRequest
+import com.darkprince.vpn.data.api.dto.NewsArticleDto
+import com.darkprince.vpn.data.api.dto.NewsListResponse
 import com.darkprince.vpn.data.api.dto.PaymentMethodDto
 import com.darkprince.vpn.data.api.dto.DevicesListResponse
 import com.darkprince.vpn.data.api.dto.DevicesPurchaseRequest
@@ -175,6 +177,18 @@ interface BedolagaApi {
     suspend fun renew(@Body body: RenewRequest): RawJson
 
     // --- Рефералка и промокоды ---
+
+    // ---------- Новости ----------
+
+    @GET("cabinet/news")
+    suspend fun news(
+        @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int = 0,
+        @Query("category") category: String? = null,
+    ): NewsListResponse
+
+    @GET("cabinet/news/{slug}")
+    suspend fun newsArticle(@Path("slug") slug: String): NewsArticleDto
 
     @GET("cabinet/referral")
     suspend fun referralInfo(): ReferralInfoResponse

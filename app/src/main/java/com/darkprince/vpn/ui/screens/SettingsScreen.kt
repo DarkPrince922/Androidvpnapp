@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +41,8 @@ fun SettingsScreen(
     onOpenShare: () -> Unit,
     onOpenDevices: () -> Unit,
     onOpenSupport: () -> Unit,
+    onOpenNews: () -> Unit,
+    newsUnreadCount: Int = 0,
     supportUnreadCount: Int,
     onCreateAccount: () -> Unit,
     onDropSharedSubscription: () -> Unit,
@@ -107,6 +110,27 @@ fun SettingsScreen(
                 tint = if (supportUnreadCount > 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                 onClick = onOpenSupport,
             )
+
+            // Гостю по чужой ссылке новости не показываем: кабинет отдаёт их
+            // только аккаунту, и строка вела бы на объяснение, почему пусто.
+            if (!guestMode) {
+                RowDivider()
+                SettingsRow(
+                    icon = Icons.Default.Campaign,
+                    title = "Новости",
+                    subtitle = if (newsUnreadCount > 0) {
+                        "Новых: $newsUnreadCount"
+                    } else {
+                        "Обновления, работы на серверах, акции"
+                    },
+                    tint = if (newsUnreadCount > 0) {
+                        MaterialTheme.colorScheme.secondary
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    onClick = onOpenNews,
+                )
+            }
         }
 
         Spacer(Modifier.height(22.dp))

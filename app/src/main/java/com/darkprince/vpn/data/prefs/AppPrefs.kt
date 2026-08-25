@@ -32,6 +32,7 @@ class AppPrefs(private val context: Context) {
         val SUB_USERINFO = stringPreferencesKey("sub_userinfo")
         val SELECTED_SERVER = intPreferencesKey("selected_server")
         val LAST_EXPIRY_NOTIFY_DAY = stringPreferencesKey("last_expiry_notify_day")
+        val NEWS_LAST_SEEN_ID = longPreferencesKey("news_last_seen_id")
         val HWID = stringPreferencesKey("hwid")
         val SELECTED_SUBSCRIPTION = longPreferencesKey("selected_subscription")
         val SPLIT_MODE = stringPreferencesKey("split_mode")
@@ -233,6 +234,18 @@ class AppPrefs(private val context: Context) {
         context.dataStore.edit { p ->
             if (raw == null) p.remove(Keys.SERVERS_RAW) else p[Keys.SERVERS_RAW] = raw
         }
+    }
+
+    /**
+     * Наибольший id новости, которую человек уже видел в ленте. Пусто значит
+     * «ленту ещё не открывали» — тогда точку не рисуем вовсе: новичку помечать
+     * непрочитанным весь архив бессмысленно.
+     */
+    val newsLastSeenIdFlow: Flow<Long?> =
+        context.dataStore.data.map { it[Keys.NEWS_LAST_SEEN_ID] }
+
+    suspend fun setNewsLastSeenId(id: Long) {
+        context.dataStore.edit { it[Keys.NEWS_LAST_SEEN_ID] = id }
     }
 
     val lastExpiryNotifyDayFlow: Flow<String?> =

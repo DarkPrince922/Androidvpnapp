@@ -5,6 +5,7 @@ import com.darkprince.vpn.data.api.ApiClient
 import com.darkprince.vpn.data.prefs.AppPrefs
 import com.darkprince.vpn.data.repo.AuthRepository
 import com.darkprince.vpn.data.repo.BalanceRepository
+import com.darkprince.vpn.data.repo.NewsRepository
 import com.darkprince.vpn.data.repo.SubscriptionRepository
 import com.darkprince.vpn.data.repo.SupportRepository
 import com.darkprince.vpn.data.update.AppUpdater
@@ -23,6 +24,8 @@ object ServiceLocator {
     lateinit var balanceRepository: BalanceRepository
         private set
     lateinit var supportRepository: SupportRepository
+
+    lateinit var newsRepository: NewsRepository
         private set
     lateinit var appUpdater: AppUpdater
         private set
@@ -37,6 +40,7 @@ object ServiceLocator {
         subscriptionRepository = SubscriptionRepository(apiClient, prefs)
         balanceRepository = BalanceRepository(apiClient)
         supportRepository = SupportRepository(apiClient, prefs, appContext)
+        newsRepository = NewsRepository(apiClient, prefs)
         // клиент тот же, что для подписки: при поднятом туннеле он ходит через
         // ядро, поэтому обновление доедет и там, где сайт заблокирован
         appUpdater = AppUpdater(appContext, apiClient.plainOkHttp)

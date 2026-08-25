@@ -269,3 +269,50 @@ data class PromoActivateResponse(
 
 // Ответы неизвестной/переменной формы храним как JsonObject и разбираем адаптивно.
 typealias RawJson = JsonObject
+
+// ---------- Новости ----------
+
+/**
+ * Статья в списке. Тела статьи здесь нет — кабинет отдаёт его только в
+ * карточке, и это правильно: в ленте оно никому не нужно, а весит больше
+ * всего остального вместе взятого.
+ */
+@Serializable
+data class NewsItemDto(
+    val id: Long,
+    val title: String,
+    val slug: String,
+    val excerpt: String? = null,
+    val category: String? = null,
+    @SerialName("category_color") val categoryColor: String? = null,
+    val tag: String? = null,
+    @SerialName("featured_image_url") val featuredImageUrl: String? = null,
+    @SerialName("is_featured") val isFeatured: Boolean = false,
+    @SerialName("published_at") val publishedAt: String? = null,
+    @SerialName("read_time_minutes") val readTimeMinutes: Int = 1,
+    @SerialName("views_count") val viewsCount: Int = 0,
+)
+
+@Serializable
+data class NewsListResponse(
+    val items: List<NewsItemDto> = emptyList(),
+    val total: Int = 0,
+    val categories: List<String> = emptyList(),
+)
+
+/** Статья целиком. [content] — размеченный HTML, кабинет чистит его у себя. */
+@Serializable
+data class NewsArticleDto(
+    val id: Long,
+    val title: String,
+    val slug: String,
+    val content: String = "",
+    val excerpt: String? = null,
+    val category: String? = null,
+    @SerialName("category_color") val categoryColor: String? = null,
+    val tag: String? = null,
+    @SerialName("published_at") val publishedAt: String? = null,
+    @SerialName("read_time_minutes") val readTimeMinutes: Int = 1,
+    @SerialName("views_count") val viewsCount: Int = 0,
+    @SerialName("author_name") val authorName: String? = null,
+)

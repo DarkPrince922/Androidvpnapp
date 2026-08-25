@@ -57,6 +57,8 @@ import com.darkprince.vpn.ui.screens.DevicesScreen
 import com.darkprince.vpn.ui.screens.HomeScreen
 import com.darkprince.vpn.ui.screens.LoginScreen
 import com.darkprince.vpn.ui.screens.PlansScreen
+import com.darkprince.vpn.ui.screens.NewsArticleScreen
+import com.darkprince.vpn.ui.screens.NewsScreen
 import com.darkprince.vpn.ui.screens.ReferralScreen
 import com.darkprince.vpn.ui.screens.ServersScreen
 import com.darkprince.vpn.ui.screens.ShareSubscriptionScreen
@@ -76,6 +78,7 @@ import com.darkprince.vpn.ui.vm.BalanceViewModel
 import com.darkprince.vpn.ui.vm.DevicesViewModel
 import com.darkprince.vpn.ui.vm.HomeViewModel
 import com.darkprince.vpn.ui.vm.PlansViewModel
+import com.darkprince.vpn.ui.vm.NewsViewModel
 import com.darkprince.vpn.ui.vm.SupportViewModel
 import com.darkprince.vpn.vpn.XVpnService
 import com.journeyapps.barcodescanner.ScanContract
@@ -273,12 +276,15 @@ private fun AppRoot(
     val authViewModel: AuthViewModel = viewModel()
     val authState by authViewModel.state.collectAsStateWithLifecycle()
     val supportViewModel: SupportViewModel = viewModel(viewModelStoreOwner = activity)
+    val newsViewModel: NewsViewModel = viewModel(viewModelStoreOwner = activity)
     val supportState by supportViewModel.state.collectAsStateWithLifecycle()
+    val newsState by newsViewModel.state.collectAsStateWithLifecycle()
     val prefs = ServiceLocator.prefs
 
     // При входе или выходе очищаем переписку предыдущей сессии.
     LaunchedEffect(authState.loggedIn, authState.guestMode) {
         supportViewModel.sessionChanged()
+        newsViewModel.sessionChanged()
     }
 
     // открыть Telegram, когда начата deep-link авторизация
@@ -545,6 +551,17 @@ private fun AppRoot(
                     LaunchedEffect(Unit) { navController.popBackStack() }
                 }
             }
+            composable("news") {
+                NewsScreen(
+                    viewModel = newsViewModel,
+                    onOpen = { slug -> navController.navigate("news/$slug") },
+                )
+            }
+            composable("news/{slug}") { entry ->
+                entry.arguments?.getString("slug")?.let { slug ->
+                    NewsArticleScreen(viewModel = newsViewModel, slug = slug)
+                }
+            }
             composable("settings") {
                 val userJson by prefs.userJsonFlow.collectAsState(initial = null)
                 val user = userJson?.let {
@@ -570,6 +587,8 @@ private fun AppRoot(
                     onOpenDevices = { navController.navigate("devices") },
                     onOpenSupport = { navController.navigate("support") },
                     supportUnreadCount = supportState.unreadCount,
+                    onOpenNews = { navController.navigate("news") },
+                    newsUnreadCount = newsState.unread,
                     onCreateAccount = { navController.navigate("upgrade") },
                     onDropSharedSubscription = {
                         scope.launch {
