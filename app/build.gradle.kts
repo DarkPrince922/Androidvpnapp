@@ -157,6 +157,10 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.work.runtime)
+    // biometric тянет за собой fragment 1.2.5 — слишком старый рядом с
+    // текущим activity. Называем версию явно, чтобы её не выбрал Gradle.
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment)
     implementation(libs.zxing.android.embedded)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)

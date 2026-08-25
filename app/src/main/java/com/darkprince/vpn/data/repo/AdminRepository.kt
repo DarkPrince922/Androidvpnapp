@@ -1,0 +1,81 @@
+package com.darkprince.vpn.data.repo
+
+import com.darkprince.vpn.data.api.ApiClient
+import com.darkprince.vpn.data.api.dto.AdminPermissionsDto
+import com.darkprince.vpn.data.api.dto.AdminReplyRequest
+import com.darkprince.vpn.data.api.dto.AdminStatusRequest
+import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
+import com.darkprince.vpn.data.api.dto.AdminTicketDto
+import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
+import com.darkprince.vpn.data.prefs.AppPrefs
+import retrofit2.HttpException
+import java.io.IOException
+
+/**
+ * Админская часть кабинета.
+ *
+ * Права здесь — только про то, что показать: решает всё равно сервер, и
+ * устаревший клиент лишнего не сделает, он лишь нарисует кнопку, которая
+ * ответит 403. Поэтому права перечитываются при каждом входе во вкладку —
+ * так снятая в панели роль исчезает из приложения за секунды, а не когда
+ * протухнет токен.
+ */
+class AdminRepository(
+    private val client: ApiClient,
+    private val prefs: AppPrefs,
+) {
+    private val api get() = client.api
+
+    val isLoggedIn: Boolean get() = prefs.cachedRefreshToken != null
+
+    /** Админ ли текущий аккаунт. Гостю и обычному человеку — false. */
+    suspend fun isAdmin(): Boolean = try {
+        isLoggedIn && api.isAdmin().isAdmin
+    } catch (_: Exception) {
+        // Ошибку здесь глотаем намеренно: вкладка просто не появится, а
+        // ронять из-за неё загрузку приложения нельзя.
+        false
+    }
+
+    suspend fun permissions(): AdminPermissionsDto = api.adminPermissions()
+
+    suspend fun tickets(status: String? = null, page: Int = 1): List<AdminTicketDto> =
+        api.adminTickets(page = page, perPage = PAGE, status = status).items
+
+    suspend fun stats(): AdminTicketStatsDto = api.adminTicketStats()
+
+    suspend fun ticket(id: Long): AdminTicketDetailDto = api.adminTicket(id)
+
+    suspend fun reply(id: Long, message: String) {
+        api.adminReply(id, AdminReplyRequest(message))
+    }
+
+    suspend fun setStatus(id: Long, status: String) {
+        api.adminTicketStatus(id, AdminStatusRequest(status))
+    }
+
+    companion object {
+        const val PAGE = 30
+
+        // права, которые нас интересуют
+        const val TICKETS_READ = "tickets:read"
+        const val TICKETS_REPLY = "tickets:reply"
+        const val TICKETS_CLOSE = "tickets:close"
+    }
+}
+
+/**
+ * Человеческий текст ошибки.
+ *
+ * 403 здесь — не сбой, а нормальный ответ: роль в панели могли изменить
+ * минуту назад, и приложение об этом ещё не знало.
+ */
+fun adminErrorMessage(error: Throwable): String = when {
+    error is IOException -> "Нет соединения"
+    error !is HttpException -> error.message ?: "Не удалось выполнить действие"
+    error.code() == 401 -> "Сессия истекла. Войдите ещё раз"
+    error.code() == 403 -> "Недостаточно прав — роль могли изменить в панели"
+    error.code() == 404 -> "Обращение не найдено"
+    error.code() == 400 -> "Сервер не принял запрос: проверьте текст"
+    else -> "Ошибка сервера (${error.code()})"
+}

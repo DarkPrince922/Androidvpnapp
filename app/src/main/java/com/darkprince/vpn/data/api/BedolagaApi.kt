@@ -1,5 +1,11 @@
 package com.darkprince.vpn.data.api
 
+import com.darkprince.vpn.data.api.dto.AdminPermissionsDto
+import com.darkprince.vpn.data.api.dto.AdminReplyRequest
+import com.darkprince.vpn.data.api.dto.AdminStatusRequest
+import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
+import com.darkprince.vpn.data.api.dto.AdminTicketListDto
+import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
 import com.darkprince.vpn.data.api.dto.AuthResponse
 import com.darkprince.vpn.data.api.dto.BalanceResponse
 import com.darkprince.vpn.data.api.dto.ConnectionLinkResponse
@@ -8,6 +14,7 @@ import com.darkprince.vpn.data.api.dto.DeepLinkRequestResponse
 import com.darkprince.vpn.data.api.dto.EmailLoginRequest
 import com.darkprince.vpn.data.api.dto.EmailRegisterRequest
 import com.darkprince.vpn.data.api.dto.ForgotPasswordRequest
+import com.darkprince.vpn.data.api.dto.IsAdminDto
 import com.darkprince.vpn.data.api.dto.LogoutRequest
 import com.darkprince.vpn.data.api.dto.NewsArticleDto
 import com.darkprince.vpn.data.api.dto.NewsListResponse
@@ -177,6 +184,39 @@ interface BedolagaApi {
     suspend fun renew(@Body body: RenewRequest): RawJson
 
     // --- Рефералка и промокоды ---
+
+    // ---------- Админка ----------
+
+    @GET("cabinet/auth/me/is-admin")
+    suspend fun isAdmin(): IsAdminDto
+
+    @GET("cabinet/auth/me/permissions")
+    suspend fun adminPermissions(): AdminPermissionsDto
+
+    @GET("cabinet/admin/tickets")
+    suspend fun adminTickets(
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 20,
+        @Query("status") status: String? = null,
+    ): AdminTicketListDto
+
+    @GET("cabinet/admin/tickets/stats")
+    suspend fun adminTicketStats(): AdminTicketStatsDto
+
+    @GET("cabinet/admin/tickets/{ticketId}")
+    suspend fun adminTicket(@Path("ticketId") ticketId: Long): AdminTicketDetailDto
+
+    @POST("cabinet/admin/tickets/{ticketId}/reply")
+    suspend fun adminReply(
+        @Path("ticketId") ticketId: Long,
+        @Body body: AdminReplyRequest,
+    ): JsonElement
+
+    @POST("cabinet/admin/tickets/{ticketId}/status")
+    suspend fun adminTicketStatus(
+        @Path("ticketId") ticketId: Long,
+        @Body body: AdminStatusRequest,
+    ): JsonElement
 
     // ---------- Новости ----------
 

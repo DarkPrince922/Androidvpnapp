@@ -7,7 +7,6 @@ import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
@@ -24,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -57,6 +58,8 @@ import com.darkprince.vpn.ui.screens.DevicesScreen
 import com.darkprince.vpn.ui.screens.HomeScreen
 import com.darkprince.vpn.ui.screens.LoginScreen
 import com.darkprince.vpn.ui.screens.PlansScreen
+import com.darkprince.vpn.ui.screens.AdminScreen
+import com.darkprince.vpn.ui.screens.AdminTicketScreen
 import com.darkprince.vpn.ui.screens.NewsArticleScreen
 import com.darkprince.vpn.ui.screens.NewsScreen
 import com.darkprince.vpn.ui.screens.ReferralScreen
@@ -78,6 +81,7 @@ import com.darkprince.vpn.ui.vm.BalanceViewModel
 import com.darkprince.vpn.ui.vm.DevicesViewModel
 import com.darkprince.vpn.ui.vm.HomeViewModel
 import com.darkprince.vpn.ui.vm.PlansViewModel
+import com.darkprince.vpn.ui.vm.AdminViewModel
 import com.darkprince.vpn.ui.vm.NewsViewModel
 import com.darkprince.vpn.ui.vm.SupportViewModel
 import com.darkprince.vpn.vpn.XVpnService
@@ -87,7 +91,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class MainActivity : ComponentActivity() {
+/**
+ * FragmentActivity, а не ComponentActivity: подтверждение личности перед
+ * админской вкладкой умеет работать только с ней. Для Compose разницы нет —
+ * FragmentActivity и есть ComponentActivity, только с менеджером фрагментов.
+ */
+class MainActivity : FragmentActivity() {
 
     private var pendingConnect: (() -> Unit)? = null
 
@@ -277,14 +286,17 @@ private fun AppRoot(
     val authState by authViewModel.state.collectAsStateWithLifecycle()
     val supportViewModel: SupportViewModel = viewModel(viewModelStoreOwner = activity)
     val newsViewModel: NewsViewModel = viewModel(viewModelStoreOwner = activity)
+    val adminViewModel: AdminViewModel = viewModel(viewModelStoreOwner = activity)
     val supportState by supportViewModel.state.collectAsStateWithLifecycle()
     val newsState by newsViewModel.state.collectAsStateWithLifecycle()
+    val adminState by adminViewModel.state.collectAsStateWithLifecycle()
     val prefs = ServiceLocator.prefs
 
     // При входе или выходе очищаем переписку предыдущей сессии.
     LaunchedEffect(authState.loggedIn, authState.guestMode) {
         supportViewModel.sessionChanged()
         newsViewModel.sessionChanged()
+        adminViewModel.sessionChanged()
     }
 
     // открыть Telegram, когда начата deep-link авторизация
@@ -321,6 +333,14 @@ private fun AppRoot(
             BottomItem("balance", "Баланс", Icons.Default.AccountBalanceWallet),
             BottomItem("settings", "Ещё", Icons.Default.Settings),
         )
+    }.let { items ->
+        // Пятый пункт появляется только у админа: у всех остальных панель
+        // остаётся прежней.
+        if (adminState.isAdmin) {
+            items + BottomItem("admin", "Панель", Icons.Default.AdminPanelSettings)
+        } else {
+            items
+        }
     }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -549,6 +569,28 @@ private fun AppRoot(
                     )
                 } else {
                     LaunchedEffect(Unit) { navController.popBackStack() }
+                }
+            }
+            composable("admin") {
+                AdminGate(
+                    activity = activity,
+                    unlocked = adminState.unlocked,
+                    onUnlocked = adminViewModel::onUnlocked,
+                    onCancel = { navController.popBackStack() },
+                ) {
+                    AdminScreen(
+                        viewModel = adminViewModel,
+                        onOpenTicket = { id -> navController.navigate("admin/ticket/$id") },
+                    )
+                }
+            }
+            composable("admin/ticket/{ticketId}") { entry ->
+                entry.arguments?.getString("ticketId")?.toLongOrNull()?.let { id ->
+                    AdminTicketScreen(
+                        viewModel = adminViewModel,
+                        ticketId = id,
+                        onBack = { navController.popBackStack() },
+                    )
                 }
             }
             composable("news") {
