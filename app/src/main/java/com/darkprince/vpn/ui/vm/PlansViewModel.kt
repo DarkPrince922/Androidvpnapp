@@ -15,6 +15,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import com.darkprince.vpn.vpn.VpnState
+import com.darkprince.vpn.vpn.VpnStateStore
+import com.darkprince.vpn.vpn.XVpnService
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -64,6 +68,14 @@ data class PlansUiState(
     /** Всё, что продаётся. */
     val tariffs: List<TariffOffer> = emptyList(),
     val trialAvailable: Boolean = false,
+    /**
+     * Подписка, по которой идёт подключение.
+     *
+     * Выбирают её на главной, под кнопкой; остальные экраны за ней следуют.
+     * Здесь она нужна, чтобы показать, какая карточка рабочая, и дать
+     * переключиться, не возвращаясь на главную.
+     */
+    val workingSubscriptionId: Long? = null,
     val loading: Boolean = false,
     val purchasing: Boolean = false,
     val error: String? = null,
@@ -107,6 +119,7 @@ class PlansViewModel : ViewModel() {
                 val subsDeferred = async { repo.subscriptions().orEmpty() }
                 Triple(tariffsDeferred.await(), trialDeferred.await(), subsDeferred.await())
             }
+            val working = ServiceLocator.prefs.selectedSubscriptionFlow.first()
 
             // Действующие сверху, истёкшие следом: продлить истёкшую тоже надо
             // где-то, но начинать список с неё незачем.
@@ -130,6 +143,7 @@ class PlansViewModel : ViewModel() {
                     cards = cards,
                     tariffs = tariffs,
                     trialAvailable = trial,
+                    workingSubscriptionId = working,
                     loading = false,
                     error = error,
                 )
@@ -176,6 +190,34 @@ class PlansViewModel : ViewModel() {
             state.copy(
                 cards = state.cards.map { if (it.id == subId) block(it) else it },
             )
+        }
+    }
+
+    /**
+     * Сделать эту подписку рабочей — той, по которой идёт подключение.
+     *
+     * Ровно то же, что делает главный экран, и с теми же последствиями:
+     * поднятый туннель гасится, серверы перечитываются под новую подписку.
+     * Поэтому это отдельное нажатие, а не побочный эффект просмотра карточки:
+     * листать «Тарифы» и остаться без связи никто не подписывался.
+     */
+    fun makeWorking(subId: Long) {
+        if (subId == _state.value.workingSubscriptionId) return
+        val name = _state.value.cards.firstOrNull { it.id == subId }?.title
+        _state.update { it.copy(purchasing = true, error = null, info = null) }
+        viewModelScope.launch {
+            if (VpnStateStore.state.value == VpnState.CONNECTED) {
+                XVpnService.stop(ServiceLocator.appContext)
+            }
+            repo.selectSubscription(subId)
+            _state.update {
+                it.copy(
+                    purchasing = false,
+                    workingSubscriptionId = subId,
+                    info = if (name != null) "Подключение переключено на «$name»"
+                    else "Подключение переключено",
+                )
+            }
         }
     }
 
@@ -229,7 +271,13 @@ class PlansViewModel : ViewModel() {
         }
     }
 
-    private fun <T> runOrNull(block: () -> T): T? = try {
+    /**
+     * Запрос, которому позволено не удаться: экран собирается из нескольких, и
+     * один упавший не должен уносить остальные.
+     *
+     * Лямбда именно suspend: внутрь ходят в сеть.
+     */
+    private suspend fun <T> runOrNull(block: suspend () -> T): T? = try {
         block()
     } catch (_: Exception) {
         null

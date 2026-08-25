@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.data.api.dto.DeviceDto
 import com.darkprince.vpn.data.api.dto.SubscriptionListItem
 import com.darkprince.vpn.di.ServiceLocator
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -51,7 +52,12 @@ class DevicesViewModel : ViewModel() {
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
             val subs = repo.subscriptions().orEmpty()
+            // По умолчанию — рабочая подписка, та же, по которой идёт
+            // подключение на главной. Свой переключатель ниже остаётся, но
+            // он локальный: смотреть чужие устройства можно, а рабочую
+            // подписку этим не меняют — иначе просмотр обрывал бы туннель.
             val targetId = subscriptionId
+                ?: ServiceLocator.prefs.selectedSubscriptionFlow.first()
                 ?: subs.firstOrNull { it.isActive }?.id
                 ?: subs.firstOrNull()?.id
             val devices = repo.devicesList(targetId)

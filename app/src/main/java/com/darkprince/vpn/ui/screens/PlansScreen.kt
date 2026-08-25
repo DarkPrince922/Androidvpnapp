@@ -3,6 +3,7 @@ package com.darkprince.vpn.ui.screens
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -101,6 +102,10 @@ fun PlansScreen(
                 MySubscriptionCard(
                     card = card,
                     purchasing = state.purchasing,
+                    working = card.id == state.workingSubscriptionId,
+                    // при одной подписке выбирать нечего — строку не показываем
+                    showWorkingRow = state.cards.size > 1,
+                    onMakeWorking = { viewModel.makeWorking(card.id) },
                     onRenew = { period -> viewModel.renew(card.id, period) },
                     onBuyDevices = { count -> viewModel.buyDevices(card.id, count) },
                     onReduceDevices = { limit -> viewModel.reduceDevices(card.id, limit) },
@@ -151,6 +156,9 @@ private fun SectionTitle(text: String) {
 private fun MySubscriptionCard(
     card: OwnedSubscription,
     purchasing: Boolean,
+    working: Boolean,
+    showWorkingRow: Boolean,
+    onMakeWorking: () -> Unit,
     onRenew: (PeriodPrice) -> Unit,
     onBuyDevices: (Int) -> Unit,
     onReduceDevices: (Int) -> Unit,
@@ -182,6 +190,25 @@ private fun MySubscriptionCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            if (showWorkingRow) {
+                Spacer(Modifier.height(8.dp))
+                if (working) {
+                    Text(
+                        "● Подключение идёт по этой подписке",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = BrandColors.Success,
+                    )
+                } else if (card.sub.isActive) {
+                    // Не молча при открытии карточки: переключение гасит
+                    // поднятый туннель, и делать это за человека нельзя.
+                    TextButton(
+                        onClick = onMakeWorking,
+                        enabled = !purchasing,
+                        contentPadding = PaddingValues(0.dp),
+                    ) { Text("Подключаться по этой") }
+                }
+            }
 
             if (card.periods.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
