@@ -13,6 +13,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import libv2ray.Libv2ray
+import retrofit2.HttpException
+import java.io.IOException
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 
 /** Итог одной проверки. */
 enum class CheckResult { RUNNING, OK, WARN, FAIL, SKIPPED }
@@ -73,17 +80,70 @@ class DiagnosticsViewModel : ViewModel() {
 
     private fun add(check: Check) = _state.update { it.copy(checks = it.checks + check) }
 
+    /**
+     * Срок подписки.
+     *
+     * Сколько осталось, панель может сказать тремя способами, и ни один не
+     * обязателен: числом дней, датой окончания или отметкой времени в
+     * заголовке самой подписки. Берём первое, что нашлось. Раньше здесь
+     * стоял один необязательный `days_left`, и его отсутствие выглядело как
+     * «сервер не ответил» — хотя сервер отвечал прекрасно.
+     */
     private suspend fun subscription() {
-        val days = runCatching { subscriptions.status().daysLeft }.getOrNull()
-        add(
-            when {
-                days == null -> Check(
+        val response = runCatching { subscriptions.status() }
+        val failure = response.exceptionOrNull()
+        if (failure != null) {
+            add(
+                Check(
                     "Подписка",
                     CheckResult.SKIPPED,
-                    "Не удалось спросить сервер",
+                    reason(failure),
                     "Проверьте, есть ли интернет без VPN.",
                 )
+            )
+            return
+        }
 
+        val status = response.getOrNull()
+        val days = status?.daysLeft
+            ?: status?.endDate?.let(::daysUntil)
+            ?: cachedExpiryDays()
+
+        // Явный отказ панели весомее любой даты: подписка могла быть
+        // отключена вручную, и срок при этом остался в будущем.
+        if (status?.isActive == false && (days == null || days >= 0)) {
+            add(
+                Check(
+                    "Подписка",
+                    CheckResult.FAIL,
+                    status.actualStatus ?: "Не активна",
+                    "Подписка не активна — туннель поднимется, но сервер не " +
+                        "пропустит трафик. Продлите на вкладке «Тарифы».",
+                )
+            )
+            return
+        }
+
+        if (days == null) {
+            val active = status?.isActive == true
+            add(
+                Check(
+                    "Подписка",
+                    if (active) CheckResult.OK else CheckResult.SKIPPED,
+                    if (active) "Активна" else "Срок не указан",
+                    if (active) {
+                        null
+                    } else {
+                        "Панель не сообщает дату окончания — посмотрите её в " +
+                            "карточке подписки на главной."
+                    },
+                )
+            )
+            return
+        }
+
+        add(
+            when {
                 days < 0 -> Check(
                     "Подписка",
                     CheckResult.FAIL,
@@ -103,6 +163,32 @@ class DiagnosticsViewModel : ViewModel() {
                 else -> Check("Подписка", CheckResult.OK, "Осталось $days дн.")
             }
         )
+    }
+
+    /** Дней до даты вида «2026-09-01T12:00:00Z». Не разобралась — null. */
+    private fun daysUntil(iso: String): Int? = try {
+        val end = runCatching { OffsetDateTime.parse(iso).toInstant() }
+            .getOrElse { LocalDateTime.parse(iso).toInstant(ZoneOffset.UTC) }
+        ChronoUnit.DAYS.between(Instant.now(), end).toInt()
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Запасной источник срока: отметка времени из заголовка подписки. */
+    private suspend fun cachedExpiryDays(): Int? {
+        val expire = runCatching { subscriptions.cachedServers()?.second?.expireUnix }
+            .getOrNull()
+            ?.takeIf { it > 0 }
+            ?: return null
+        return ((expire * 1000 - System.currentTimeMillis()) / 86_400_000L).toInt()
+    }
+
+    /** Короткая причина, почему запрос не прошёл. */
+    private fun reason(error: Throwable): String = when {
+        error is IOException -> "Нет соединения с сервером"
+        error is HttpException && error.code() == 401 -> "Сессия истекла"
+        error is HttpException -> "Сервер ответил ${error.code()}"
+        else -> "Не удалось спросить сервер"
     }
 
     private suspend fun traffic() {

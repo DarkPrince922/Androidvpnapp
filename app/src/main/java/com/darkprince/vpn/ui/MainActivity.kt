@@ -699,8 +699,6 @@ private fun AppRoot(
                     supportUnreadCount = supportState.unreadCount,
                     onOpenNews = { navController.navigate("news") },
                     newsUnreadCount = newsState.unread,
-                    adminCheckReason = adminState.checkReason,
-                    onRecheckAdmin = adminViewModel::recheck,
                     onCreateAccount = { navController.navigate("upgrade") },
                     onDropSharedSubscription = {
                         scope.launch {

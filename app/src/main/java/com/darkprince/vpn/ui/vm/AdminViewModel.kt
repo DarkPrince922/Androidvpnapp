@@ -10,6 +10,7 @@ import com.darkprince.vpn.data.api.dto.AdminTicketDto
 import com.darkprince.vpn.data.api.dto.AdminTransactionDto
 import com.darkprince.vpn.data.api.dto.AdminUserDto
 import com.darkprince.vpn.data.repo.AdminRepository
+import com.darkprince.vpn.data.log.AppLog
 import com.darkprince.vpn.data.repo.adminErrorMessage
 import com.darkprince.vpn.data.repo.rejectedParameter
 import com.darkprince.vpn.di.ServiceLocator
@@ -137,6 +138,9 @@ data class AdminUiState(
 class AdminViewModel : ViewModel() {
     private val repository = ServiceLocator.adminRepository
 
+    /** Чтобы «Ещё» не писал одно и то же в журнал при каждом открытии. */
+    private var lastLoggedReason: String? = null
+
     private val _state = MutableStateFlow(AdminUiState())
     val state: StateFlow<AdminUiState> = _state
 
@@ -157,6 +161,13 @@ class AdminViewModel : ViewModel() {
     private fun checkAdmin() {
         viewModelScope.launch {
             val check = repository.isAdmin()
+            // Причина уходит в журнал, а не на экран: обычному человеку
+            // незачем знать, что панель вообще существует, а нам нужно
+            // отличать «не админ» от «спросить не удалось».
+            if (check.reason != lastLoggedReason) {
+                lastLoggedReason = check.reason
+                AppLog.write("панель управления: ${check.reason}")
+            }
             _state.update { it.copy(isAdmin = check.admin, checkReason = check.reason) }
             if (check.admin) loadCount()
         }

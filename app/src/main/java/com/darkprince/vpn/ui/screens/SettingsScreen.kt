@@ -13,7 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Lock
@@ -41,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.darkprince.vpn.BuildConfig
 import com.darkprince.vpn.data.api.dto.UserDto
 import com.darkprince.vpn.data.prefs.AppPrefs
 import com.darkprince.vpn.ui.theme.AppPalette
@@ -71,8 +69,6 @@ fun SettingsScreen(
     onOpenDiagnostics: () -> Unit,
     onOpenNews: () -> Unit,
     newsUnreadCount: Int = 0,
-    adminCheckReason: String = "",
-    onRecheckAdmin: () -> Unit = {},
     supportUnreadCount: Int,
     onCreateAccount: () -> Unit,
     onDropSharedSubscription: () -> Unit,
@@ -170,20 +166,6 @@ fun SettingsScreen(
                         MaterialTheme.colorScheme.primary
                     },
                     onClick = onOpenNews,
-                )
-            }
-
-            // Отладочная сборка объясняет, почему панели управления нет.
-            // В релизе этой строки не существует: обычному человеку она
-            // ничего не говорит, а нам без неё «просто не появилось».
-            if (BuildConfig.DEBUG) {
-                RowDivider()
-                SettingsRow(
-                    icon = Icons.Default.BugReport,
-                    title = "Панель управления",
-                    subtitle = adminCheckReason,
-                    showChevron = false,
-                    onClick = onRecheckAdmin,
                 )
             }
         }
