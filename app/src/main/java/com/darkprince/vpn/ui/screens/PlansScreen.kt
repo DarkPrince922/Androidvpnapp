@@ -98,7 +98,11 @@ fun PlansScreen(
 
         if (state.cards.isNotEmpty()) {
             item { SectionTitle("Ваши подписки") }
-            items(state.cards, key = { it.id }) { card ->
+            // Ключи с приставкой: ниже вторым списком идут тарифы, и их
+            // нумерация своя. Голый номер подписки рано или поздно совпал бы
+            // с номером тарифа, а LazyColumn требует ключи, уникальные по
+            // всему списку, и на совпадении падает.
+            items(state.cards, key = { "sub-${it.id}" }) { card ->
                 MySubscriptionCard(
                     card = card,
                     purchasing = state.purchasing,
@@ -119,7 +123,7 @@ fun PlansScreen(
             item {
                 SectionTitle(if (state.cards.isEmpty()) "Выберите тариф" else "Купить ещё")
             }
-            items(state.offers, key = { it.id }) { tariff ->
+            items(state.offers, key = { "offer-${it.id}" }) { tariff ->
                 OfferCard(
                     tariff = tariff,
                     purchasing = state.purchasing,
