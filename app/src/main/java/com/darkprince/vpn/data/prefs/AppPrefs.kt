@@ -33,6 +33,10 @@ class AppPrefs(private val context: Context) {
         val SUB_USERINFO = stringPreferencesKey("sub_userinfo")
         val SELECTED_SERVER = intPreferencesKey("selected_server")
         val LAST_EXPIRY_NOTIFY_DAY = stringPreferencesKey("last_expiry_notify_day")
+        // о скольких непрочитанных обращениях человек уже оповещён: чтобы одно
+        // и то же сообщение не всплывало каждый час
+        val SUPPORT_NOTIFIED = intPreferencesKey("support_notified_count")
+        val ADMIN_TICKETS_NOTIFIED = intPreferencesKey("admin_tickets_notified_count")
         val NEWS_LAST_SEEN_ID = longPreferencesKey("news_last_seen_id")
         val HWID = stringPreferencesKey("hwid")
         val SELECTED_SUBSCRIPTION = longPreferencesKey("selected_subscription")
@@ -329,6 +333,20 @@ class AppPrefs(private val context: Context) {
 
     suspend fun setLastExpiryNotifyDay(day: String) {
         context.dataStore.edit { it[Keys.LAST_EXPIRY_NOTIFY_DAY] = day }
+    }
+
+    val supportNotifiedFlow: Flow<Int> =
+        context.dataStore.data.map { it[Keys.SUPPORT_NOTIFIED] ?: 0 }
+
+    suspend fun setSupportNotified(count: Int) {
+        context.dataStore.edit { it[Keys.SUPPORT_NOTIFIED] = count }
+    }
+
+    val adminTicketsNotifiedFlow: Flow<Int> =
+        context.dataStore.data.map { it[Keys.ADMIN_TICKETS_NOTIFIED] ?: 0 }
+
+    suspend fun setAdminTicketsNotified(count: Int) {
+        context.dataStore.edit { it[Keys.ADMIN_TICKETS_NOTIFIED] = count }
     }
 
     suspend fun setSubUserInfo(json: String?) {

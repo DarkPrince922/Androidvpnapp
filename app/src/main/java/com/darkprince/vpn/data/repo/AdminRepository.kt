@@ -15,6 +15,7 @@ import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketDto
 import com.darkprince.vpn.data.api.dto.AdminTransactionDto
 import com.darkprince.vpn.data.api.dto.AdminUsersListDto
+import com.darkprince.vpn.data.api.dto.AdminTicketNotificationDto
 import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
 import com.darkprince.vpn.data.prefs.AppPrefs
 import org.json.JSONObject
@@ -65,6 +66,13 @@ class AdminRepository(
         api.adminTickets(page = page, perPage = PAGE, status = status).items
 
     suspend fun stats(): AdminTicketStatsDto = api.adminTicketStats()
+
+    /** Сколько уведомлений о тикетах админ ещё не смотрел. */
+    suspend fun ticketUnreadCount(): Int = api.adminTicketUnreadCount().unreadCount
+
+    /** Непрочитанные уведомления — из них берём номер и тему для оповещения. */
+    suspend fun ticketNotifications(): List<AdminTicketNotificationDto> =
+        api.adminTicketNotifications().items
 
     suspend fun ticket(id: Long): AdminTicketDetailDto = api.adminTicket(id)
 

@@ -41,6 +41,7 @@ class SubscriptionRefreshWorker(
             // держим в актуальном состоянии и остальные подписки пользователя
             ServiceLocator.subscriptionRepository.prefetchAllSubscriptions()
             checkExpiryNotification(userInfo)
+            checkTicketNotifications()
             Result.success()
         } catch (_: Exception) {
             // сеть/сервер недоступны — попробуем в следующем цикле
@@ -94,6 +95,103 @@ class SubscriptionRefreshWorker(
             .build()
         try {
             manager.notify(2, notification)
+        } catch (_: SecurityException) {
+        }
+    }
+
+    /**
+     * Ответ поддержки и — отдельно — новое обращение для админа.
+     *
+     * Настоящих пушей у приложения нет: Firebase не подключён, а раздаётся
+     * оно мимо Play, где сервисов Google может не быть вовсе. Поэтому
+     * спрашиваем сами, но не заводим ради этого второй фоновый заход:
+     * подписка и так обновляется раз в час, и проверка едет с ней.
+     *
+     * Кабинет считает непрочитанное сам, отдельной таблицей уведомлений, —
+     * сравнивать списки тикетов на телефоне не нужно. Запоминаем, о скольких
+     * уже оповестили, иначе одно и то же сообщение всплывало бы каждый час.
+     */
+    private suspend fun checkTicketNotifications() {
+        if (!ServiceLocator.authRepository.isLoggedIn) return
+        val prefs = ServiceLocator.prefs
+
+        val unread = try {
+            ServiceLocator.supportRepository.unreadCount()
+        } catch (_: Exception) {
+            null
+        }
+        if (unread != null) {
+            if (unread > prefs.supportNotifiedFlow.first()) {
+                notify(
+                    id = 3,
+                    title = "Поддержка ответила",
+                    text = if (unread == 1) "Есть новый ответ по вашему обращению."
+                    else "Новых ответов: $unread.",
+                )
+            }
+            prefs.setSupportNotified(unread)
+        }
+
+        checkAdminTickets()
+    }
+
+    /**
+     * Админу — про чужие обращения. Спрашиваем только если человек и правда
+     * админ: у остальных этот адрес ответит отказом, и ходить туда каждый час
+     * незачем.
+     */
+    private suspend fun checkAdminTickets() {
+        val admin = ServiceLocator.adminRepository
+        if (!admin.isAdmin().admin) return
+        val prefs = ServiceLocator.prefs
+
+        val unread = try {
+            admin.ticketUnreadCount()
+        } catch (_: Exception) {
+            return
+        }
+        if (unread > prefs.adminTicketsNotifiedFlow.first()) {
+            // текст уведомления кабинет уже собрал — с номером тикета и темой
+            val newest = try {
+                admin.ticketNotifications().firstOrNull()?.message
+            } catch (_: Exception) {
+                null
+            }
+            notify(
+                id = 4,
+                title = if (unread == 1) "Новое обращение" else "Обращений без ответа: $unread",
+                text = newest ?: "Откройте «Панель», чтобы ответить.",
+            )
+        }
+        prefs.setAdminTicketsNotified(unread)
+    }
+
+    private fun notify(id: Int, title: String, text: String) {
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE)
+            as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel(
+                "support",
+                "Поддержка",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            )
+        )
+        val contentIntent = PendingIntent.getActivity(
+            applicationContext,
+            id,
+            Intent(applicationContext, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = Notification.Builder(applicationContext, "support")
+            .setSmallIcon(R.drawable.ic_stat_vpn)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setContentIntent(contentIntent)
+            .setAutoCancel(true)
+            .build()
+        try {
+            manager.notify(id, notification)
         } catch (_: SecurityException) {
         }
     }

@@ -287,3 +287,25 @@ data class AdminPromoRequest(
     @SerialName("max_uses") val maxUses: Int = 1,
     @SerialName("is_active") val isActive: Boolean = true,
 )
+
+/**
+ * Уведомления о тикетах для админа: новые обращения и ответы людей.
+ *
+ * Кабинет ведёт их сам, отдельной таблицей, — считать «что нового» на
+ * телефоне, сравнивая списки тикетов, не нужно.
+ */
+@Serializable
+data class AdminTicketNotificationDto(
+    val id: Long = 0,
+    @SerialName("ticket_id") val ticketId: Long = 0,
+    @SerialName("notification_type") val type: String = "",
+    /** Готовый текст вида «Новый тикет #123: тема». */
+    val message: String? = null,
+    @SerialName("is_read") val isRead: Boolean = false,
+)
+
+@Serializable
+data class AdminTicketNotificationsDto(
+    val items: List<AdminTicketNotificationDto> = emptyList(),
+    @SerialName("unread_count") val unreadCount: Int = 0,
+)

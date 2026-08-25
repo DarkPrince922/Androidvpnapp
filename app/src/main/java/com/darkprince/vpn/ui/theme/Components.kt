@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -300,6 +301,8 @@ fun SettingsRow(
     value: String? = null,
     tint: Color = MaterialTheme.colorScheme.primary,
     showChevron: Boolean = true,
+    /** Непрочитанное: рисуем счётчиком у стрелки. Ноль — ничего не рисуем. */
+    badge: Int = 0,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -322,6 +325,10 @@ fun SettingsRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+        if (badge > 0) {
+            UnreadBadge(badge)
+            Spacer(Modifier.width(8.dp))
         }
         if (trailing != null) {
             trailing()
@@ -438,4 +445,32 @@ fun leadingEmoji(name: String): String? {
 fun nameWithoutEmoji(name: String): String {
     val emoji = leadingEmoji(name) ?: return name.trim()
     return name.trimStart().removePrefix(emoji).trim().ifBlank { name.trim() }
+}
+
+/**
+ * Кружок с числом непрочитанного.
+ *
+ * Подписи «Новых ответов: 2» под заголовком мало: её читают, только когда уже
+ * смотрят на строку, а нужно, чтобы взгляд цеплялся сам. Однозначные числа
+ * рисуем ровным кругом, двузначные и больше — вытянутой пилюлей, иначе цифры
+ * упираются в края.
+ */
+@Composable
+fun UnreadBadge(count: Int) {
+    val text = if (count > 99) "99+" else count.toString()
+    Box(
+        modifier = Modifier
+            .heightIn(min = 20.dp)
+            .widthIn(min = 20.dp)
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.secondary)
+            .padding(horizontal = if (text.length > 1) 6.dp else 0.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondary,
+        )
+    }
 }

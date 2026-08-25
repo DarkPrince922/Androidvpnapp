@@ -145,6 +145,7 @@ fun SettingsScreen(
                     else -> "Обращения и переписка с поддержкой"
                 },
                 tint = if (supportUnreadCount > 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
+                badge = supportUnreadCount,
                 onClick = onOpenSupport,
             )
 
@@ -165,6 +166,7 @@ fun SettingsScreen(
                     } else {
                         MaterialTheme.colorScheme.primary
                     },
+                    badge = newsUnreadCount,
                     onClick = onOpenNews,
                 )
             }

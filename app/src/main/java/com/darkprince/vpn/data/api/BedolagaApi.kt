@@ -12,6 +12,7 @@ import com.darkprince.vpn.data.api.dto.AdminReplyRequest
 import com.darkprince.vpn.data.api.dto.AdminStatusRequest
 import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketListDto
+import com.darkprince.vpn.data.api.dto.AdminTicketNotificationsDto
 import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
 import com.darkprince.vpn.data.api.dto.AdminTransactionsDto
 import com.darkprince.vpn.data.api.dto.AdminUsersListDto
@@ -363,6 +364,16 @@ interface BedolagaApi {
 
     @GET("cabinet/tickets/notifications/unread-count")
     suspend fun supportUnreadCount(): SupportUnreadCountDto
+
+    /** То же самое для админа: новые обращения и ответы людей. */
+    @GET("cabinet/admin/tickets/notifications/unread-count")
+    suspend fun adminTicketUnreadCount(): SupportUnreadCountDto
+
+    @GET("cabinet/admin/tickets/notifications")
+    suspend fun adminTicketNotifications(
+        @Query("unread_only") unreadOnly: Boolean = true,
+        @Query("limit") limit: Int = 20,
+    ): AdminTicketNotificationsDto
 
     @POST("cabinet/tickets/notifications/ticket/{ticketId}/read")
     suspend fun markSupportTicketRead(
