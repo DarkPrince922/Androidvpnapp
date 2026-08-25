@@ -111,6 +111,7 @@ fun HomeScreen(
     val updateError by viewModel.updateError.collectAsStateWithLifecycle()
     val updateProgress by viewModel.updateProgress.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val switchedFrom by viewModel.switchedFrom.collectAsStateWithLifecycle()
 
     // Текст переживает саму полосу: пока она уезжает, ей нужно что-то рисовать.
     var lastNotice by remember { mutableStateOf<Notice?>(null) }
@@ -247,6 +248,19 @@ fun HomeScreen(
             // при исчезновении показываем последний непустой текст, иначе
             // строка успела бы опустеть до конца анимации
             lastNotice?.let { NoticeBar(it) }
+        }
+
+        // Подмена узла держится, пока человек не переподключится сам: это не
+        // мимолётное сообщение, а объяснение, почему он сейчас в другой
+        // стране. От неё зависят и скорость, и то, какие сайты откроются.
+        switchedFrom?.let { asked ->
+            Spacer(Modifier.height(8.dp))
+            NoticeBar(
+                Notice(
+                    "«$asked» не ответил — подключились к другому серверу",
+                    ok = false,
+                )
+            )
         }
       }
 

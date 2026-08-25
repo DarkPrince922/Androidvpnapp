@@ -43,6 +43,8 @@ class AppPrefs(private val context: Context) {
         val THEME = stringPreferencesKey("theme")
         val AUTOCONNECT = stringPreferencesKey("autoconnect_mode")
         val KILL_SWITCH = booleanPreferencesKey("kill_switch")
+        val FAILOVER = booleanPreferencesKey("failover")
+        val PINGS = stringPreferencesKey("last_pings")
     }
 
     @Volatile var cachedBaseUrl: String = ""
@@ -115,6 +117,42 @@ class AppPrefs(private val context: Context) {
 
     fun killSwitchBlocking(): Boolean = runBlocking {
         context.dataStore.data.first()[Keys.KILL_SWITCH] ?: false
+    }
+
+    /**
+     * Перебор запасных узлов. По умолчанию включён: сидеть без связи, когда
+     * рядом есть живой сервер, — не то, что кто-то выбрал бы сознательно.
+     */
+    val failoverFlow: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.FAILOVER] ?: true }
+
+    suspend fun setFailover(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.FAILOVER] = enabled }
+    }
+
+    fun failoverBlocking(): Boolean = runBlocking {
+        context.dataStore.data.first()[Keys.FAILOVER] ?: true
+    }
+
+    /**
+     * Последние измеренные задержки: «ключ узла=миллисекунды» через точку с
+     * запятой. Нужны службе, чтобы при переборе начинать с ближайшего, а не
+     * с первого попавшегося. Мерить их заново в момент сбоя нельзя — это
+     * минуты ожидания там, где человек и так остался без связи.
+     */
+    fun savePings(pings: Map<String, Long>) = runBlocking {
+        val packed = pings.entries.joinToString(";") { "${it.key.replace(';', ' ')}=${it.value}" }
+        context.dataStore.edit { it[Keys.PINGS] = packed }
+    }
+
+    fun pingsBlocking(): Map<String, Long> = runBlocking {
+        val packed = context.dataStore.data.first()[Keys.PINGS] ?: return@runBlocking emptyMap()
+        packed.split(";").mapNotNull { pair ->
+            val at = pair.lastIndexOf('=')
+            if (at <= 0) return@mapNotNull null
+            val ms = pair.substring(at + 1).toLongOrNull() ?: return@mapNotNull null
+            pair.substring(0, at) to ms
+        }.toMap()
     }
 
     val guestSubUrlFlow: Flow<String?> = context.dataStore.data.map { it[Keys.GUEST_SUB_URL] }

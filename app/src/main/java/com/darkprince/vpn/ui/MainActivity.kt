@@ -60,6 +60,7 @@ import com.darkprince.vpn.ui.screens.LoginScreen
 import com.darkprince.vpn.ui.screens.PlansScreen
 import com.darkprince.vpn.data.prefs.AppPrefs
 import com.darkprince.vpn.ui.screens.AdminPersonScreen
+import com.darkprince.vpn.ui.screens.DiagnosticsScreen
 import com.darkprince.vpn.ui.screens.AdminScreen
 import com.darkprince.vpn.ui.screens.AdminTicketScreen
 import com.darkprince.vpn.ui.screens.NewsArticleScreen
@@ -85,6 +86,7 @@ import com.darkprince.vpn.ui.vm.HomeViewModel
 import com.darkprince.vpn.ui.vm.PlansViewModel
 import com.darkprince.vpn.work.AutoConnect
 import com.darkprince.vpn.ui.vm.AdminViewModel
+import com.darkprince.vpn.ui.vm.DiagnosticsViewModel
 import com.darkprince.vpn.ui.vm.NewsViewModel
 import com.darkprince.vpn.ui.vm.SupportViewModel
 import com.darkprince.vpn.vpn.XVpnService
@@ -642,10 +644,15 @@ private fun AppRoot(
                     NewsArticleScreen(viewModel = newsViewModel, slug = slug)
                 }
             }
+            composable("diagnostics") {
+                val diagnosticsViewModel: DiagnosticsViewModel = viewModel()
+                DiagnosticsScreen(viewModel = diagnosticsViewModel)
+            }
             composable("settings") {
                 val autoConnectMode by prefs.autoConnectFlow
                     .collectAsState(initial = AppPrefs.AUTO_OFF)
                 val killSwitch by prefs.killSwitchFlow.collectAsState(initial = false)
+                val failover by prefs.failoverFlow.collectAsState(initial = true)
                 // Первая проверка идёт при запуске и может не удаться на
                 // ровном месте — сети ещё нет, токен просрочен. Переспрашиваем
                 // здесь, чтобы одна неудача не прятала панель до перезапуска.
@@ -680,12 +687,15 @@ private fun AppRoot(
                             AutoConnect.sync(activity.applicationContext, mode)
                         }
                     },
+                    failover = failover,
+                    onToggleFailover = { scope.launch { prefs.setFailover(it) } },
                     killSwitch = killSwitch,
                     onToggleKillSwitch = { scope.launch { prefs.setKillSwitch(it) } },
                     onOpenVpnSettings = { activity.openVpnSystemSettings() },
                     onOpenShare = { navController.navigate("share") },
                     onOpenDevices = { navController.navigate("devices") },
                     onOpenSupport = { navController.navigate("support") },
+                    onOpenDiagnostics = { navController.navigate("diagnostics") },
                     supportUnreadCount = supportState.unreadCount,
                     onOpenNews = { navController.navigate("news") },
                     newsUnreadCount = newsState.unread,

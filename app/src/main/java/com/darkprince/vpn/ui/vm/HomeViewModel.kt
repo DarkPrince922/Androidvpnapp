@@ -75,6 +75,9 @@ class HomeViewModel : ViewModel() {
     val vpnStats: StateFlow<TrafficStats> = VpnStateStore.stats
     val vpnError: StateFlow<String?> = VpnStateStore.lastError
 
+    /** Имя узла, который просили, если подключились не к нему. */
+    val switchedFrom: StateFlow<String?> = VpnStateStore.switchedFrom
+
     /** Обновление, о котором стоит сказать. null — говорить нечего. */
     private val _update = MutableStateFlow<AppUpdater.Update?>(null)
     val update: StateFlow<AppUpdater.Update?> = _update
@@ -276,6 +279,10 @@ class HomeViewModel : ViewModel() {
                             }
                             results[profile.key] = ms
                             _state.value = _state.value.copy(pings = results.toMap())
+                            // Складываем замеры на диск: службе они понадобятся
+                            // при переборе запасных узлов, а мерить заново в
+                            // момент сбоя — это минуты без связи.
+                            ServiceLocator.prefs.savePings(results.toMap())
                         }
                     }
                 }

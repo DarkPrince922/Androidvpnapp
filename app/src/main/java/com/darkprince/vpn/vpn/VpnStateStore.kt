@@ -24,6 +24,18 @@ object VpnStateStore {
     private val _activeProfileName = MutableStateFlow<String?>(null)
     val activeProfileName: StateFlow<String?> = _activeProfileName
 
+    /**
+     * Подмена узла: приложение подключилось не туда, куда просили.
+     * Молчать об этом нельзя — от страны зависят и скорость, и то, какие
+     * сайты откроются.
+     */
+    private val _switchedFrom = MutableStateFlow<String?>(null)
+    val switchedFrom: StateFlow<String?> = _switchedFrom
+
+    fun setSwitchedFrom(name: String?) {
+        _switchedFrom.value = name
+    }
+
     fun setState(state: VpnState, error: String? = null) {
         _state.value = state
         _lastError.value = error

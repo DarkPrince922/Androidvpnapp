@@ -22,8 +22,10 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.Troubleshoot
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -58,12 +60,15 @@ fun SettingsScreen(
     onOpenApps: () -> Unit,
     autoConnectMode: String,
     onSelectAutoConnect: (String) -> Unit,
+    failover: Boolean,
+    onToggleFailover: (Boolean) -> Unit,
     killSwitch: Boolean,
     onToggleKillSwitch: (Boolean) -> Unit,
     onOpenVpnSettings: () -> Unit,
     onOpenShare: () -> Unit,
     onOpenDevices: () -> Unit,
     onOpenSupport: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
     onOpenNews: () -> Unit,
     newsUnreadCount: Int = 0,
     adminCheckReason: String = "",
@@ -124,6 +129,17 @@ fun SettingsScreen(
         // --- Помощь ---
         SectionHeader("Помощь")
         GroupCard {
+            // Стоит перед поддержкой намеренно: половина обращений — это то,
+            // что человек может выяснить сам за пять секунд.
+            SettingsRow(
+                icon = Icons.Default.Troubleshoot,
+                title = "Почему не работает",
+                subtitle = "Проверить подписку, трафик, устройства и сервер",
+                onClick = onOpenDiagnostics,
+            )
+
+            RowDivider()
+
             SettingsRow(
                 icon = Icons.Default.SupportAgent,
                 title = "Техподдержка",
@@ -224,6 +240,23 @@ fun SettingsScreen(
                     onDismiss = { autoOpen = false },
                 )
             }
+
+            RowDivider()
+
+            SettingsRow(
+                icon = Icons.Default.SwapHoriz,
+                title = "Запасной сервер при сбое",
+                subtitle = if (failover) {
+                    "Если выбранный не отвечает, подключимся к ближайшему живому"
+                } else {
+                    "Подключаемся только к выбранному серверу"
+                },
+                showChevron = false,
+                onClick = { onToggleFailover(!failover) },
+                trailing = {
+                    Switch(checked = failover, onCheckedChange = onToggleFailover)
+                },
+            )
 
             RowDivider()
 

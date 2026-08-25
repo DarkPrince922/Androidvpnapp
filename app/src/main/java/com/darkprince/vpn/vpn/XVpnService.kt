@@ -52,6 +52,9 @@ class XVpnService : VpnService() {
         private const val RECONNECT_DELAY_MS = 1500L
         private const val RETRY_BASE_MS = 4_000L
         private const val RETRY_MAX_MS = 120_000L
+        private const val MAX_FAILOVER = 3
+        private const val UNKNOWN_PING = 10_000L
+        private const val DEAD_PING = 100_000L
 
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "vpn_state"
@@ -99,6 +102,12 @@ class XVpnService : VpnService() {
     /** Сколько раз подряд не удалось подняться. Сбрасывается при успехе. */
     private var attempt = 0
 
+    /** Узлы, уже опробованные в текущем заходе перебора. */
+    private val tried = mutableSetOf<String>()
+
+    /** Кого просили изначально — чтобы честно сказать о подмене. */
+    private var requested: String? = null
+
     /** Слежение за сетью под туннелем; null — не подписаны. */
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var underlyingNetwork: Network? = null
@@ -138,6 +147,11 @@ class XVpnService : VpnService() {
                 }
                 activeProfileName = profile.name
                 lastPingMs = null
+                // Явный запуск начинает новый заход перебора: то, что не
+                // поднялось десять минут назад, могло уже подняться.
+                tried.clear()
+                requested = profile.name
+                VpnStateStore.setSwitchedFrom(null)
                 updateNotificationForce(profile.name)
                 // повторный START на работающем сервисе = смена сервера:
                 // старый туннель гасится и сразу поднимается новый
@@ -194,6 +208,9 @@ class XVpnService : VpnService() {
             TProxyService.TProxyStartService(configFile.absolutePath, fd.fd)
 
             VpnStateStore.setState(VpnState.CONNECTED)
+            attempt = 0
+            tried.clear()
+            VpnStateStore.setSwitchedFrom(requested?.takeIf { it != profile.name })
             AppLog.write("подключено: ${profile.name}")
             ServiceLocator.apiClient.onNetworkChanged()
             watchNetwork()
@@ -204,15 +221,28 @@ class XVpnService : VpnService() {
         } catch (e: Throwable) {
             AppLog.write("подключиться не удалось: ${e.javaClass.simpleName}: ${e.message}")
             VpnStateStore.setState(VpnState.ERROR, e.message)
-            if (guarded && tunFd != null) {
-                // Защита включена и интерфейс жив: наружу ничего не уходит.
-                // Службу не гасим — иначе система снимет интерфейс, и дыра,
-                // от которой мы закрывались, откроется сама.
-                AppLog.write("трафик заблокирован до восстановления")
-                updateNotificationForce("Соединение потеряно · трафик заблокирован")
-                scheduleReconnect()
-            } else {
-                stopVpn()
+            tried += profile.key
+            val spare = nextCandidate()
+            when {
+                spare != null -> {
+                    // Сначала соседи и только потом отступление: живой сервер
+                    // рядом полезнее, чем терпеливое ожидание мёртвого.
+                    AppLog.write("${profile.name} не поднялся, пробую ${spare.name}")
+                    updateNotificationForce("${profile.name} не отвечает · пробую ${spare.name}")
+                    saveProfile(spare)
+                    startVpn(spare)
+                }
+
+                guarded && tunFd != null -> {
+                    // Защита включена и интерфейс жив: наружу ничего не уходит.
+                    // Службу не гасим — иначе система снимет интерфейс, и дыра,
+                    // от которой мы закрывались, откроется сама.
+                    AppLog.write("трафик заблокирован до восстановления")
+                    updateNotificationForce("Соединение потеряно · трафик заблокирован")
+                    scheduleReconnect()
+                }
+
+                else -> stopVpn()
             }
         }
     }
@@ -220,6 +250,47 @@ class XVpnService : VpnService() {
     /** Настройку читаем каждый раз: её могли переключить между попытками. */
     private fun killSwitch(): Boolean =
         runCatching { ServiceLocator.prefs.killSwitchBlocking() }.getOrDefault(false)
+
+    /**
+     * Следующий узел для перебора.
+     *
+     * Порядок — по последнему измеренному пингу, от ближнего к дальнему;
+     * узлы, ответившие «нет», уходят в конец: они уже показали, что мертвы.
+     * Мерить заново в момент сбоя нельзя — это минуты там, где человек и так
+     * остался без связи, поэтому берём то, что намерили раньше.
+     *
+     * Перебираем не больше трёх: два десятка подряд — это минута ожидания и
+     * разряженный аккумулятор, а причина к тому моменту обычно уже не в
+     * серверах.
+     */
+    private fun nextCandidate(): ProxyProfile? {
+        if (!runCatching { ServiceLocator.prefs.failoverBlocking() }.getOrDefault(true)) return null
+        if (tried.size >= MAX_FAILOVER) return null
+
+        val servers = runCatching {
+            runBlocking { ServiceLocator.subscriptionRepository.cachedServers()?.first }
+        }.getOrNull().orEmpty()
+        if (servers.size < 2) return null
+
+        val pings = runCatching { ServiceLocator.prefs.pingsBlocking() }.getOrDefault(emptyMap())
+        return servers
+            .filter { it.key !in tried }
+            .minByOrNull { profile ->
+                when (val ms = pings[profile.key]) {
+                    null -> UNKNOWN_PING     // не мерили — после измеренных живых
+                    -1L -> DEAD_PING         // мёртв по последнему замеру
+                    else -> ms
+                }
+            }
+    }
+
+    /** Кладём выбранный узел в файл, чтобы переподключение подняло именно его. */
+    private fun saveProfile(profile: ProxyProfile) {
+        runCatching {
+            File(filesDir, PROFILE_FILE)
+                .writeText(Json.encodeToString(ProxyProfile.serializer(), profile))
+        }
+    }
 
     /**
      * Следит за сетью под туннелем и переподнимает его при смене.
