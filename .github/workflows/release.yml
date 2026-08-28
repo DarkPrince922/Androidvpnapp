@@ -8,6 +8,13 @@ on:
       version:
         description: "Версия релиза (например 1.0.0)"
         required: true
+      retag_only:
+        description: "Только переставить тег, без пересборки"
+        type: boolean
+        default: false
+      commit:
+        description: "Коммит для тега (по умолчанию — тот, с которого запущен прогон)"
+        required: false
 
 permissions:
   contents: write
@@ -19,7 +26,40 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Тег должен указывать на собранный коммит, а gh release create ставит его
+  # только когда релиза ещё нет. Стоит выпустить версию повторно — файлы
+  # обновятся, а тег останется висеть там, где его создали в первый раз, и
+  # «Source code» у релиза раздаёт чужой код. Поэтому тег переставляем сами,
+  # до сборки. Пуш от GITHUB_TOKEN нового прогона не запускает, так что
+  # триггер на push тегов от этого не зацикливается.
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Поставить тег на этот коммит
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          REF="repos/${{ github.repository }}/git/refs/tags/v$VERSION"
+          SHA="${{ github.event.inputs.commit }}"
+          SHA="${SHA:-$GITHUB_SHA}"
+
+          if gh api "$REF" >/dev/null 2>&1; then
+            gh api -X PATCH "$REF" -f sha="$SHA" -F force=true >/dev/null
+            echo "Тег v$VERSION переставлен на $SHA"
+          else
+            gh api -X POST "repos/${{ github.repository }}/git/refs" \
+              -f ref="refs/tags/v$VERSION" -f sha="$SHA" >/dev/null
+            echo "Тег v$VERSION создан на $SHA"
+          fi
+
   release:
+    needs: tag
+    if: ${{ github.event.inputs.retag_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
