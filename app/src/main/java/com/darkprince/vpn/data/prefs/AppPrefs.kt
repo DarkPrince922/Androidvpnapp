@@ -227,7 +227,51 @@ class AppPrefs(private val context: Context) {
     private fun serverKeyKey(subId: Long?) = stringPreferencesKey("selected_server_key_${subId ?: "default"}")
 
     suspend fun serversRawFor(subId: Long?): String? =
-        context.dataStore.data.first()[serversKey(subId)] ?: context.dataStore.data.first()[Keys.SERVERS_RAW]
+        context.dataStore.data.first()[serversKey(subId)]
+
+    /**
+     * Разовый переезд со старого формата, когда кэш и выбор сервера были
+     * общими на всё приложение.
+     *
+     * Раньше это был откат при чтении: нет кэша у подписки — берём общий. Но
+     * писать в общий давно перестали, и он навсегда остался с серверами той
+     * подписки, которая была активна до разделения. В итоге любая подписка,
+     * у которой своего кэша ещё нет, получала чужой список — и выбранный
+     * сервер, разумеется, в нём не находился.
+     *
+     * Сюда же переносим выбор, сохранённый под «default»: экран сохраняет его
+     * под номером подписки, а номер известен не сразу — до ответа кабинета он
+     * null, и первый же выбор человека уходил не в тот ящик.
+     *
+     * Переносим только в пустое место: то, что подписка уже знает про себя,
+     * всегда вернее старых общих данных.
+     */
+    suspend fun adoptLegacySelection(subId: Long?) {
+        context.dataStore.edit { p ->
+            val legacyRaw = p[Keys.SERVERS_RAW]
+            if (legacyRaw != null) {
+                if (p[serversKey(subId)] == null) p[serversKey(subId)] = legacyRaw
+                p.remove(Keys.SERVERS_RAW)
+            }
+            val legacyInfo = p[Keys.SUB_USERINFO]
+            if (legacyInfo != null) {
+                if (p[userInfoKey(subId)] == null) p[userInfoKey(subId)] = legacyInfo
+                p.remove(Keys.SUB_USERINFO)
+            }
+            if (subId != null) {
+                val defaultKey = p[serverKeyKey(null)]
+                if (defaultKey != null) {
+                    if (p[serverKeyKey(subId)] == null) p[serverKeyKey(subId)] = defaultKey
+                    p.remove(serverKeyKey(null))
+                }
+                val defaultIndex = p[serverIndexKey(null)]
+                if (defaultIndex != null) {
+                    if (p[serverIndexKey(subId)] == null) p[serverIndexKey(subId)] = defaultIndex
+                    p.remove(serverIndexKey(null))
+                }
+            }
+        }
+    }
 
     suspend fun setServersRawFor(subId: Long?, raw: String?) {
         context.dataStore.edit { p ->

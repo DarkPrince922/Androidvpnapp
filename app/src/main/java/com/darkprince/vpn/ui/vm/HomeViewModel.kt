@@ -118,6 +118,9 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             // 1) мгновенно показываем сохранённую подписку (работает офлайн)
             val cachedId = prefs.selectedSubscriptionFlow.first()
+            // до первого чтения: забрать наследство старого формата, иначе
+            // подписке подсунется общий кэш от другой
+            prefs.adoptLegacySelection(cachedId)
             subRepo.cachedServersFor(cachedId)?.let { (cachedServers, cachedInfo) ->
                 val selected = resolveSelected(cachedId, cachedServers)
                 _state.value = _state.value.copy(
@@ -137,6 +140,9 @@ class HomeViewModel : ViewModel() {
                 // выбранной подписки больше нет — берём активную, иначе первую
                 selectedId = (subs.firstOrNull { it.isActive } ?: subs.first()).id
                 prefs.setSelectedSubscription(selectedId)
+                // номер узнали только сейчас: переносим под него то, что
+                // человек успел выбрать, пока номера не было
+                prefs.adoptLegacySelection(selectedId)
             }
             _state.value = _state.value.copy(subscriptions = subs, selectedSubscriptionId = selectedId)
 
@@ -220,12 +226,31 @@ class HomeViewModel : ViewModel() {
      * Заодно переносит старый выбор, сохранённый номером, на имя — один раз
      * при первом запуске после обновления.
      */
+    /**
+     * Какой узел показать выбранным после обновления списка.
+     *
+     * Ключ узла — «имя|адрес:порт», и адрес панель меняет чаще, чем кажется:
+     * достаточно переехать за другой домен, и точного совпадения уже нет,
+     * хотя узел тот же самый. Поэтому если по ключу не нашли — ищем по имени,
+     * и только потом сдаёмся.
+     *
+     * Что нашли, то и записываем обратно. Раньше при промахе просто
+     * возвращался ноль, ключ оставался старым, и выбор слетал на первый узел
+     * при каждом обновлении подписки, а не один раз.
+     */
     private suspend fun resolveSelected(subId: Long?, servers: List<ProxyProfile>): Int {
         if (servers.isEmpty()) return 0
         val savedKey = prefs.selectedServerKeyFor(subId)
         if (savedKey != null) {
-            // -1 от indexOfFirst означает «такого узла больше нет» — берём первый
-            return servers.indexOfFirst { it.key == savedKey }.coerceAtLeast(0)
+            val exact = servers.indexOfFirst { it.key == savedKey }
+            if (exact >= 0) return exact
+            // адрес мог смениться — имя узла переживает переезд
+            val savedName = savedKey.substringBefore('|')
+            val byName = servers.indexOfFirst { it.name == savedName }
+            if (byName >= 0) {
+                prefs.setSelectedServerKeyFor(subId, servers[byName].key)
+                return byName
+            }
         }
         val legacy = prefs.selectedServerFor(subId).coerceIn(0, servers.size - 1)
         prefs.setSelectedServerKeyFor(subId, servers[legacy].key)
@@ -234,7 +259,12 @@ class HomeViewModel : ViewModel() {
 
     fun selectServer(index: Int) {
         viewModelScope.launch {
+            // Пока список подписок не пришёл, номера в состоянии нет, а
+            // выбор надо где-то сохранить. Берём его из хранилища, иначе
+            // запись уйдёт под «default» и потеряется, как только номер
+            // появится.
             val subId = _state.value.selectedSubscriptionId
+                ?: prefs.selectedSubscriptionFlow.first()
             val chosen = _state.value.servers.getOrNull(index)
             prefs.setSelectedServerFor(subId, index)
             if (chosen != null) prefs.setSelectedServerKeyFor(subId, chosen.key)
