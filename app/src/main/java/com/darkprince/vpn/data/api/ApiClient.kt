@@ -99,9 +99,8 @@ class ApiClient(private val prefs: AppPrefs) {
 
     /**
      * Обновляет пару токенов; возвращает актуальный access-токен или null.
-     * Bedolaga ротирует refresh-токен при каждом обновлении, поэтому
-     * обновление строго одиночное (Mutex) — параллельные запросы ждут и
-     * забирают результат первого, а не затирают сессию друг друга.
+     * Обновление строго одиночное (Mutex): десяток экранов, стартующих
+     * разом, иначе отправил бы десяток одинаковых запросов на обновление.
      */
     suspend fun refreshTokens(force: Boolean = false): String? = refreshMutex.withLock {
         val current = prefs.cachedAccessToken
@@ -120,7 +119,12 @@ class ApiClient(private val prefs: AppPrefs) {
                 response.accessToken
             } else null
         } catch (e: retrofit2.HttpException) {
-            if (e.code() in 400..499) prefs.setTokens(null, null, null)
+            // Выкидываем из аккаунта только когда сервер сказал именно это:
+            // токен не принят. Раньше сюда попадал любой ответ 4xx, и человек
+            // оказывался на экране входа из-за 429 «слишком часто» или 404 от
+            // случайной страницы провайдера — при живой, ничем не испорченной
+            // сессии. Остальные коды считаем временными и токены бережём.
+            if (e.code() == 401 || e.code() == 403) prefs.setTokens(null, null, null)
             null
         } catch (_: Exception) {
             // сеть/сервер недоступны — сессию не сбрасываем
