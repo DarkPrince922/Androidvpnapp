@@ -102,6 +102,21 @@ fun LoginScreen(
             )
         }
 
+        state.sessionEnded?.let { reason ->
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "Вход слетел сам",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "$reason.\nЕсли это повторяется — покажите эту строку в поддержке.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         Spacer(Modifier.height(28.dp))
 
         OutlinedTextField(

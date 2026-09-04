@@ -49,6 +49,9 @@ class AppPrefs(private val context: Context) {
         val KILL_SWITCH = booleanPreferencesKey("kill_switch")
         val FAILOVER = booleanPreferencesKey("failover")
         val PINGS = stringPreferencesKey("last_pings")
+        // почему в прошлый раз оборвалась сессия: человек видит это на экране
+        // входа, а мы — в обращении в поддержку
+        val SESSION_END = stringPreferencesKey("session_end_reason")
     }
 
     @Volatile var cachedBaseUrl: String = ""
@@ -58,6 +61,18 @@ class AppPrefs(private val context: Context) {
 
     /** Гостевой режим: подписка получена по ссылке, аккаунта кабинета нет. */
     @Volatile var cachedGuestSubUrl: String? = null
+        private set
+
+    /**
+     * Почему прошлая сессия оборвалась сама. Пусто, если человек вышел сам
+     * или ещё не выходил ни разу.
+     *
+     * Внезапный выход из аккаунта иначе неотличим от «приложение забыло»:
+     * человек видит экран входа наутро и не знает, что случилось ночью, —
+     * и мы не знаем тоже, потому что журнал живёт в памяти и умирает вместе
+     * с процессом.
+     */
+    @Volatile var cachedSessionEnd: String? = null
         private set
     @Volatile var cachedAccessToken: String? = null
         private set
@@ -85,6 +100,7 @@ class AppPrefs(private val context: Context) {
         cachedRefreshToken = p[Keys.REFRESH_TOKEN]
         cachedAccessExpiresAt = p[Keys.ACCESS_EXPIRES_AT] ?: 0L
         cachedGuestSubUrl = p[Keys.GUEST_SUB_URL]
+        cachedSessionEnd = p[Keys.SESSION_END]
         // тема нужна синхронно: окно красится до первой отрисовки Compose,
         // иначе при светлой теме запуск начинается с тёмной вспышки
         cachedTheme = p[Keys.THEME]
@@ -340,6 +356,25 @@ class AppPrefs(private val context: Context) {
             if (refresh == null) p.remove(Keys.REFRESH_TOKEN) else p[Keys.REFRESH_TOKEN] = refresh
             p[Keys.ACCESS_EXPIRES_AT] = expiresAt
         }
+    }
+
+    /**
+     * Записывает, почему сессия оборвалась. Текст сервера обрезаем: в теле
+     * ошибки может приехать целая HTML-страница промежуточного узла.
+     */
+    suspend fun noteSessionEnded(code: Int, detail: String?) {
+        val at = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.US)
+            .format(java.util.Date())
+        val tail = detail?.trim()?.take(120)?.takeIf { it.isNotEmpty() }
+        val text = if (tail == null) "$at — сервер ответил $code" else "$at — сервер ответил $code: $tail"
+        cachedSessionEnd = text
+        context.dataStore.edit { p -> p[Keys.SESSION_END] = text }
+    }
+
+    /** Вход удался — прошлая причина больше не новость. */
+    suspend fun clearSessionEndReason() {
+        cachedSessionEnd = null
+        context.dataStore.edit { p -> p.remove(Keys.SESSION_END) }
     }
 
     suspend fun setUserJson(json: String?) {

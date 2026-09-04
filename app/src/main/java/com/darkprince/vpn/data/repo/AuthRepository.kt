@@ -31,6 +31,8 @@ class AuthRepository(
     private suspend fun saveSession(auth: AuthResponse) {
         if (auth.accessToken != null) {
             prefs.setTokens(auth.accessToken, auth.refreshToken, auth.expiresIn)
+            // вошли — причина прошлого обрыва больше не новость
+            prefs.clearSessionEndReason()
         }
         auth.user?.let { prefs.setUserJson(client.json.encodeToString(it)) }
     }

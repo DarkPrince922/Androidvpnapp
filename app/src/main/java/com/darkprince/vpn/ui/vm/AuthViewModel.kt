@@ -27,6 +27,12 @@ data class AuthUiState(
      * своя.
      */
     val usingSharedSubscription: Boolean = false,
+    /**
+     * Прошлая сессия оборвалась сама, и вот почему. Показываем на экране
+     * входа: без этой строки внезапный выход из аккаунта выглядит как
+     * «приложение просто забыло», и человеку нечего сказать в поддержку.
+     */
+    val sessionEnded: String? = null,
 )
 
 class AuthViewModel : ViewModel() {
@@ -39,6 +45,7 @@ class AuthViewModel : ViewModel() {
             loggedIn = auth.isLoggedIn,
             guestMode = prefs.cachedGuestSubUrl != null && !auth.isLoggedIn,
             usingSharedSubscription = prefs.cachedGuestSubUrl != null,
+            sessionEnded = prefs.cachedSessionEnd.takeIf { !auth.isLoggedIn },
         )
     )
     val state: StateFlow<AuthUiState> = _state
@@ -86,6 +93,7 @@ class AuthViewModel : ViewModel() {
                         telegramWebUri = null,
                         loggedIn = true,
                         guestMode = false,
+                        sessionEnded = null,
                     )
                     is DeepLinkAuthEvent.Failed -> _state.value = _state.value.copy(
                         loading = false,
@@ -113,7 +121,7 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             val error = auth.emailLogin(email, password)
             _state.value = if (error == null) {
-                _state.value.copy(loading = false, loggedIn = true, guestMode = false)
+                _state.value.copy(loading = false, loggedIn = true, guestMode = false, sessionEnded = null)
             } else {
                 _state.value.copy(loading = false, error = error)
             }
@@ -126,7 +134,7 @@ class AuthViewModel : ViewModel() {
             val (success, message) = auth.emailRegister(email, password, referralCode)
             _state.value = when {
                 success && auth.isLoggedIn ->
-                    _state.value.copy(loading = false, loggedIn = true, guestMode = false)
+                    _state.value.copy(loading = false, loggedIn = true, guestMode = false, sessionEnded = null)
                 success -> _state.value.copy(loading = false, info = message)
                 else -> _state.value.copy(loading = false, error = message)
             }
