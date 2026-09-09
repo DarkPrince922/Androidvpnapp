@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -96,11 +97,49 @@ fun formatBytes(bytes: Long): String {
     return String.format(Locale.getDefault(), "%.2f ГБ", mb / 1024.0)
 }
 
+/**
+ * Сессия кабинета оборвалась, а подписка осталась.
+ *
+ * Раньше в этом положении приложение показывало экран входа и всё: VPN,
+ * оплаченный и полностью рабочий, оказывался заперт за формой логина. Между
+ * тем список узлов лежит в памяти телефона и кабинета не требует — туннель
+ * поднимается и без него. Кабинет нужен для другого: продлить, пополнить,
+ * написать в поддержку. Поэтому здесь не преграда, а объяснение и кнопка.
+ */
+@Composable
+private fun SessionExpiredCard(onSignIn: () -> Unit) {
+    GroupCard(modifier = Modifier.padding(top = 8.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "Нужно войти заново",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "VPN работает — подписка сохранена. Войдите, чтобы вернуть " +
+                    "тарифы, баланс и поддержку.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = onSignIn,
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                Text("Войти")
+            }
+        }
+    }
+}
+
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
     onConnectClick: () -> Unit,
     onDisconnectClick: () -> Unit,
+    /** Сессия кабинета оборвалась, но подписка на месте и VPN работает. */
+    sessionExpired: Boolean = false,
+    onSignIn: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val vpnState by viewModel.vpnState.collectAsStateWithLifecycle()
@@ -156,6 +195,10 @@ fun HomeScreen(
             .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+      if (sessionExpired) {
+          item(key = "session-expired") { SessionExpiredCard(onSignIn = onSignIn) }
+      }
+
       item {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(4.dp))

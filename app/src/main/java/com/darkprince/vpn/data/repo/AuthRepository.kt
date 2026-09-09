@@ -10,6 +10,7 @@ import com.darkprince.vpn.data.api.dto.LogoutRequest
 import com.darkprince.vpn.data.api.dto.UserDto
 import com.darkprince.vpn.data.prefs.AppPrefs
 import kotlinx.coroutines.delay
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
 sealed interface DeepLinkAuthEvent {
@@ -30,11 +31,36 @@ class AuthRepository(
 
     private suspend fun saveSession(auth: AuthResponse) {
         if (auth.accessToken != null) {
+            // Сессия могла оборваться сама, и тогда подписка осталась лежать
+            // рабочей — по ней VPN и продолжал работать без кабинета. Но
+            // принадлежит она прежнему владельцу: если сейчас вошёл кто-то
+            // другой, отдавать ему чужой доступ нельзя. Проверяем ДО записи
+            // новых токенов, иначе сравнивать будет уже не с чем.
+            if (auth.user != null && isDifferentAccount(auth.user)) {
+                prefs.clearSession()
+            }
             prefs.setTokens(auth.accessToken, auth.refreshToken, auth.expiresIn)
             // вошли — причина прошлого обрыва больше не новость
             prefs.clearSessionEndReason()
         }
         auth.user?.let { prefs.setUserJson(client.json.encodeToString(it)) }
+    }
+
+    /**
+     * Тот же это человек, что и в прошлый раз, или другой.
+     *
+     * Прошлого не знаем — считаем, что другой: лучше лишний раз скачать
+     * подписку заново, чем показать её чужому. По той же причине сравниваем
+     * по id, а не по почте: почту в кабинете можно сменить.
+     */
+    private suspend fun isDifferentAccount(user: UserDto): Boolean {
+        val previousJson = prefs.cachedUserJson() ?: return true
+        val previous = runCatching {
+            client.json.decodeFromString<UserDto>(previousJson)
+        }.getOrNull() ?: return true
+        val previousId = previous.id ?: return true
+        val currentId = user.id ?: return true
+        return previousId != currentId
     }
 
     /**

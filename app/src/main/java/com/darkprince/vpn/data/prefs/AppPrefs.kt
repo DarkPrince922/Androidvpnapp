@@ -74,6 +74,19 @@ class AppPrefs(private val context: Context) {
      */
     @Volatile var cachedSessionEnd: String? = null
         private set
+
+    /**
+     * В памяти телефона лежит рабочая подписка: список узлов и ссылка, по
+     * которой его обновляют.
+     *
+     * Читается на старте, потому что от него зависит, куда открыть
+     * приложение. Сессия кабинета может оборваться — по нашей ошибке, по
+     * ошибке сервера, — и запирать человека без VPN на экране входа за это
+     * нельзя: подписка оплачена и лежит рядом, работать она может и без
+     * кабинета.
+     */
+    @Volatile var cachedHasSubscription: Boolean = false
+        private set
     @Volatile var cachedAccessToken: String? = null
         private set
     @Volatile var cachedRefreshToken: String? = null
@@ -101,6 +114,12 @@ class AppPrefs(private val context: Context) {
         cachedAccessExpiresAt = p[Keys.ACCESS_EXPIRES_AT] ?: 0L
         cachedGuestSubUrl = p[Keys.GUEST_SUB_URL]
         cachedSessionEnd = p[Keys.SESSION_END]
+        // список узлов хранится по подпискам, под ключами с её номером в
+        // имени, поэтому ищем по префиксу, а не по одному known-ключу
+        cachedHasSubscription = p.asMap().any { (key, value) ->
+            (key.name == Keys.SERVERS_RAW.name || key.name.startsWith("servers_raw_")) &&
+                (value as? String).isNullOrBlank().not()
+        }
         // тема нужна синхронно: окно красится до первой отрисовки Compose,
         // иначе при светлой теме запуск начинается с тёмной вспышки
         cachedTheme = p[Keys.THEME]
@@ -228,6 +247,14 @@ class AppPrefs(private val context: Context) {
     }
     val accessTokenFlow: Flow<String?> = context.dataStore.data.map { it[Keys.ACCESS_TOKEN] }
     val userJsonFlow: Flow<String?> = context.dataStore.data.map { it[Keys.USER_JSON] }
+
+    /**
+     * Есть ли ещё сессия кабинета. Нужен именно поток: токен может пропасть,
+     * пока приложение открыто, — сервер ответил «не принимаю», — и экраны
+     * должны узнать об этом сразу, а не при следующем запуске.
+     */
+    val hasSessionFlow: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.REFRESH_TOKEN] != null }
     val subscriptionUrlFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SUB_URL] }
     val serversRawFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SERVERS_RAW] }
     val subUserInfoFlow: Flow<String?> = context.dataStore.data.map { it[Keys.SUB_USERINFO] }
@@ -290,6 +317,7 @@ class AppPrefs(private val context: Context) {
     }
 
     suspend fun setServersRawFor(subId: Long?, raw: String?) {
+        if (!raw.isNullOrBlank()) cachedHasSubscription = true
         context.dataStore.edit { p ->
             if (raw == null) p.remove(serversKey(subId)) else p[serversKey(subId)] = raw
         }
@@ -371,6 +399,22 @@ class AppPrefs(private val context: Context) {
         context.dataStore.edit { p -> p[Keys.SESSION_END] = text }
     }
 
+    /**
+     * Токенов нет, а сервер об этом ничего не говорил.
+     *
+     * Второй путь потери сессии, и внешне он неотличим от первого: человек
+     * видит экран входа. Разница принципиальная — в первом случае виноват
+     * ответ кабинета, во втором приложение потеряло сохранённое само, и
+     * искать надо в разных местах. Поэтому случай подписываем отдельно.
+     */
+    suspend fun noteSessionVanished() {
+        val at = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.US)
+            .format(java.util.Date())
+        val text = "$at — вход пропал без ответа сервера"
+        cachedSessionEnd = text
+        context.dataStore.edit { p -> p[Keys.SESSION_END] = text }
+    }
+
     /** Вход удался — прошлая причина больше не новость. */
     suspend fun clearSessionEndReason() {
         cachedSessionEnd = null
@@ -446,8 +490,12 @@ class AppPrefs(private val context: Context) {
      * человек выходил из аккаунта, заходил в другой и видел чужую подписку:
      * остаток трафика, срок и список серверов оставались от предыдущего.
      */
+    /** Кто был в аккаунте в прошлый раз — по нему решаем, чужая ли подписка. */
+    suspend fun cachedUserJson(): String? = context.dataStore.data.first()[Keys.USER_JSON]
+
     suspend fun clearSession() {
         setTokens(null, null, null)
+        cachedHasSubscription = false
         context.dataStore.edit { p: androidx.datastore.preferences.core.MutablePreferences ->
             p.remove(Keys.USER_JSON)
             p.remove(Keys.SUB_URL)

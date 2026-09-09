@@ -339,13 +339,17 @@ private fun AppRoot(
         when {
             prefs.cachedGuestSubUrl != null -> "home"
             prefs.cachedBaseUrl.isBlank() -> "setup"
+            // Сессия кабинета потеряна, но подписка лежит в памяти телефона —
+            // открываемся на главной, а не на входе. VPN она поднимет и без
+            // кабинета, а обрыв сессии бывает и не по вине человека.
+            !ServiceLocator.authRepository.isLoggedIn && prefs.cachedHasSubscription -> "home"
             !ServiceLocator.authRepository.isLoggedIn -> "login"
             else -> "home"
         }
     }
 
-    // в гостевом режиме кабинет недоступен: покупок и баланса нет
-    val bottomItems = if (authState.guestMode) {
+    // без кабинета покупок и баланса нет — что у гостя, что при оборванной сессии
+    val bottomItems = if (authState.guestMode || authState.sessionExpired) {
         listOf(
             BottomItem("home", "Главная", Icons.Default.Home),
             BottomItem("servers", "Серверы", Icons.Default.Dns),
@@ -372,7 +376,7 @@ private fun AppRoot(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     // гостю панель нужна не меньше: без неё нет ни «Ещё», ни выбора приложений
-    val showBottomBar = (authState.loggedIn || authState.guestMode) &&
+    val showBottomBar = (authState.loggedIn || authState.guestMode || authState.sessionExpired) &&
         currentRoute in bottomItems.map { it.route }
 
     Scaffold(
@@ -520,6 +524,8 @@ private fun AppRoot(
                         }
                     },
                     onDisconnectClick = { XVpnService.stop(activity) },
+                    sessionExpired = authState.sessionExpired,
+                    onSignIn = { navController.navigate("login") },
                 )
             }
             composable("servers") {

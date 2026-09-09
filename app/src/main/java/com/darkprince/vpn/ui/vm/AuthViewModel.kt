@@ -33,6 +33,15 @@ data class AuthUiState(
      * «приложение просто забыло», и человеку нечего сказать в поддержку.
      */
     val sessionEnded: String? = null,
+    /**
+     * Сессия кабинета потеряна, но подписка осталась в памяти телефона.
+     *
+     * VPN в этом состоянии работает: список узлов и ссылка на подписку лежат
+     * рядом и кабинета не требуют. Недоступен только сам кабинет — покупки,
+     * баланс, поддержка. Держать человека на экране входа было бы неверно
+     * вдвойне: и VPN бы встал, и виноваты в обрыве бываем мы сами.
+     */
+    val sessionExpired: Boolean = false,
 )
 
 class AuthViewModel : ViewModel() {
@@ -46,6 +55,9 @@ class AuthViewModel : ViewModel() {
             guestMode = prefs.cachedGuestSubUrl != null && !auth.isLoggedIn,
             usingSharedSubscription = prefs.cachedGuestSubUrl != null,
             sessionEnded = prefs.cachedSessionEnd.takeIf { !auth.isLoggedIn },
+            sessionExpired = !auth.isLoggedIn &&
+                prefs.cachedGuestSubUrl == null &&
+                prefs.cachedHasSubscription,
         )
     )
     val state: StateFlow<AuthUiState> = _state
@@ -53,6 +65,27 @@ class AuthViewModel : ViewModel() {
     private var telegramJob: Job? = null
 
     init {
+        // Сессия может оборваться прямо во время работы: сервер отвечает
+        // «токен не принят», и приложение его стирает. Ловим это здесь, иначе
+        // экраны узнали бы только при следующем запуске.
+        viewModelScope.launch {
+            prefs.hasSessionFlow.collect { hasSession ->
+                if (!hasSession && !_state.value.guestMode) {
+                    // Токенов нет, а причины никто не записал — значит сервер
+                    // их не отвергал, приложение потеряло их само. Подписываем
+                    // и этот случай: на экране входа он должен читаться иначе.
+                    if (prefs.cachedHasSubscription && prefs.cachedSessionEnd == null) {
+                        prefs.noteSessionVanished()
+                    }
+                    _state.value = _state.value.copy(
+                        loggedIn = false,
+                        sessionExpired = prefs.cachedGuestSubUrl == null &&
+                            prefs.cachedHasSubscription,
+                        sessionEnded = prefs.cachedSessionEnd,
+                    )
+                }
+            }
+        }
         // чужая подписка отпускается сама, как только заработает своя, —
         // следим за этим, чтобы экраны сразу перестроились
         viewModelScope.launch {
@@ -94,6 +127,7 @@ class AuthViewModel : ViewModel() {
                         loggedIn = true,
                         guestMode = false,
                         sessionEnded = null,
+                        sessionExpired = false,
                     )
                     is DeepLinkAuthEvent.Failed -> _state.value = _state.value.copy(
                         loading = false,
@@ -121,7 +155,13 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             val error = auth.emailLogin(email, password)
             _state.value = if (error == null) {
-                _state.value.copy(loading = false, loggedIn = true, guestMode = false, sessionEnded = null)
+                _state.value.copy(
+                    loading = false,
+                    loggedIn = true,
+                    guestMode = false,
+                    sessionEnded = null,
+                    sessionExpired = false,
+                )
             } else {
                 _state.value.copy(loading = false, error = error)
             }
@@ -134,7 +174,13 @@ class AuthViewModel : ViewModel() {
             val (success, message) = auth.emailRegister(email, password, referralCode)
             _state.value = when {
                 success && auth.isLoggedIn ->
-                    _state.value.copy(loading = false, loggedIn = true, guestMode = false, sessionEnded = null)
+                    _state.value.copy(
+                    loading = false,
+                    loggedIn = true,
+                    guestMode = false,
+                    sessionEnded = null,
+                    sessionExpired = false,
+                )
                 success -> _state.value.copy(loading = false, info = message)
                 else -> _state.value.copy(loading = false, error = message)
             }
@@ -146,10 +192,14 @@ class AuthViewModel : ViewModel() {
             loggedIn = false,
             guestMode = false,
             usingSharedSubscription = false,
+            // вышел сам — подписку забыли вместе с аккаунтом, держать VPN не на чем
+            sessionExpired = false,
             error = null,
             info = null,
         )
     }
+
+
 
     fun showQrImageError() {
         _state.value = _state.value.copy(
