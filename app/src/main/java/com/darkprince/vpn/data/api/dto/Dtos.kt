@@ -202,6 +202,41 @@ data class PaymentMethodDto(
     val effectiveId: String get() = method ?: id ?: ""
     val effectiveName: String get() = title ?: name ?: effectiveId
     val effectiveEnabled: Boolean get() = enabled ?: isEnabled ?: true
+
+    /**
+     * Чем именно можно заплатить этим способом.
+     *
+     * У части касс внутри одного способа несколько вариантов — у Platega,
+     * например, СБП и карта. Бот присылает их в `options`, и выбранный нужно
+     * передать в `payment_option`. Раньше варианты не читались, бот брал
+     * первый — и оплатить можно было только по СБП.
+     */
+    val choices: List<PaymentChoice>
+        get() {
+            val list = (options as? kotlinx.serialization.json.JsonArray).orEmpty()
+                .mapNotNull { it as? JsonObject }
+                .mapNotNull { option ->
+                    val optionId = option.string("id") ?: return@mapNotNull null
+                    val label = option.string("name")?.takeIf { it.isNotBlank() }
+                        ?: option.string("description")?.takeIf { it.isNotBlank() }
+                        ?: optionId
+                    PaymentChoice(this, optionId, label)
+                }
+            return list.ifEmpty { listOf(PaymentChoice(this, null, effectiveName)) }
+        }
+}
+
+private fun JsonObject.string(key: String): String? =
+    (get(key) as? kotlinx.serialization.json.JsonPrimitive)
+        ?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.content
+
+/** Один вариант оплаты: способ и, если у него есть варианты, выбранный. */
+data class PaymentChoice(
+    val method: PaymentMethodDto,
+    val optionId: String?,
+    val label: String,
+) {
+    val key: String get() = method.effectiveId + "/" + (optionId ?: "")
 }
 
 @Serializable

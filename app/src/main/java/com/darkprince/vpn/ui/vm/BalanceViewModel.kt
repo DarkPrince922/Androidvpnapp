@@ -62,7 +62,7 @@ class BalanceViewModel : ViewModel() {
         }
     }
 
-    fun topup(amountRubles: Long, method: PaymentMethodDto) {
+    fun topup(amountRubles: Long, method: PaymentMethodDto, option: String? = null) {
         if (amountRubles <= 0) {
             _state.value = _state.value.copy(error = "Введите сумму")
             return
@@ -70,7 +70,7 @@ class BalanceViewModel : ViewModel() {
         _state.value = _state.value.copy(creatingPayment = true, error = null, info = null)
         viewModelScope.launch {
             try {
-                val response = repo.createTopup(amountRubles * 100, method.effectiveId)
+                val response = repo.createTopup(amountRubles * 100, method.effectiveId, option)
                 val url = response.paymentUrl
                 _state.value = _state.value.copy(
                     creatingPayment = false,

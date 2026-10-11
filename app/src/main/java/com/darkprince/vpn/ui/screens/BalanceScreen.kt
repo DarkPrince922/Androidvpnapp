@@ -98,6 +98,11 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
     var promo by rememberSaveable { mutableStateOf("") }
     var showAllHistory by rememberSaveable { mutableStateOf(false) }
 
+    // Все варианты всех способов одним рядом: человеку неважно, что СБП и
+    // карта — это одна касса, ему важно, чем платить.
+    val choices = state.methods.flatMap { it.choices }
+    val choice = choices.firstOrNull { it.key == selectedMethod } ?: choices.firstOrNull()
+
     val history = if (showAllHistory) state.transactions
         else state.transactions.take(HISTORY_PREVIEW)
 
@@ -163,17 +168,16 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                     // Выбор способа показываем, только когда выбирать есть из
                     // чего: один-единственный чип выглядел кнопкой, которую
                     // зачем-то надо нажать.
-                    if (state.methods.size > 1) {
+                    if (choices.size > 1) {
                         Row(
                             modifier = Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            state.methods.forEach { method ->
+                            choices.forEach { option ->
                                 Pill(
-                                    text = method.effectiveName,
-                                    selected = (selectedMethod ?: state.methods.first().effectiveId) ==
-                                        method.effectiveId,
-                                    onClick = { selectedMethod = method.effectiveId },
+                                    text = option.label,
+                                    selected = option.key == choice?.key,
+                                    onClick = { selectedMethod = option.key },
                                 )
                             }
                         }
@@ -188,9 +192,7 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                     val rubles = amount.toLongOrNull() ?: 0
                     Button(
                         onClick = {
-                            val method = state.methods.firstOrNull { it.effectiveId == selectedMethod }
-                                ?: state.methods.firstOrNull()
-                            if (method != null) viewModel.topup(rubles, method)
+                            choice?.let { viewModel.topup(rubles, it.method, it.optionId) }
                         },
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(18.dp),
@@ -205,9 +207,9 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                             style = MaterialTheme.typography.labelLarge,
                         )
                     }
-                    if (state.methods.size == 1) {
+                    if (choices.size == 1) {
                         Text(
-                            "Оплата через ${state.methods.first().effectiveName}",
+                            "Оплата: ${choices.first().label}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.align(Alignment.CenterHorizontally),
