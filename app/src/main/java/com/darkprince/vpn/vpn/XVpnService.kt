@@ -177,9 +177,13 @@ class XVpnService : VpnService() {
             ACTION_STOP -> {
                 // Выключили сами — кнопкой, плиткой или из уведомления.
                 // Автоподключение не должно поднимать туннель обратно.
-                runCatching { ServiceLocator.prefs.setUserStoppedBlocking(true) }
                 val stopId = startId
-                scope.launch { vpnMutex.withLock { stopVpn(stopId) } }
+                // запись — в фоне: ожидание диска в главном потоке подвешивало
+                // приложение, если служба поднималась ради остановки
+                scope.launch {
+                    runCatching { ServiceLocator.prefs.setUserStoppedBlocking(true) }
+                    vpnMutex.withLock { stopVpn(stopId) }
+                }
                 START_NOT_STICKY
             }
             ACTION_PING -> {

@@ -875,26 +875,24 @@ private fun AppRoot(
                             // выхода раньше обрывал его на полпути
                             activity.lifecycleScope.launch {
                                 try {
-                                    val wasOn = com.darkprince.vpn.vpn.VpnStateStore.state.value !=
-                                        com.darkprince.vpn.vpn.VpnState.DISCONNECTED
-                                    XVpnService.stop(activity)
+                                    // Службу VPN трогаем, только если она работает. Раньше
+                                    // выход без включённого VPN запускал её с нуля ради
+                                    // «остановки» — и на аккаунте без подписки приложение
+                                    // закрывалось, так и не выйдя.
+                                    val vpnOn = com.darkprince.vpn.vpn.VpnStateStore.state.value.let {
+                                        it == com.darkprince.vpn.vpn.VpnState.CONNECTED ||
+                                            it == com.darkprince.vpn.vpn.VpnState.CONNECTING
+                                    }
                                     XVpnService.forgetProfile(activity)
-                                    // дожидаемся, пока туннель погаснет: иначе стирали
-                                    // данные из-под ещё работающей службы
-                                    if (wasOn) {
-                                        kotlinx.coroutines.withTimeoutOrNull(4_000) {
-                                            com.darkprince.vpn.vpn.VpnStateStore.state.first {
-                                                it == com.darkprince.vpn.vpn.VpnState.DISCONNECTED ||
-                                                    it == com.darkprince.vpn.vpn.VpnState.ERROR
-                                            }
-                                        }
+                                    if (vpnOn) XVpnService.stop(activity)
+                                    // сессию — первым делом: что бы ни случилось дальше,
+                                    // человек уже вышел
+                                    if (!authState.guestMode) {
+                                        ServiceLocator.authRepository.logout()
                                     }
                                     // чужую подписку отпускаем в любом случае: она привязана
                                     // к этому телефону, а не к аккаунту
                                     ServiceLocator.subscriptionRepository.exitGuestMode()
-                                    if (!authState.guestMode) {
-                                        ServiceLocator.authRepository.logout()
-                                    }
                                 } catch (e: Exception) {
                                     com.darkprince.vpn.data.log.AppLog.write("выход: ${e.javaClass.simpleName}: ${e.message}")
                                     runCatching { ServiceLocator.prefs.clearSession() }
