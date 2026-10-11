@@ -645,6 +645,10 @@ private fun AppRoot(
                         viewModel = adminViewModel,
                         ticketId = id,
                         onBack = { navController.popBackStack() },
+                        onOpenPerson = { user ->
+                            adminViewModel.openPersonById(user)
+                            navController.navigate("admin/person")
+                        },
                     )
                 }
             }

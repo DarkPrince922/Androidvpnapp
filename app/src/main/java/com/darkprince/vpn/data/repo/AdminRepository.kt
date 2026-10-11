@@ -2,6 +2,9 @@ package com.darkprince.vpn.data.repo
 
 import com.darkprince.vpn.data.api.ApiClient
 import com.darkprince.vpn.data.api.dto.AdminBalanceRequest
+import com.darkprince.vpn.data.api.dto.AdminSubscriptionAction
+import com.darkprince.vpn.data.api.dto.AdminTariffOptionDto
+import com.darkprince.vpn.data.api.dto.AdminUserDetailDto
 import com.darkprince.vpn.data.api.dto.AdminBalanceResponse
 import com.darkprince.vpn.data.api.dto.AdminDashboardDto
 import com.darkprince.vpn.data.api.dto.AdminDevicesDto
@@ -111,6 +114,19 @@ class AdminRepository(
 
     // ---------- карточка человека ----------
 
+    suspend fun user(userId: Long): AdminUserDetailDto = api.adminUser(userId)
+
+    suspend fun subscriptionAction(userId: Long, action: AdminSubscriptionAction) {
+        api.adminSubscriptionAction(userId, action)
+    }
+
+    suspend fun availableTariffs(userId: Long): List<AdminTariffOptionDto> =
+        api.adminAvailableTariffs(userId).tariffs.filter { it.isActive }
+
+    suspend fun setBlocked(userId: Long, blocked: Boolean) {
+        if (blocked) api.adminBlockUser(userId, "Из приложения") else api.adminUnblockUser(userId)
+    }
+
     suspend fun devices(userId: Long): AdminDevicesDto = api.adminUserDevices(userId)
 
     suspend fun removeDevice(userId: Long, hwid: String) {
@@ -171,6 +187,7 @@ class AdminRepository(
         const val USERS_BALANCE = "users:balance"
         const val USERS_SUBSCRIPTION = "users:subscription"
         const val USERS_EDIT = "users:edit"
+        const val USERS_BLOCK = "users:block"
         const val USERS_SEND_MESSAGE = "users:send_message"
         const val REMNAWAVE_MANAGE = "remnawave:manage"
         const val PROMOCODES_CREATE = "promocodes:create"

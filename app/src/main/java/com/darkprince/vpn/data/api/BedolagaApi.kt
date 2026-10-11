@@ -1,6 +1,9 @@
 package com.darkprince.vpn.data.api
 
+import com.darkprince.vpn.data.api.dto.AdminAvailableTariffsDto
 import com.darkprince.vpn.data.api.dto.AdminBalanceRequest
+import com.darkprince.vpn.data.api.dto.AdminSubscriptionAction
+import com.darkprince.vpn.data.api.dto.AdminUserDetailDto
 import com.darkprince.vpn.data.api.dto.AdminBalanceResponse
 import com.darkprince.vpn.data.api.dto.AdminDashboardDto
 import com.darkprince.vpn.data.api.dto.AdminDevicesDto
@@ -264,6 +267,27 @@ interface BedolagaApi {
         @Path("userId") userId: Long,
         @Body body: AdminExtendRequest,
     ): JsonElement
+
+    @GET("cabinet/admin/users/{userId}")
+    suspend fun adminUser(@Path("userId") userId: Long): AdminUserDetailDto
+
+    @POST("cabinet/admin/users/{userId}/subscription")
+    suspend fun adminSubscriptionAction(
+        @Path("userId") userId: Long,
+        @Body body: AdminSubscriptionAction,
+    ): JsonElement
+
+    @GET("cabinet/admin/users/{userId}/available-tariffs")
+    suspend fun adminAvailableTariffs(@Path("userId") userId: Long): AdminAvailableTariffsDto
+
+    @POST("cabinet/admin/users/{userId}/block")
+    suspend fun adminBlockUser(
+        @Path("userId") userId: Long,
+        @Query("reason") reason: String? = null,
+    ): JsonElement
+
+    @POST("cabinet/admin/users/{userId}/unblock")
+    suspend fun adminUnblockUser(@Path("userId") userId: Long): JsonElement
 
     @GET("cabinet/admin/users/{userId}/devices")
     suspend fun adminUserDevices(@Path("userId") userId: Long): AdminDevicesDto

@@ -1,5 +1,14 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.BrandColors
+import com.darkprince.vpn.data.api.dto.AdminUserDetailDto
+import com.darkprince.vpn.data.api.dto.AdminTicketUserDto
+import com.darkprince.vpn.data.api.dto.AdminTariffOptionDto
+import com.darkprince.vpn.data.api.dto.AdminSubscriptionInfoDto
+import com.darkprince.vpn.data.api.dto.AdminSubscriptionAction
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -683,7 +692,12 @@ private fun StatusChip(status: String) {
 
 /** Переписка по одному обращению и ответ от лица поддержки. */
 @Composable
-fun AdminTicketScreen(viewModel: AdminViewModel, ticketId: Long, onBack: () -> Unit) {
+fun AdminTicketScreen(
+    viewModel: AdminViewModel,
+    ticketId: Long,
+    onBack: () -> Unit,
+    onOpenPerson: (AdminTicketUserDto) -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val ticket = state.ticket
     var reply by remember(ticketId) { mutableStateOf("") }
@@ -717,11 +731,19 @@ fun AdminTicketScreen(viewModel: AdminViewModel, ticketId: Long, onBack: () -> U
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                ticket?.user?.let {
+                // Имя — ссылка на карточку: прочитав жалобу, сразу видно
+                // подписку человека, и править её можно не уходя искать его.
+                ticket?.user?.let { user ->
                     Text(
-                        it.displayName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        "${user.displayName} · карточка ›",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onOpenPerson(user) }
+                            .padding(vertical = 2.dp),
                     )
                 }
             }
@@ -880,9 +902,14 @@ private fun AdminMessageBubble(message: SupportMessageDto) {
 /**
  * Карточка человека.
  *
- * Отдельный экран, а не окно поверх списка: здесь и подписка, и устройства,
- * и платежи, и переписка — в окно это не помещается, а листать окно поверх
- * списка неудобно вдвойне.
+ * Отдельный экран, а не окно поверх списка: здесь и подписки, и устройства,
+ * и платежи, и переписка. Открывается и из списка людей, и прямо из
+ * обращения — чтобы, прочитав «не работает», сразу посмотреть подписку и
+ * поправить её, не отправляясь на поиски человека.
+ *
+ * Всё, что меняет подписку или доступ, спрашивает подтверждение: кнопки
+ * мелкие, а промах по «−7 дней» или «Заблокировать» человек заметит раньше
+ * админа.
  */
 @Composable
 fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
@@ -895,11 +922,12 @@ fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
         }
         return
     }
+    val detail = state.personDetail
 
     var amount by remember(person.id) { mutableStateOf("") }
-    var days by remember(person.id) { mutableStateOf("30") }
     var message by remember(person.id) { mutableStateOf("") }
     var dropping by remember(person.id) { mutableStateOf<String?>(null) }
+    var confirm by remember(person.id) { mutableStateOf<PendingAdminAction?>(null) }
 
     Column(
         modifier = Modifier
@@ -924,48 +952,110 @@ fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "${rubles(person.balanceKopeks)} · ${subscriptionSummary(person)}",
-                    style = MaterialTheme.typography.labelSmall,
+                    contactLine(person, detail),
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
 
         state.error?.let {
-            AdminNotice(it)
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             Spacer(Modifier.height(6.dp))
         }
         state.info?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium)
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(6.dp))
         }
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // --- Профиль: баланс, статус, сколько потратил ---
+            item {
+                SummaryCard("Профиль") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Баланс",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(rubles(person.balanceKopeks), style = MaterialTheme.typography.headlineSmall)
+                        }
+                        StatusPill(
+                            if (person.isBlocked) "Заблокирован" else "Активен",
+                            if (person.isBlocked) MaterialTheme.colorScheme.error else BrandColors.Success,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    SummaryLine("Потратил всего", rubles(person.totalSpentKopeks))
+                    detail?.createdAt?.let { SummaryLine("С нами с", shortDate(it)) }
+                    detail?.lastActivity?.let { SummaryLine("Был в сети", shortDate(it)) }
+                    if (state.canBlock) {
+                        Spacer(Modifier.height(8.dp))
+                        ActionChip(
+                            if (person.isBlocked) "Разблокировать" else "Заблокировать",
+                            enabled = !state.sending,
+                            danger = !person.isBlocked,
+                        ) {
+                            confirm = PendingAdminAction(
+                                title = if (person.isBlocked) "Снять блокировку?" else "Заблокировать?",
+                                text = if (person.isBlocked) {
+                                    "${person.displayName} снова сможет пользоваться VPN и ботом."
+                                } else {
+                                    "${person.displayName} потеряет доступ к VPN: пользователь в панели " +
+                                        "будет отключён. Снять блокировку можно здесь же."
+                                },
+                                confirmLabel = if (person.isBlocked) "Разблокировать" else "Заблокировать",
+                                run = { viewModel.setBlocked(!person.isBlocked) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            // --- Баланс: быстрые суммы и своя ---
             if (state.canAddBalance) {
                 item {
-                    SummaryCard("Баланс") {
+                    SummaryCard("Начислить или списать") {
+                        ChipRow {
+                            listOf(100, 300, 500, 1000).forEach { rub ->
+                                ActionChip("+$rub ₽", enabled = !state.sending) {
+                                    confirm = PendingAdminAction(
+                                        title = "Начислить $rub ₽?",
+                                        text = "Станет: ${rubles(person.balanceKopeks + rub * 100L)}",
+                                        confirmLabel = "Начислить",
+                                        run = { viewModel.addBalance(person.id, rub * 100L) },
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = amount,
                             onValueChange = { text ->
                                 // минус разрешаем: списание — то же действие
-                                if (text.all { it.isDigit() || it == '-' }) amount = text
+                                if (text.all { it.isDigit() || it == '-' } && text.length <= 7) amount = text
                             },
-                            label = { Text("Начислить, ₽") },
+                            label = { Text("Своя сумма, ₽ (минус — списать)") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         val rub = amount.toLongOrNull()
                         if (rub != null && rub != 0L) {
                             Spacer(Modifier.height(6.dp))
-                            Text(
-                                "Станет: ${rubles(person.balanceKopeks + rub * 100)}",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Spacer(Modifier.height(6.dp))
                             OutlinedButton(
                                 onClick = {
-                                    viewModel.addBalance(person.id, rub * 100)
-                                    amount = ""
+                                    confirm = PendingAdminAction(
+                                        title = if (rub > 0) "Начислить $rub ₽?" else "Списать ${-rub} ₽?",
+                                        text = "Станет: ${rubles(person.balanceKopeks + rub * 100)}",
+                                        confirmLabel = if (rub > 0) "Начислить" else "Списать",
+                                        run = {
+                                            viewModel.addBalance(person.id, rub * 100)
+                                            amount = ""
+                                        },
+                                    )
                                 },
                                 enabled = !state.sending,
                                 modifier = Modifier.fillMaxWidth(),
@@ -977,28 +1067,24 @@ fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
                 }
             }
 
-            if (state.canExtend) {
-                item {
-                    SummaryCard("Подписка") {
-                        OutlinedTextField(
-                            value = days,
-                            onValueChange = { text ->
-                                if (text.all { it.isDigit() } && text.length <= 4) days = text
-                            },
-                            label = { Text("Продлить, дней") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        val count = days.toIntOrNull()
-                        if (count != null && count > 0) {
-                            Spacer(Modifier.height(6.dp))
-                            OutlinedButton(
-                                onClick = { viewModel.extendSubscription(person.id, count) },
-                                enabled = !state.sending,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Продлить на $count дн.") }
-                        }
-                    }
+            // --- Подписки ---
+            val subscriptions = detail?.allSubscriptions.orEmpty()
+            when {
+                state.personLoading && detail == null -> item {
+                    SummaryCard("Подписка") { AdminNotice("Загружаю…") }
+                }
+                detail != null && subscriptions.isEmpty() -> item {
+                    SummaryCard("Подписка") { AdminNotice("Подписки нет") }
+                }
+                else -> items(subscriptions, key = { "sub-${it.id}" }) { sub ->
+                    AdminSubscriptionCard(
+                        sub = sub,
+                        canEdit = state.canExtend,
+                        sending = state.sending,
+                        tariffs = state.tariffs,
+                        onAsk = { confirm = it },
+                        onAction = viewModel::subscriptionAction,
+                    )
                 }
             }
 
@@ -1011,18 +1097,8 @@ fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
                     },
                 ) {
                     when {
-                        state.personLoading -> Text(
-                            "Загружаю…",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        state.devices.isEmpty() -> Text(
-                            "Ни одного подключения",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
+                        state.personLoading -> AdminNotice("Загружаю…")
+                        state.devices.isEmpty() -> AdminNotice("Ни одного подключения")
                         else -> state.devices.forEach { device ->
                             Row(
                                 modifier = Modifier
@@ -1031,10 +1107,7 @@ fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(
-                                        device.displayName,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
+                                    Text(device.displayName, style = MaterialTheme.typography.bodyMedium)
                                     device.platform.takeIf { it.isNotBlank() }?.let {
                                         Text(
                                             it,
@@ -1058,18 +1131,8 @@ fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
             item {
                 SummaryCard("Последние платежи") {
                     when {
-                        state.personLoading -> Text(
-                            "Загружаю…",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        state.transactions.isEmpty() -> Text(
-                            "Операций нет",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
+                        state.personLoading -> AdminNotice("Загружаю…")
+                        state.transactions.isEmpty() -> AdminNotice("Операций нет")
                         else -> state.transactions.take(10).forEach { transaction ->
                             SummaryLine(
                                 transaction.description?.takeIf { it.isNotBlank() }
@@ -1112,6 +1175,23 @@ fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
         }
     }
 
+    confirm?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { confirm = null },
+            title = { Text(pending.title) },
+            text = { Text(pending.text) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pending.run()
+                    confirm = null
+                }) { Text(pending.confirmLabel) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirm = null }) { Text("Отмена") }
+            },
+        )
+    }
+
     dropping?.let { hwid ->
         val device = state.devices.firstOrNull { it.hwid == hwid }
         AlertDialog(
@@ -1135,4 +1215,249 @@ fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
             },
         )
     }
+}
+
+/** Действие, ждущее подтверждения. */
+private class PendingAdminAction(
+    val title: String,
+    val text: String,
+    val confirmLabel: String,
+    val run: () -> Unit,
+)
+
+/**
+ * Одна подписка в карточке: что в ней сейчас и быстрые правки — срок,
+ * устройства, трафик, тариф.
+ */
+@Composable
+private fun AdminSubscriptionCard(
+    sub: AdminSubscriptionInfoDto,
+    canEdit: Boolean,
+    sending: Boolean,
+    tariffs: List<AdminTariffOptionDto>,
+    onAsk: (PendingAdminAction) -> Unit,
+    onAction: (AdminSubscriptionAction, String) -> Unit,
+) {
+    val name = sub.tariffName ?: "Подписка #${sub.id}"
+    fun ask(title: String, text: String, action: AdminSubscriptionAction, done: String) {
+        onAsk(PendingAdminAction(title, text, "Да", run = { onAction(action, done) }))
+    }
+
+    SummaryCard(if (sub.isTrial) "$name · пробная" else name) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                sub.endDate?.let {
+                    Text("до ${shortDate(it)}", style = MaterialTheme.typography.bodyMedium)
+                }
+                Text(
+                    buildString {
+                        append(
+                            if (sub.trafficLimitGb <= 0) "безлимит"
+                            else String.format(Locale.US, "%.1f из %d ГБ", sub.trafficUsedGb, sub.trafficLimitGb)
+                        )
+                        append(" · устройств: ${sub.deviceLimit}")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            val (label, color) = when {
+                !sub.isActive -> (sub.status.ifBlank { "не активна" }) to MaterialTheme.colorScheme.error
+                sub.daysRemaining <= 3 -> "${sub.daysRemaining} дн." to BrandColors.Warning
+                else -> "${sub.daysRemaining} дн." to BrandColors.Success
+            }
+            StatusPill(label, color)
+        }
+
+        if (!canEdit) return@SummaryCard
+
+        val subId = sub.id
+        Spacer(Modifier.height(12.dp))
+        Text("Срок", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(6.dp))
+        ChipRow {
+            listOf(7, 30, 90).forEach { days ->
+                ActionChip("+$days дн.", enabled = !sending) {
+                    ask(
+                        "Продлить «$name» на $days дн.?",
+                        "Бесплатно для человека, с баланса ничего не спишется.",
+                        AdminSubscriptionAction("extend", subId, days = days),
+                        "Продлено на $days дн.",
+                    )
+                }
+            }
+            ActionChip("−7 дн.", enabled = !sending, danger = true) {
+                ask(
+                    "Сократить «$name» на 7 дн.?",
+                    "Срок подписки уменьшится на неделю.",
+                    AdminSubscriptionAction("shorten", subId, days = 7),
+                    "Срок сокращён на 7 дн.",
+                )
+            }
+            if (!sub.isActive) {
+                ActionChip("Активировать", enabled = !sending) {
+                    ask(
+                        "Активировать «$name»?",
+                        "Подписка снова заработает. Если срок уже вышел, бот сам продлит её на 30 дней.",
+                        AdminSubscriptionAction("activate", subId),
+                        "Подписка активирована",
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text("Устройства", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(6.dp))
+        var limit by remember(sub.id, sub.deviceLimit) { mutableStateOf(sub.deviceLimit) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(
+                onClick = { if (limit > 1) limit-- },
+                enabled = limit > 1,
+            ) { Text("−") }
+            Text(
+                "$limit",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 14.dp),
+            )
+            OutlinedButton(onClick = { if (limit < 100) limit++ }) { Text("+") }
+            Spacer(Modifier.weight(1f))
+            if (limit != sub.deviceLimit) {
+                TextButton(
+                    onClick = {
+                        ask(
+                            "Лимит устройств: ${sub.deviceLimit} → $limit?",
+                            "Изменится сразу и в панели.",
+                            AdminSubscriptionAction("set_device_limit", subId, deviceLimit = limit),
+                            "Лимит устройств: $limit",
+                        )
+                    },
+                    enabled = !sending,
+                ) { Text("Сохранить") }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text("Трафик", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(6.dp))
+        ChipRow {
+            if (sub.trafficLimitGb > 0) {
+                listOf(50, 100).forEach { gb ->
+                    ActionChip("+$gb ГБ", enabled = !sending) {
+                        ask(
+                            "Добавить $gb ГБ?",
+                            "Лимит станет ${sub.trafficLimitGb + gb} ГБ.",
+                            AdminSubscriptionAction("add_traffic", subId, trafficGb = gb),
+                            "Добавлено $gb ГБ",
+                        )
+                    }
+                }
+                ActionChip("Безлимит", enabled = !sending) {
+                    ask(
+                        "Сделать трафик безлимитным?",
+                        "Ограничение по трафику для этой подписки снимется.",
+                        AdminSubscriptionAction("set_traffic", subId, trafficLimitGb = 0),
+                        "Трафик безлимитный",
+                    )
+                }
+            }
+            ActionChip("Сбросить счётчик", enabled = !sending) {
+                ask(
+                    "Обнулить использованный трафик?",
+                    "Счётчик «использовано» начнётся с нуля, лимит не изменится.",
+                    AdminSubscriptionAction("set_traffic", subId, trafficUsedGb = 0.0),
+                    "Счётчик трафика сброшен",
+                )
+            }
+        }
+
+        val others = tariffs.filter { it.id != sub.tariffId }
+        if (others.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            var menu by remember(sub.id) { mutableStateOf(false) }
+            Box {
+                OutlinedButton(
+                    onClick = { menu = true },
+                    enabled = !sending,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Сменить тариф") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    others.forEach { tariff ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(tariff.name)
+                                    Text(
+                                        (if (tariff.trafficLimitGb <= 0) "безлимит" else "${tariff.trafficLimitGb} ГБ") +
+                                            " · устройств: ${tariff.deviceLimit}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                menu = false
+                                ask(
+                                    "Перевести на «${tariff.name}»?",
+                                    "Срок сохранится, лимиты трафика и устройств станут как у нового тарифа.",
+                                    AdminSubscriptionAction("change_tariff", subId, tariffId = tariff.id),
+                                    "Тариф: ${tariff.name}",
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Как связаться: почта, ник или номер в Telegram — что есть. */
+private fun contactLine(person: AdminUserDto, detail: AdminUserDetailDto?): String =
+    listOfNotNull(
+        detail?.email,
+        person.username?.let { "@$it" },
+        person.telegramId?.let { "TG $it" },
+    ).joinToString(" · ").ifEmpty { "ID ${person.id}" }
+
+/** «03.11.2026» из ISO-строки бота; не разобрали — показываем как есть. */
+private fun shortDate(raw: String): String = runCatching {
+    java.time.LocalDate.parse(raw.take(10))
+        .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+}.getOrDefault(raw)
+
+@Composable
+private fun StatusPill(text: String, color: androidx.compose.ui.graphics.Color) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = color,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(color.copy(alpha = 0.14f))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
+}
+
+/** Мелкая кнопка-«таблетка» для быстрых правок. */
+@Composable
+private fun ActionChip(
+    text: String,
+    enabled: Boolean = true,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = if (enabled) color else color.copy(alpha = 0.4f),
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(color.copy(alpha = 0.12f))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+    )
 }

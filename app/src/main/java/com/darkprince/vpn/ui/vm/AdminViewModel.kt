@@ -5,6 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.data.api.dto.AdminDashboardDto
 import com.darkprince.vpn.data.api.dto.AdminDeviceDto
 import com.darkprince.vpn.data.api.dto.AdminPermissionsDto
+import com.darkprince.vpn.data.api.dto.AdminSubscriptionAction
+import com.darkprince.vpn.data.api.dto.AdminTariffOptionDto
+import com.darkprince.vpn.data.api.dto.AdminTicketUserDto
+import com.darkprince.vpn.data.api.dto.AdminUserDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketDto
 import com.darkprince.vpn.data.api.dto.AdminTransactionDto
@@ -14,6 +18,7 @@ import com.darkprince.vpn.data.log.AppLog
 import com.darkprince.vpn.data.repo.adminErrorMessage
 import com.darkprince.vpn.data.repo.rejectedParameter
 import com.darkprince.vpn.di.ServiceLocator
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -116,6 +121,10 @@ data class AdminUiState(
     val deviceLimit: Int = 0,
     val transactions: List<AdminTransactionDto> = emptyList(),
     val personLoading: Boolean = false,
+    /** Полная карточка: подписки, почта, даты. Приходит следом за [person]. */
+    val personDetail: AdminUserDetailDto? = null,
+    /** Тарифы, на которые человека можно перевести. */
+    val tariffs: List<AdminTariffOptionDto> = emptyList(),
 ) {
     val canReply: Boolean get() = permissions.allows(AdminRepository.TICKETS_REPLY)
     val canClose: Boolean get() = permissions.allows(AdminRepository.TICKETS_CLOSE)
@@ -124,6 +133,7 @@ data class AdminUiState(
     val canExtend: Boolean get() = permissions.allows(AdminRepository.USERS_SUBSCRIPTION)
     val canDropDevice: Boolean get() = permissions.allows(AdminRepository.USERS_EDIT)
     val canWrite: Boolean get() = permissions.allows(AdminRepository.USERS_SEND_MESSAGE)
+    val canBlock: Boolean get() = permissions.allows(AdminRepository.USERS_BLOCK)
     val canRestartNode: Boolean get() = permissions.allows(AdminRepository.REMNAWAVE_MANAGE)
     val canCreatePromo: Boolean get() = permissions.allows(AdminRepository.PROMOCODES_CREATE)
 
@@ -415,6 +425,10 @@ class AdminViewModel : ViewModel() {
                 _state.update {
                     it.copy(
                         sending = false,
+                        person = it.person?.takeIf { p -> p.id == userId }
+                            ?.copy(balanceKopeks = result.newBalanceKopeks) ?: it.person,
+                        personDetail = it.personDetail?.takeIf { d -> d.id == userId }
+                            ?.copy(balanceKopeks = result.newBalanceKopeks) ?: it.personDetail,
                         info = "Баланс: %.2f ₽ → %.2f ₽".format(
                             result.oldBalanceKopeks / 100.0,
                             result.newBalanceKopeks / 100.0,
@@ -514,6 +528,8 @@ class AdminViewModel : ViewModel() {
         _state.update {
             it.copy(
                 person = person,
+                personDetail = null,
+                tariffs = emptyList(),
                 devices = emptyList(),
                 transactions = emptyList(),
                 personLoading = true,
@@ -522,22 +538,126 @@ class AdminViewModel : ViewModel() {
             )
         }
         viewModelScope.launch {
-            val devices = runCatching { repository.devices(person.id) }.getOrNull()
-            val transactions = runCatching { repository.transactions(person.id) }.getOrNull()
+            val detail = async { runCatching { repository.user(person.id) }.getOrNull() }
+            val devices = async { runCatching { repository.devices(person.id) }.getOrNull() }
+            val transactions = async { runCatching { repository.transactions(person.id) }.getOrNull() }
+            val tariffs = async {
+                if (_state.value.canExtend) runCatching { repository.availableTariffs(person.id) }.getOrNull()
+                else null
+            }
+            val loaded = detail.await()
+            val deviceList = devices.await()
             _state.update {
+                val current = it.person?.takeIf { p -> p.id == person.id } ?: return@update it
                 it.copy(
-                    devices = devices?.devices.orEmpty(),
-                    deviceLimit = devices?.deviceLimit ?: person.deviceLimit,
-                    transactions = transactions.orEmpty(),
+                    person = loaded?.let { d -> mergePerson(current, d) } ?: current,
+                    personDetail = loaded,
+                    devices = deviceList?.devices.orEmpty(),
+                    deviceLimit = deviceList?.deviceLimit ?: person.deviceLimit,
+                    transactions = transactions.await().orEmpty(),
+                    tariffs = tariffs.await().orEmpty(),
                     personLoading = false,
                 )
             }
         }
     }
 
+    /**
+     * Открыть карточку по номеру — из обращения. Там есть только имя и
+     * контакты, поэтому карточку открываем сразу с ними, а остальное
+     * дотягиваем запросом.
+     */
+    fun openPersonById(user: AdminTicketUserDto) {
+        openPerson(
+            AdminUserDto(
+                id = user.id,
+                telegramId = user.telegramId,
+                username = user.username,
+                fullName = user.displayName,
+            )
+        )
+    }
+
+    private fun mergePerson(person: AdminUserDto, detail: AdminUserDetailDto): AdminUserDto {
+        val sub = detail.allSubscriptions.firstOrNull { it.isActive } ?: detail.allSubscriptions.firstOrNull()
+        return person.copy(
+            fullName = detail.fullName.ifBlank { person.fullName },
+            username = detail.username ?: person.username,
+            telegramId = detail.telegramId ?: person.telegramId,
+            status = detail.status,
+            balanceKopeks = detail.balanceKopeks,
+            hasSubscription = sub != null,
+            subscriptionStatus = sub?.status ?: person.subscriptionStatus,
+            tariffName = sub?.tariffName ?: person.tariffName,
+            daysRemaining = sub?.daysRemaining ?: person.daysRemaining,
+            deviceLimit = sub?.deviceLimit ?: person.deviceLimit,
+            totalSpentKopeks = detail.totalSpentKopeks,
+        )
+    }
+
+    /** Перечитать карточку после правки, не сбрасывая экран. */
+    private suspend fun reloadPerson(userId: Long) {
+        val detail = runCatching { repository.user(userId) }.getOrNull() ?: return
+        val devices = runCatching { repository.devices(userId) }.getOrNull()
+        _state.update {
+            val current = it.person?.takeIf { p -> p.id == userId } ?: return@update it
+            it.copy(
+                person = mergePerson(current, detail),
+                personDetail = detail,
+                devices = devices?.devices ?: it.devices,
+                deviceLimit = devices?.deviceLimit ?: it.deviceLimit,
+            )
+        }
+    }
+
+    /**
+     * Действие с подпиской человека: продлить, сократить, сменить лимит
+     * устройств или трафика, перевести на другой тариф. [done] — что
+     * показать, когда получилось.
+     */
+    fun subscriptionAction(action: AdminSubscriptionAction, done: String) {
+        val person = _state.value.person ?: return
+        if (_state.value.sending) return
+        viewModelScope.launch {
+            _state.update { it.copy(sending = true, error = null, info = null) }
+            try {
+                repository.subscriptionAction(person.id, action)
+                reloadPerson(person.id)
+                _state.update { it.copy(sending = false, info = done) }
+                refreshPeopleInPlace()
+            } catch (error: Exception) {
+                _state.update { it.copy(sending = false, error = adminErrorMessage(error)) }
+            }
+        }
+    }
+
+    fun setBlocked(blocked: Boolean) {
+        val person = _state.value.person ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(sending = true, error = null, info = null) }
+            try {
+                repository.setBlocked(person.id, blocked)
+                reloadPerson(person.id)
+                _state.update {
+                    it.copy(sending = false, info = if (blocked) "Пользователь заблокирован" else "Блокировка снята")
+                }
+                refreshPeopleInPlace()
+            } catch (error: Exception) {
+                _state.update { it.copy(sending = false, error = adminErrorMessage(error)) }
+            }
+        }
+    }
+
     fun closePerson() {
         _state.update {
-            it.copy(person = null, devices = emptyList(), transactions = emptyList(), info = null)
+            it.copy(
+                person = null,
+                personDetail = null,
+                tariffs = emptyList(),
+                devices = emptyList(),
+                transactions = emptyList(),
+                info = null,
+            )
         }
     }
 

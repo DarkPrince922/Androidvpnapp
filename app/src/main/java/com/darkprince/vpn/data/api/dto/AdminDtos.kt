@@ -226,6 +226,78 @@ data class AdminExtendRequest(
     @SerialName("subscription_id") val subscriptionId: Long? = null,
 )
 
+/**
+ * Подписка в карточке человека. Бот отдаёт и старое поле `subscription`, и
+ * список `subscriptions` (несколько тарифов сразу) — берём что есть.
+ */
+@Serializable
+data class AdminSubscriptionInfoDto(
+    val id: Long,
+    val status: String = "",
+    @SerialName("is_trial") val isTrial: Boolean = false,
+    @SerialName("end_date") val endDate: String? = null,
+    @SerialName("traffic_limit_gb") val trafficLimitGb: Int = 0,
+    @SerialName("traffic_used_gb") val trafficUsedGb: Double = 0.0,
+    @SerialName("device_limit") val deviceLimit: Int = 1,
+    @SerialName("tariff_id") val tariffId: Long? = null,
+    @SerialName("tariff_name") val tariffName: String? = null,
+    @SerialName("is_active") val isActive: Boolean = false,
+    @SerialName("days_remaining") val daysRemaining: Int = 0,
+)
+
+/** Карточка человека целиком: GET /cabinet/admin/users/{id}. */
+@Serializable
+data class AdminUserDetailDto(
+    val id: Long,
+    @SerialName("telegram_id") val telegramId: Long? = null,
+    val username: String? = null,
+    @SerialName("full_name") val fullName: String = "",
+    val status: String = "active",
+    @SerialName("balance_kopeks") val balanceKopeks: Long = 0,
+    val email: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("last_activity") val lastActivity: String? = null,
+    val subscription: AdminSubscriptionInfoDto? = null,
+    val subscriptions: List<AdminSubscriptionInfoDto> = emptyList(),
+    @SerialName("total_spent_kopeks") val totalSpentKopeks: Long = 0,
+) {
+    val allSubscriptions: List<AdminSubscriptionInfoDto>
+        get() = subscriptions.ifEmpty { listOfNotNull(subscription) }
+
+    val isBlocked: Boolean get() = status.equals("blocked", ignoreCase = true)
+}
+
+/**
+ * Любое действие с подпиской: POST /cabinet/admin/users/{id}/subscription.
+ * Какое — в [action]: extend, shorten, set_device_limit, add_traffic,
+ * set_traffic, change_tariff, activate, cancel. Нужные поля — по действию.
+ */
+@Serializable
+data class AdminSubscriptionAction(
+    val action: String,
+    @SerialName("subscription_id") val subscriptionId: Long? = null,
+    val days: Int? = null,
+    @SerialName("device_limit") val deviceLimit: Int? = null,
+    @SerialName("traffic_limit_gb") val trafficLimitGb: Int? = null,
+    @SerialName("traffic_gb") val trafficGb: Int? = null,
+    @SerialName("traffic_used_gb") val trafficUsedGb: Double? = null,
+    @SerialName("tariff_id") val tariffId: Long? = null,
+)
+
+@Serializable
+data class AdminTariffOptionDto(
+    val id: Long,
+    val name: String,
+    @SerialName("is_active") val isActive: Boolean = true,
+    @SerialName("traffic_limit_gb") val trafficLimitGb: Int = 0,
+    @SerialName("device_limit") val deviceLimit: Int = 1,
+)
+
+@Serializable
+data class AdminAvailableTariffsDto(
+    val tariffs: List<AdminTariffOptionDto> = emptyList(),
+)
+
 // ---------- Устройства, платежи, сообщения ----------
 
 @Serializable
