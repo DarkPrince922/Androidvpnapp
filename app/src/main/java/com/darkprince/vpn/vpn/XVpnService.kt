@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -18,7 +19,12 @@ import com.darkprince.vpn.data.log.AppLog
 import com.darkprince.vpn.core.xray.XrayConfigBuilder
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.ui.MainActivity
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,6 +59,11 @@ class XVpnService : VpnService() {
         private const val RETRY_BASE_MS = 4_000L
         private const val RETRY_MAX_MS = 120_000L
         private const val MAX_FAILOVER = 3
+        private const val TUN_ADDRESS_V6 = "fd66:6470:7276::1"
+        /** Отвечает пустым 204 и есть почти везде; его же меряет пинг. */
+        private const val PROBE_URL = "https://www.gstatic.com/generate_204"
+        private const val PROBE_TIMEOUT_S = 6L
+        private const val PROBE_ATTEMPTS = 2
         private const val UNKNOWN_PING = 10_000L
         private const val DEAD_PING = 100_000L
 
@@ -236,6 +247,13 @@ class XVpnService : VpnService() {
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
                 .addRoute("0.0.0.0", 0)
+                // IPv6 тоже в туннель. Без этого на сетях с IPv6 — а у
+                // мобильных операторов он всё чаще — часть трафика шла мимо
+                // VPN, с настоящим адресом. Если сервер IPv6 не умеет,
+                // приложения просто откатятся на IPv4: так устроены все
+                // современные клиенты, и это лучше утечки.
+                .addAddress(TUN_ADDRESS_V6, 126)
+                .addRoute("::", 0)
             applyAppFilter(builder)
             val fd = builder.establish()
                 ?: throw IllegalStateException("Нет разрешения на VPN")
@@ -260,6 +278,26 @@ class XVpnService : VpnService() {
             val configFile = File(filesDir, "hev-socks5-tunnel.yaml")
             configFile.writeText(yaml)
             TProxyService.TProxyStartService(configFile.absolutePath, fd.fd)
+
+            // 4. Туннель поднят — но это ещё не значит, что через него идёт
+            // трафик: ядро стартует и с мёртвым сервером. Раньше здесь сразу
+            // горело «Подключено», а перебор узлов срабатывал только на
+            // ошибках запуска, то есть почти никогда.
+            if (!internetWorks()) {
+                tried += profile.key
+                val spare = if (physicalNetworkOnline()) nextCandidate() else null
+                if (spare != null) {
+                    AppLog.write("${profile.name}: туннель есть, а интернета через него нет — пробую ${spare.name}")
+                    updateNotificationForce("${profile.name} не отвечает · пробую ${spare.name}")
+                    saveProfile(spare)
+                    startVpn(spare)
+                    return
+                }
+                // Запасного нет или нет самой сети под туннелем — тогда
+                // сервер не виноват. Туннель не рушим: связь может вернуться
+                // через секунду, а выключенный VPN — это утечка.
+                AppLog.write("${profile.name}: интернета через туннель пока нет, оставляю подключение")
+            }
 
             VpnStateStore.setState(VpnState.CONNECTED)
             attempt = 0
@@ -299,6 +337,41 @@ class XVpnService : VpnService() {
                 else -> stopVpn()
             }
         }
+    }
+
+    /**
+     * Ходит ли через запущенное ядро трафик на самом деле.
+     *
+     * Запрос идёт в SOCKS-вход ядра, то есть тем же путём, что и весь
+     * трафик телефона, до того же сервера. Приложение исключено из
+     * собственного туннеля, поэтому петли тут нет.
+     */
+    private fun internetWorks(): Boolean {
+        val client = OkHttpClient.Builder()
+            .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", XrayConfigBuilder.SOCKS_PORT)))
+            .callTimeout(PROBE_TIMEOUT_S, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .build()
+        repeat(PROBE_ATTEMPTS) { attemptNo ->
+            val ok = runCatching {
+                client.newCall(Request.Builder().url(PROBE_URL).build()).execute()
+                    .use { it.code in 200..399 }
+            }.getOrDefault(false)
+            if (ok) return true
+            AppLog.write("проверка связи: попытка ${attemptNo + 1} без ответа")
+        }
+        return false
+    }
+
+    /**
+     * Есть ли интернет у самой сети под туннелем. Система помечает сеть
+     * проверенной, когда сама достучалась до интернета. Если не пометила —
+     * виноват Wi-Fi или оператор, и перебирать серверы бессмысленно.
+     */
+    private fun physicalNetworkOnline(): Boolean {
+        val manager = getSystemService(ConnectivityManager::class.java) ?: return true
+        val caps = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
     /** Настройку читаем каждый раз: её могли переключить между попытками. */
