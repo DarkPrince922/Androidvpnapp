@@ -66,11 +66,11 @@ fun GroupCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(
                 BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
-                RoundedCornerShape(22.dp),
+                RoundedCornerShape(24.dp),
             ),
         content = content,
     )
@@ -382,24 +382,26 @@ fun NavPillItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // активный пункт — сплошная «таблетка» акцентного цвета, как в макете
     val accent = MaterialTheme.colorScheme.primary
     val background by animateColorAsState(
-        targetValue = if (selected) accent.copy(alpha = 0.16f) else Color.Transparent,
+        targetValue = if (selected) accent else Color.Transparent,
         animationSpec = tween(220),
         label = "navBackground",
     )
     val contentColor by animateColorAsState(
-        targetValue = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(220),
         label = "navContent",
     )
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(background)
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
+            .padding(vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

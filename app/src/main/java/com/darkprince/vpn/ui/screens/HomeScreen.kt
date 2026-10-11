@@ -3,6 +3,7 @@ package com.darkprince.vpn.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -63,13 +64,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.ui.theme.Appear
+import com.darkprince.vpn.ui.theme.DisplayFont
 import com.darkprince.vpn.ui.theme.bleedHorizontally
 import com.darkprince.vpn.ui.theme.LocalPalette
 import com.darkprince.vpn.ui.theme.CircleActionButton
@@ -188,21 +195,43 @@ fun HomeScreen(
 
         Spacer(Modifier.height(2.dp))
 
+        // Крупный статус одним словом и строка пояснения под ним: «защищено
+        // или нет» человек должен считать за полсекунды, остальное — потом.
+        val serverName = state.servers.getOrNull(state.selectedServer)?.name
+            ?.let { nameWithoutEmoji(it) }
         AnimatedContent(
-            targetState = when (vpnState) {
-                VpnState.CONNECTED -> "Подключено"
-                VpnState.CONNECTING -> "Подключение…"
-                VpnState.ERROR -> vpnError ?: "Ошибка"
-                VpnState.DISCONNECTED -> "Нажмите для подключения"
-            },
+            targetState = vpnState,
             transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) },
             label = "status",
-        ) { text ->
-            Text(
-                text,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        ) { current ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    when (current) {
+                        VpnState.CONNECTED -> "Защищено"
+                        VpnState.CONNECTING -> "Подключение…"
+                        VpnState.ERROR -> "Не подключено"
+                        VpnState.DISCONNECTED -> "Не защищено"
+                    },
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = when (current) {
+                        VpnState.CONNECTED -> MaterialTheme.colorScheme.onBackground
+                        VpnState.ERROR -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    when (current) {
+                        VpnState.CONNECTED, VpnState.CONNECTING -> serverName ?: ""
+                        VpnState.ERROR -> vpnError ?: "Не удалось подключиться"
+                        VpnState.DISCONNECTED -> "Нажмите, чтобы подключиться"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -211,11 +240,11 @@ fun HomeScreen(
             exit = fadeOut() + shrinkVertically(),
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             ) {
-                Text("↑ ${formatBytes(stats.uplinkBytes)}", style = MaterialTheme.typography.bodyMedium)
-                Text("↓ ${formatBytes(stats.downlinkBytes)}", style = MaterialTheme.typography.bodyMedium)
+                StatTile("Получено", formatBytes(stats.downlinkBytes), Modifier.weight(1f))
+                StatTile("Отправлено", formatBytes(stats.uplinkBytes), Modifier.weight(1f))
             }
         }
 
@@ -335,7 +364,6 @@ fun HomeScreen(
     }
 }
 
-/** Большая круглая кнопка с тонким кольцом и «радаром» при подключении. */
 @Composable
 private fun UpdateDialog(
     versionName: String,
@@ -406,15 +434,51 @@ private fun UpdateDialog(
     )
 }
 
+/**
+ * Плитка с числом: подпись мелко, значение — крупным шрифтом заголовков.
+ */
+@Composable
+private fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            value,
+            style = MaterialTheme.typography.titleLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Medium),
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Кнопка подключения.
+ *
+ * Выключено — тёмный «стеклянный» круг с пунктирным кольцом. Подключено —
+ * круг наливается акцентом, как светящийся шар, а от него расходятся кольца.
+ * Переход плавный: заливка проявляется, а не вспыхивает.
+ */
 @Composable
 private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val targetColor = when (vpnState) {
-        VpnState.CONNECTED -> MaterialTheme.colorScheme.primary
-        VpnState.CONNECTING -> MaterialTheme.colorScheme.secondary
-        VpnState.ERROR -> MaterialTheme.colorScheme.error
-        VpnState.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val accent by animateColorAsState(targetColor, tween(600), label = "accent")
+    val scheme = MaterialTheme.colorScheme
+    val gold = scheme.primary
+    val connected = vpnState == VpnState.CONNECTED
+    val accent by animateColorAsState(
+        when (vpnState) {
+            VpnState.CONNECTED -> scheme.primary
+            VpnState.CONNECTING -> scheme.secondary
+            VpnState.ERROR -> scheme.error
+            VpnState.DISCONNECTED -> scheme.onSurfaceVariant
+        },
+        tween(600),
+        label = "accent",
+    )
+    val fill by animateFloatAsState(if (connected) 1f else 0f, tween(600), label = "fill")
 
     val pulse = rememberInfiniteTransition(label = "pulse")
     val ringProgress by pulse.animateFloat(
@@ -432,31 +496,64 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modif
         ),
         label = "scale",
     )
+    val panel = LocalPalette.current.panel
+    val hairline = scheme.onSurface.copy(alpha = 0.08f)
 
     Box(
         modifier = modifier.size(268.dp),
         contentAlignment = Alignment.Center,
     ) {
-        if (vpnState == VpnState.CONNECTED) {
-            Canvas(Modifier.fillMaxSize()) {
+        Canvas(Modifier.fillMaxSize()) {
+            val radius = size.minDimension / 2f
+            if (fill > 0f) {
+                drawCircle(
+                    Brush.radialGradient(
+                        listOf(gold.copy(alpha = 0.42f * fill), Color.Transparent),
+                        center = center,
+                        radius = radius,
+                    ),
+                    radius = radius,
+                )
+            }
+            drawCircle(hairline, radius = radius * 0.86f, style = Stroke(1.dp.toPx()))
+            drawCircle(
+                accent.copy(alpha = 0.4f),
+                radius = radius * 0.77f,
+                style = Stroke(
+                    width = 1.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 6.dp.toPx())),
+                ),
+            )
+            if (connected) {
                 listOf(ringProgress, (ringProgress + 0.5f) % 1f).forEach { progress ->
                     drawCircle(
-                        color = accent.copy(alpha = (1f - progress) * 0.3f),
-                        radius = size.minDimension / 2f * (0.72f + 0.28f * progress),
+                        color = accent.copy(alpha = (1f - progress) * 0.45f),
+                        radius = radius * (0.66f + 0.34f * progress),
                         style = Stroke(width = 2.dp.toPx()),
                     )
                 }
             }
         }
 
-        // тонкое кольцо вокруг тёмного круга — без заливки акцентом
         Box(
             modifier = Modifier
-                .size(230.dp)
+                .size(176.dp)
                 .scale(scale)
                 .clip(CircleShape)
-                .background(LocalPalette.current.panel.copy(alpha = 0.7f))
-                .border(2.dp, accent.copy(alpha = 0.55f), CircleShape)
+                .background(panel.copy(alpha = 0.85f))
+                .drawBehind {
+                    if (fill > 0f) {
+                        drawCircle(
+                            Brush.radialGradient(
+                                listOf(lerp(gold, Color.White, 0.45f), gold, lerp(gold, Color.Black, 0.35f)),
+                                center = Offset(size.width * 0.35f, size.height * 0.3f),
+                                radius = size.width * 0.8f,
+                            ),
+                            alpha = fill,
+                        )
+                    }
+                }
+                .border(1.dp, scheme.outline.copy(alpha = 0.6f * (1f - fill)), CircleShape)
                 .clickable(enabled = vpnState != VpnState.CONNECTING, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
@@ -465,9 +562,9 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modif
             } else {
                 Icon(
                     Icons.Default.PowerSettingsNew,
-                    contentDescription = null,
-                    modifier = Modifier.size(88.dp),
-                    tint = accent,
+                    contentDescription = if (connected) "Отключить VPN" else "Подключить VPN",
+                    modifier = Modifier.size(72.dp),
+                    tint = lerp(accent, scheme.onPrimary, fill),
                 )
             }
         }

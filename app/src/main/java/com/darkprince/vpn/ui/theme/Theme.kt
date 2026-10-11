@@ -1,13 +1,23 @@
 package com.darkprince.vpn.ui.theme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.darkprince.vpn.R
 
 /**
  * Цвета состояний. Одни и те же во всех темах намеренно: зелёное «хорошо» и
@@ -194,11 +204,73 @@ fun paletteById(id: String?): AppPalette =
 
 val LocalPalette = staticCompositionLocalOf { NightPalette }
 
+/**
+ * Шрифты. Заголовки и крупные числа — Unbounded: широкий, геометричный,
+ * он и делает интерфейс «новым». Всё остальное — Manrope: спокойный и
+ * хорошо читается мелко. Оба под лицензией OFL (тексты в licenses/), в
+ * приложение положены только нужные начертания и только латиница с
+ * кириллицей — так они весят около 370 КБ вместо полутора мегабайт.
+ */
+val DisplayFont = FontFamily(
+    Font(R.font.unbounded_500, FontWeight.Medium),
+    Font(R.font.unbounded_700, FontWeight.Bold),
+)
+
+val TextFont = FontFamily(
+    Font(R.font.manrope_400, FontWeight.Normal),
+    Font(R.font.manrope_500, FontWeight.Medium),
+    Font(R.font.manrope_600, FontWeight.SemiBold),
+    Font(R.font.manrope_700, FontWeight.Bold),
+)
+
+private fun TextStyle.text(weight: FontWeight) = copy(fontFamily = TextFont, fontWeight = weight)
+
+private fun TextStyle.display(size: Int) = copy(
+    fontFamily = DisplayFont,
+    fontWeight = FontWeight.Bold,
+    fontSize = size.sp,
+    lineHeight = (size * 1.25f).sp,
+    letterSpacing = 0.sp,
+)
+
+private val AppTypography = Typography().run {
+    copy(
+        displayLarge = displayLarge.display(48),
+        displayMedium = displayMedium.display(40),
+        displaySmall = displaySmall.display(32),
+        // Unbounded широкий: при стандартных размерах заголовки экранов
+        // переносились бы, поэтому они на ступень мельче обычного
+        headlineLarge = headlineLarge.display(28),
+        headlineMedium = headlineMedium.display(26),
+        headlineSmall = headlineSmall.display(21),
+        titleLarge = titleLarge.text(FontWeight.Bold),
+        titleMedium = titleMedium.text(FontWeight.Bold),
+        titleSmall = titleSmall.text(FontWeight.SemiBold),
+        bodyLarge = bodyLarge.text(FontWeight.Normal),
+        bodyMedium = bodyMedium.text(FontWeight.Normal),
+        bodySmall = bodySmall.text(FontWeight.Normal),
+        labelLarge = labelLarge.text(FontWeight.Bold),
+        labelMedium = labelMedium.text(FontWeight.SemiBold),
+        labelSmall = labelSmall.text(FontWeight.SemiBold),
+    )
+}
+
+/** Скругления крупнее стандартных: мягкие «стеклянные» карточки. */
+private val AppShapes = Shapes(
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(28.dp),
+)
+
 @Composable
 fun AppTheme(palette: AppPalette = NightPalette, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalPalette provides palette) {
         MaterialTheme(
             colorScheme = palette.scheme,
+            typography = AppTypography,
+            shapes = AppShapes,
             content = content,
         )
     }

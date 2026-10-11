@@ -133,12 +133,12 @@ internal fun ServerRow(
 ) {
     val accent = MaterialTheme.colorScheme.primary
     val borderColor by animateColorAsState(
-        targetValue = if (selected) accent.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+        targetValue = if (selected) accent else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
         animationSpec = tween(250),
         label = "serverBorder",
     )
     val background by animateColorAsState(
-        targetValue = if (selected) accent.copy(alpha = 0.07f) else MaterialTheme.colorScheme.surface,
+        targetValue = if (selected) accent.copy(alpha = 0.11f) else MaterialTheme.colorScheme.surface,
         animationSpec = tween(250),
         label = "serverBackground",
     )

@@ -388,12 +388,12 @@ private fun AppRoot(
                         .navigationBarsPadding()
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(LocalPalette.current.panel.copy(alpha = 0.9f))
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(LocalPalette.current.panel.copy(alpha = 0.92f))
                         .border(
                             1.dp,
                             MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-                            RoundedCornerShape(24.dp),
+                            RoundedCornerShape(26.dp),
                         )
                         .padding(6.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
