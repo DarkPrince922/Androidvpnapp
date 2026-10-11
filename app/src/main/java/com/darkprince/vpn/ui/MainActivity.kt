@@ -344,6 +344,8 @@ private fun AppRoot(
     val adminViewModel: AdminViewModel = viewModel(viewModelStoreOwner = activity)
     val adminToolsViewModel: com.darkprince.vpn.ui.vm.AdminToolsViewModel =
         viewModel(viewModelStoreOwner = activity)
+    // та же модель, что у главного экрана: ей нужно знать о смене аккаунта
+    val homeViewModelForSession: HomeViewModel = viewModel(viewModelStoreOwner = activity)
     val supportState by supportViewModel.state.collectAsStateWithLifecycle()
     val newsState by newsViewModel.state.collectAsStateWithLifecycle()
     val adminState by adminViewModel.state.collectAsStateWithLifecycle()
@@ -355,6 +357,7 @@ private fun AppRoot(
         newsViewModel.sessionChanged()
         adminViewModel.sessionChanged()
         com.darkprince.vpn.data.api.CabinetEvents.sessionChanged()
+        homeViewModelForSession.sessionChanged(authState.loggedIn, authState.guestMode)
     }
 
     // Самое важное из событий кабинета — коротким сообщением, на каком бы

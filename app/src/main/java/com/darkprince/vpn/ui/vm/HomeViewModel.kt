@@ -42,6 +42,8 @@ data class HomeUiState(
     /** Подписки пользователя; переключатель показываем, когда их больше одной. */
     val subscriptions: List<SubscriptionListItem> = emptyList(),
     val selectedSubscriptionId: Long? = null,
+    /** Чьи серверы сейчас в [servers]: номер подписки, для которой их скачали. */
+    val serversSubId: Long? = null,
 ) {
     /**
      * Выбранная подписка, а если её в списке уже нет — активная.
@@ -128,6 +130,25 @@ class HomeViewModel : ViewModel() {
      */
     private var refreshJob: Job? = null
 
+    /** Вход, выход, гостевой режим — какой сессии принадлежит то, что на экране. */
+    private var session: Pair<Boolean, Boolean>? = null
+
+    /**
+     * Сменился аккаунт: всё, что на экране, — от прежнего. Список серверов,
+     * подписки, срок и замеры сбрасываем и грузим заново. На диске это уже
+     * стёрто при выходе, но экран держал данные в памяти, и новый аккаунт
+     * видел — и мог подключаться по — серверам прежнего.
+     */
+    fun sessionChanged(loggedIn: Boolean, guest: Boolean) {
+        val now = loggedIn to guest
+        val before = session
+        session = now
+        if (before == null || before == now) return
+        refreshJob?.cancel()
+        _state.value = HomeUiState()
+        refresh(forceServers = true)
+    }
+
     fun refresh(forceServers: Boolean = false, notify: Boolean = false) {
         _state.value = _state.value.copy(loading = true, error = null)
         if (notify) _notice.value = null
@@ -141,6 +162,7 @@ class HomeViewModel : ViewModel() {
             subRepo.cachedServersFor(cachedId)?.let { (cachedServers, cachedInfo) ->
                 val selected = resolveSelected(cachedId, cachedServers)
                 _state.value = _state.value.copy(
+                    serversSubId = cachedId,
                     servers = cachedServers,
                     subUserInfo = cachedInfo ?: _state.value.subUserInfo,
                     selectedServer = selected,
@@ -177,7 +199,12 @@ class HomeViewModel : ViewModel() {
                 if (error == null) error = e.userMessage()
                 null
             }
+            // Не скачали — оставляем прежний список, но только если он той же
+            // подписки. Иначе после смены аккаунта или подписки на экране
+            // оставались чужие серверы, и VPN подключался по ним.
             val servers = fresh?.first ?: _state.value.servers
+                .takeIf { _state.value.serversSubId == selectedId }
+                .orEmpty()
             val userInfo = fresh?.second ?: _state.value.subUserInfo
             // Итог считаем до того, как ошибку погасит кэш: для полосы «ошибка
             // или нет» важно, дошли ли мы до сервера, а не осталось ли что
@@ -205,6 +232,7 @@ class HomeViewModel : ViewModel() {
                 subscription = sub,
                 subUserInfo = userInfo,
                 servers = servers,
+                serversSubId = selectedId,
                 selectedServer = selected,
                 loading = false,
                 error = error,
@@ -240,6 +268,7 @@ class HomeViewModel : ViewModel() {
             val cachedServers = cached?.first ?: emptyList()
             _state.value = _state.value.copy(
                 selectedSubscriptionId = id,
+                serversSubId = id,
                 servers = cachedServers,
                 subUserInfo = cached?.second,
                 selectedServer = resolveSelected(id, cachedServers),
