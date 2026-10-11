@@ -1,5 +1,11 @@
 package com.darkprince.vpn.data.api
 
+import com.darkprince.vpn.data.api.dto.MergeResultDto
+import com.darkprince.vpn.data.api.dto.MergeExecuteRequest
+import com.darkprince.vpn.data.api.dto.MergePreviewDto
+import com.darkprince.vpn.data.api.dto.MergeCodeRequest
+import com.darkprince.vpn.data.api.dto.EmailLinkResponse
+import com.darkprince.vpn.data.api.dto.EmailLinkRequest
 import com.darkprince.vpn.data.api.dto.AdminAvailableTariffsDto
 import com.darkprince.vpn.data.api.dto.AdminBalanceRequest
 import com.darkprince.vpn.data.api.dto.AdminSubscriptionAction
@@ -87,6 +93,19 @@ interface BedolagaApi {
     /** 200 — токены, 202 — ожидание подтверждения, 410 — токен истёк. */
     @POST("cabinet/auth/deeplink/poll")
     suspend fun deepLinkPoll(@Body body: DeepLinkPollRequest): Response<AuthResponse>
+
+    /** Привязать почту к вошедшему аккаунту (не путать с /register/standalone). */
+    @POST("cabinet/auth/email/register")
+    suspend fun linkEmail(@Body body: EmailLinkRequest): EmailLinkResponse
+
+    @POST("cabinet/auth/email/merge/verify")
+    suspend fun verifyEmailMerge(@Body body: MergeCodeRequest): EmailLinkResponse
+
+    @GET("cabinet/auth/merge/{token}")
+    suspend fun mergePreview(@Path("token") token: String): MergePreviewDto
+
+    @POST("cabinet/auth/merge/{token}")
+    suspend fun executeMerge(@Path("token") token: String, @Body body: MergeExecuteRequest): MergeResultDto
 
     @POST("cabinet/auth/email/login")
     suspend fun emailLogin(@Body body: EmailLoginRequest): AuthResponse

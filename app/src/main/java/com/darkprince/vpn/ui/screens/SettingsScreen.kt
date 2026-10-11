@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PersonAdd
@@ -71,6 +72,7 @@ fun SettingsScreen(
     newsUnreadCount: Int = 0,
     supportUnreadCount: Int,
     onCreateAccount: () -> Unit,
+    onLinkEmail: () -> Unit,
     onDropSharedSubscription: () -> Unit,
     onLogout: () -> Unit,
     selectedThemeId: String,
@@ -108,6 +110,26 @@ fun SettingsScreen(
                 subtitle = hint,
                 showChevron = false,
             )
+
+            // Почта — для входа без Telegram. Привязать можно, только если её
+            // ещё нет; есть, но не подтверждена — напоминаем про письмо.
+            if (!guestMode && user != null && user.email == null) {
+                RowDivider()
+                SettingsRow(
+                    icon = Icons.Default.Email,
+                    title = "Привязать почту",
+                    subtitle = "Чтобы входить и без Telegram",
+                    onClick = onLinkEmail,
+                )
+            } else if (!guestMode && user?.email != null && user.emailVerified == false) {
+                RowDivider()
+                SettingsRow(
+                    icon = Icons.Default.Email,
+                    title = "Почта не подтверждена",
+                    subtitle = "Перейдите по ссылке из письма на ${user.email}",
+                    showChevron = false,
+                )
+            }
 
             if (guestMode) {
                 RowDivider()

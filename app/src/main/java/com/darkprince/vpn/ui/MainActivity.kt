@@ -661,6 +661,13 @@ private fun AppRoot(
                     )
                 }
             }
+            composable("email-link") {
+                val emailLinkViewModel: com.darkprince.vpn.ui.vm.EmailLinkViewModel = viewModel()
+                com.darkprince.vpn.ui.screens.EmailLinkScreen(
+                    viewModel = emailLinkViewModel,
+                    onDone = { navController.popBackStack() },
+                )
+            }
             composable("news") {
                 NewsScreen(
                     viewModel = newsViewModel,
@@ -728,6 +735,7 @@ private fun AppRoot(
                     onOpenNews = { navController.navigate("news") },
                     newsUnreadCount = newsState.unread,
                     onCreateAccount = { navController.navigate("upgrade") },
+                    onLinkEmail = { navController.navigate("email-link") },
                     onDropSharedSubscription = {
                         scope.launch {
                             XVpnService.stop(activity)

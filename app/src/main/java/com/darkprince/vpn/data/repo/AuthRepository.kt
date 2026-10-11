@@ -1,5 +1,9 @@
 package com.darkprince.vpn.data.repo
 
+import com.darkprince.vpn.data.api.dto.MergeExecuteRequest
+import com.darkprince.vpn.data.api.dto.MergePreviewDto
+import com.darkprince.vpn.data.api.dto.MergeCodeRequest
+import com.darkprince.vpn.data.api.dto.EmailLinkRequest
 import com.darkprince.vpn.data.api.ApiClient
 import com.darkprince.vpn.data.api.dto.AuthResponse
 import com.darkprince.vpn.data.api.dto.DeepLinkPollRequest
@@ -140,6 +144,57 @@ class AuthRepository(
         false
     }
 
+    // ---------- привязка почты ----------
+
+    /**
+     * Привязать почту к вошедшему аккаунту (обычно — к вошедшему через
+     * Telegram). Бот шлёт письмо со ссылкой подтверждения; после неё в тот же
+     * аккаунт можно входить и по почте.
+     *
+     * Если почта уже принадлежит другому аккаунту, бот предлагает их
+     * объединить и шлёт на эту почту код — [EmailLinkResult.NeedMergeCode].
+     */
+    suspend fun linkEmail(email: String, password: String): EmailLinkResult = try {
+        val response = api.linkEmail(EmailLinkRequest(email.trim(), password))
+        when {
+            response.mergeRequired == true -> EmailLinkResult.NeedMergeCode(email.trim())
+            else -> {
+                me()
+                EmailLinkResult.Sent(
+                    email = response.email ?: email.trim(),
+                    linkedNow = response.message?.contains("linked", ignoreCase = true) == true,
+                )
+            }
+        }
+    } catch (e: Exception) {
+        EmailLinkResult.Failed(e.linkMessage())
+    }
+
+    /** Код из письма на занятую почту → токен объединения, или текст ошибки. */
+    suspend fun confirmMergeCode(code: String): Pair<String?, String?> = try {
+        val token = api.verifyEmailMerge(MergeCodeRequest(code.trim())).mergeToken
+        if (token != null) token to null else null to "Бот не прислал подтверждение объединения"
+    } catch (e: Exception) {
+        null to e.linkMessage()
+    }
+
+    suspend fun mergePreview(token: String): MergePreviewDto = api.mergePreview(token)
+
+    /**
+     * Объединить аккаунты. [keepSubscriptionFrom] — чья подписка останется.
+     * Бот выдаёт новую сессию — сохраняем её, старая больше не годится.
+     */
+    suspend fun executeMerge(token: String, keepSubscriptionFrom: Long): String? = try {
+        val result = api.executeMerge(token, MergeExecuteRequest(keepSubscriptionFrom))
+        if (result.accessToken != null) {
+            saveSession(AuthResponse(accessToken = result.accessToken, refreshToken = result.refreshToken, user = result.user))
+        }
+        me()
+        if (result.success) null else "Объединить не удалось"
+    } catch (e: Exception) {
+        e.linkMessage()
+    }
+
     suspend fun me(): UserDto? = try {
         val user = api.me()
         prefs.setUserJson(client.json.encodeToString(user))
@@ -203,4 +258,41 @@ private fun retrofit2.HttpException.serverExplanation(): String? {
     }.getOrNull()?.trim() ?: return null
     val russian = text.any { it in 'а'..'я' || it in 'А'..'Я' || it == 'ё' || it == 'Ё' }
     return text.takeIf { russian && it.length <= 300 }
+}
+
+sealed interface EmailLinkResult {
+    /** Письмо отправлено; [linkedNow] — подтверждение в боте выключено, почта уже привязана. */
+    data class Sent(val email: String, val linkedNow: Boolean) : EmailLinkResult
+    /** Почта занята другим аккаунтом: на неё ушёл код для объединения. */
+    data class NeedMergeCode(val email: String) : EmailLinkResult
+    data class Failed(val message: String) : EmailLinkResult
+}
+
+/**
+ * Ошибки привязки и объединения бот пишет по-английски. Те, что человек
+ * реально встретит, переводим; остальное — общим текстом по коду ответа.
+ */
+private fun Exception.linkMessage(): String {
+    val detail = (this as? retrofit2.HttpException)?.let { http ->
+        runCatching { http.response()?.errorBody()?.string() }.getOrNull()
+    }.orEmpty()
+    val known = listOf(
+        "already linked to your account" to "Эта почта уже привязана к вашему аккаунту.",
+        "cannot be linked" to "Эту почту привязать нельзя.",
+        "not configured" to "Бот сейчас не может отправлять письма. Попробуйте позже.",
+        "Invalid confirmation code" to "Неверный код. Проверьте письмо и попробуйте снова.",
+        "Too many invalid attempts" to "Слишком много неверных попыток. Начните заново.",
+        "No pending account merge" to "Время на подтверждение вышло. Начните заново.",
+        "invalid or expired" to "Время на подтверждение вышло. Начните заново.",
+        "temporarily blocked" to "Объединение пока недоступно. Попробуйте позже.",
+        "Too many requests" to "Слишком часто. Подождите минуту и попробуйте снова.",
+        "Email auth" to "Вход по почте в боте выключен.",
+    )
+    known.firstOrNull { (marker, _) -> detail.contains(marker, ignoreCase = true) }?.let { return it.second }
+    val code = (this as? retrofit2.HttpException)?.code()
+    return when (code) {
+        422 -> "Проверьте почту и пароль: пароль — от 8 символов."
+        null -> userMessage()
+        else -> "Не получилось (ошибка $code). Попробуйте позже."
+    }
 }

@@ -51,6 +51,69 @@ data class UserDto(
     @SerialName("last_name") val lastName: String? = null,
     @SerialName("balance_kopeks") val balanceKopeks: Long? = null,
     val language: String? = null,
+    @SerialName("email_verified") val emailVerified: Boolean? = null,
+)
+
+// ---------- Привязка почты к аккаунту ----------
+
+@Serializable
+data class EmailLinkRequest(val email: String, val password: String)
+
+/**
+ * Ответ на привязку. Обычно — «письмо отправлено». Если почта уже занята
+ * другим аккаунтом, бот присылает на неё код и просит подтвердить
+ * объединение: `merge_required`.
+ */
+@Serializable
+data class EmailLinkResponse(
+    val message: String? = null,
+    val email: String? = null,
+    @SerialName("merge_required") val mergeRequired: Boolean? = null,
+    @SerialName("merge_token") val mergeToken: String? = null,
+)
+
+@Serializable
+data class MergeCodeRequest(val code: String)
+
+@Serializable
+data class MergePreviewSubscriptionDto(
+    val status: String? = null,
+    @SerialName("tariff_name") val tariffName: String? = null,
+    @SerialName("end_date") val endDate: String? = null,
+    @SerialName("device_limit") val deviceLimit: Int? = null,
+    @SerialName("traffic_limit_gb") val trafficLimitGb: Double? = null,
+    @SerialName("is_trial") val isTrial: Boolean? = null,
+)
+
+@Serializable
+data class MergePreviewUserDto(
+    val id: Long,
+    val username: String? = null,
+    @SerialName("first_name") val firstName: String? = null,
+    val email: String? = null,
+    @SerialName("auth_methods") val authMethods: List<String> = emptyList(),
+    @SerialName("balance_kopeks") val balanceKopeks: Long = 0,
+    val subscription: MergePreviewSubscriptionDto? = null,
+)
+
+@Serializable
+data class MergePreviewDto(
+    val primary: MergePreviewUserDto,
+    val secondary: MergePreviewUserDto,
+    @SerialName("expires_in_seconds") val expiresInSeconds: Int = 0,
+)
+
+@Serializable
+data class MergeExecuteRequest(
+    @SerialName("keep_subscription_from") val keepSubscriptionFrom: Long,
+)
+
+@Serializable
+data class MergeResultDto(
+    val success: Boolean = false,
+    @SerialName("access_token") val accessToken: String? = null,
+    @SerialName("refresh_token") val refreshToken: String? = null,
+    val user: UserDto? = null,
 )
 
 @Serializable

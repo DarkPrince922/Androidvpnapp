@@ -82,7 +82,10 @@ class ApiClient(private val prefs: AppPrefs) {
     private val anonymousPaths = listOf(
         "/cabinet/auth/deeplink/",
         "/cabinet/auth/email/login",
-        "/cabinet/auth/email/register",
+        // Только регистрация с нуля. Соседний /email/register без хвоста —
+        // это привязка почты к уже вошедшему аккаунту, ему токен нужен; по
+        // общему началу пути он бы ушёл без токена и получил 401.
+        "/cabinet/auth/email/register/standalone",
         "/cabinet/auth/email/verify",
         "/cabinet/auth/password/",
         "/cabinet/auth/refresh",
