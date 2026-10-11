@@ -48,7 +48,22 @@ object ServiceLocator {
         supportRepository = SupportRepository(apiClient, prefs, appContext)
         newsRepository = NewsRepository(apiClient, prefs)
         adminRepository = AdminRepository(apiClient, prefs)
-        com.darkprince.vpn.data.api.ServiceHealth.init(appContext) { apiClient.api.branding() }
+        com.darkprince.vpn.data.api.ServiceHealth.init(
+            ping = { apiClient.api.branding() },
+            // Тем же клиентом, что и подписка: при поднятом туннеле он идёт
+            // через ядро — и тогда белые списки ему не мешают, как и кабинету.
+            reach = { url ->
+                val client = apiClient.plainOkHttp.newBuilder()
+                    .callTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching {
+                        client.newCall(okhttp3.Request.Builder().url(url).head().build()).execute()
+                            .use { true }
+                    }.getOrDefault(false)
+                }
+            },
+        )
         // клиент тот же, что для подписки: при поднятом туннеле он ходит через
         // ядро, поэтому обновление доедет и там, где сайт заблокирован
         appUpdater = AppUpdater(appContext, apiClient.plainOkHttp)

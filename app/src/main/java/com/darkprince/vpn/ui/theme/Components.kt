@@ -479,10 +479,11 @@ fun UnreadBadge(count: Int) {
 }
 
 /**
- * Полоса «сервис недоступен». Показывается сама, пока кабинет не отвечает
+ * Полоса «кабинет недоступен». Показывается сама, пока кабинет не отвечает
  * (см. [com.darkprince.vpn.data.api.ServiceHealth]), и гаснет сама, когда
  * он вернулся. Вместо россыпи «нет связи» на каждом экране — одно спокойное
- * объяснение: VPN работает, недоступно только то, что требует кабинета.
+ * объяснение, и честное: лежим мы, у человека нет сети или оператор
+ * включил белые списки — это три разные надписи.
  *
  * [unavailable] — что именно сейчас не выйдет на этом экране.
  */
@@ -491,9 +492,22 @@ fun ServiceDownBanner(
     unavailable: String = "Оплата, продление и покупки станут доступны, когда сервис вернётся.",
     modifier: Modifier = Modifier,
 ) {
-    val down by com.darkprince.vpn.data.api.ServiceHealth.down
-        .collectAsState()
-    androidx.compose.animation.AnimatedVisibility(visible = down, modifier = modifier) {
+    val status by com.darkprince.vpn.data.api.ServiceHealth.status.collectAsState()
+    val (title, text) = when (status) {
+        com.darkprince.vpn.data.api.ServiceHealth.Status.OFFLINE ->
+            "Нет подключения к интернету" to
+                "Проверьте Wi-Fi или мобильную сеть. Подписка сохранена — VPN подключится, как только появится сеть."
+        com.darkprince.vpn.data.api.ServiceHealth.Status.RESTRICTED ->
+            "Интернет ограничен оператором" to
+                "Похоже, включены белые списки: зарубежные сайты и наш сервис отсюда не открываются. " +
+                "Подписка сохранена — подключитесь к Wi-Fi или к серверу, который работает при ограничениях. " +
+                "Оплатить и продлить можно будет, когда сервис станет доступен."
+        else -> "Сервис временно недоступен" to "VPN работает по сохранённой подписке. $unavailable"
+    }
+    androidx.compose.animation.AnimatedVisibility(
+        visible = status != com.darkprince.vpn.data.api.ServiceHealth.Status.OK,
+        modifier = modifier,
+    ) {
         val accent = BrandColors.Warning
         val shape = RoundedCornerShape(18.dp)
         Column(
@@ -504,14 +518,10 @@ fun ServiceDownBanner(
                 .border(1.dp, accent.copy(alpha = 0.45f), shape)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
-            Text(
-                "Сервис временно недоступен",
-                style = MaterialTheme.typography.titleSmall,
-                color = accent,
-            )
+            Text(title, style = MaterialTheme.typography.titleSmall, color = accent)
             Spacer(Modifier.height(2.dp))
             Text(
-                "VPN работает по сохранённой подписке. $unavailable",
+                text,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
