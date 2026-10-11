@@ -206,16 +206,21 @@ class PlansViewModel : ViewModel() {
         val name = _state.value.cards.firstOrNull { it.id == subId }?.title
         _state.update { it.copy(purchasing = true, error = null, info = null) }
         viewModelScope.launch {
-            if (VpnStateStore.state.value == VpnState.CONNECTED) {
-                XVpnService.stop(ServiceLocator.appContext)
+            // Сохранённый профиль — сервер прежней подписки. Оставь его, и
+            // автоподключение или «постоянный VPN» подняли бы туннель по ней.
+            val wasOn = VpnStateStore.state.value.let {
+                it == VpnState.CONNECTED || it == VpnState.CONNECTING
             }
+            if (wasOn) XVpnService.stop(ServiceLocator.appContext)
+            XVpnService.forgetProfile(ServiceLocator.appContext)
             repo.selectSubscription(subId)
             _state.update {
                 it.copy(
                     purchasing = false,
                     workingSubscriptionId = subId,
-                    info = if (name != null) "Подключение переключено на «$name»"
-                    else "Подключение переключено",
+                    info = (if (name != null) "Подключение переключено на «$name»"
+                    else "Подключение переключено") +
+                        if (wasOn) ". VPN выключен — выберите сервер и подключитесь снова" else "",
                 )
             }
         }
@@ -285,14 +290,23 @@ class PlansViewModel : ViewModel() {
 }
 
 /**
- * Сколько дней осталось до даты окончания. Кабинет отдаёт дату строкой ISO —
- * берём из неё только календарный день: время и часовой пояс для «осталось
- * дней» роли не играют. Отрицательное число значит, что срок уже вышел.
+ * Сколько дней осталось до даты окончания. Отрицательное число значит, что
+ * срок уже вышел.
+ *
+ * Кабинет отдаёт время в UTC — иногда с поясом, иногда без. Календарный день
+ * считаем по часам телефона: подписка до 21:00 UTC у человека в Москве
+ * кончается в полночь следующего дня, и взять день прямо из строки значило бы
+ * недосчитать сутки.
  */
 private fun daysUntilDate(endDate: String): Int? = try {
-    java.time.temporal.ChronoUnit.DAYS
-        .between(java.time.LocalDate.now(), java.time.LocalDate.parse(endDate.take(10)))
-        .toInt()
+    val zone = java.time.ZoneId.systemDefault()
+    val end = runCatching { java.time.OffsetDateTime.parse(endDate).toInstant() }
+        .recoverCatching {
+            java.time.LocalDateTime.parse(endDate).toInstant(java.time.ZoneOffset.UTC)
+        }
+        .map { it.atZone(zone).toLocalDate() }
+        .getOrElse { java.time.LocalDate.parse(endDate.take(10)) }
+    java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(zone), end).toInt()
 } catch (_: Exception) {
     null
 }

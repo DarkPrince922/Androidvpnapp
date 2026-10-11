@@ -16,6 +16,8 @@ import com.darkprince.vpn.vpn.VpnState
 import com.darkprince.vpn.vpn.VpnStateStore
 import com.darkprince.vpn.vpn.XVpnService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -112,10 +114,18 @@ class HomeViewModel : ViewModel() {
      * человек кнопкой: автоматическое обновление при открытии экрана молчит,
      * иначе сообщение всплывало бы при каждом входе.
      */
+    /**
+     * Текущее обновление. Новое отменяет прежнее: иначе прежнее, договорив с
+     * сервером позже, записывало поверх серверы и номер подписки, которые
+     * человек уже успел сменить.
+     */
+    private var refreshJob: Job? = null
+
     fun refresh(forceServers: Boolean = false, notify: Boolean = false) {
         _state.value = _state.value.copy(loading = true, error = null)
         if (notify) _notice.value = null
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             // 1) мгновенно показываем сохранённую подписку (работает офлайн)
             val cachedId = prefs.selectedSubscriptionFlow.first()
             // до первого чтения: забрать наследство старого формата, иначе
@@ -172,6 +182,12 @@ class HomeViewModel : ViewModel() {
                     Notice(error ?: "Не удалось обновить подписку", ok = false)
                 }
             }
+            // Отмены одной мало: сетевые вызовы выше ловят Exception, а отмена
+            // корутины — тоже исключение, и её проглотили бы. Поэтому прямо
+            // перед записью сверяемся: если подписку сменили, пока мы ждали
+            // сервер, результат относится к прежней — молча выбрасываем.
+            coroutineContext.ensureActive()
+            if (prefs.selectedSubscriptionFlow.first() != selectedId) return@launch
             // если данные в итоге есть — сетевую ошибку не показываем
             if (servers.isNotEmpty()) error = null
             val selected = resolveSelected(selectedId, servers)
@@ -198,9 +214,13 @@ class HomeViewModel : ViewModel() {
     fun selectSubscription(id: Long) {
         if (id == _state.value.selectedSubscriptionId) return
         viewModelScope.launch {
-            if (VpnStateStore.state.value == VpnState.CONNECTED) {
-                XVpnService.stop(ServiceLocator.appContext)
+            // Сохранённый профиль — сервер прежней подписки. Оставь его, и
+            // автоподключение или «постоянный VPN» подняли бы туннель по ней.
+            val wasOn = VpnStateStore.state.value.let {
+                it == VpnState.CONNECTED || it == VpnState.CONNECTING
             }
+            if (wasOn) XVpnService.stop(ServiceLocator.appContext)
+            XVpnService.forgetProfile(ServiceLocator.appContext)
             subRepo.selectSubscription(id)
             // серверы этой подписки уже могут лежать в кэше — показываем сразу
             val cached = subRepo.cachedServersFor(id)

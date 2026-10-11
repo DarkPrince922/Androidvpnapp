@@ -40,7 +40,11 @@ data class TariffOffer(
     val deviceLimit: Int?,
 )
 
-data class PeriodPrice(val days: Int, val priceKopeks: Long)
+/**
+ * Срок и цена. [daily] — суточный тариф: у него нет сроков, только цена за
+ * день, а срок в один день сервер ставит при покупке сам.
+ */
+data class PeriodPrice(val days: Int, val priceKopeks: Long, val daily: Boolean = false)
 
 @kotlinx.serialization.Serializable
 data class SubscriptionUserInfo(
@@ -310,7 +314,15 @@ class SubscriptionRepository(
                 val obj = item as? JsonObject ?: continue
                 val id = obj["id"]?.jsonPrimitive?.longOrNull ?: continue
                 val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: "Тариф $id"
-                val periods = parsePeriods(obj)
+                // Суточный тариф приходит без сроков, с ценой за день. Раньше
+                // такие тарифы отбрасывались вместе с действительно пустыми, и
+                // суточного в магазине не было вовсе.
+                val periods = parsePeriods(obj).ifEmpty {
+                    val daily = (obj["is_daily"] as? kotlinx.serialization.json.JsonPrimitive)
+                        ?.booleanOrNull == true
+                    val perDay = obj["daily_price_kopeks"]?.jsonPrimitive?.longOrNull ?: 0L
+                    if (daily && perDay > 0) listOf(PeriodPrice(1, perDay, daily = true)) else emptyList()
+                }
                 if (periods.isEmpty()) continue
                 offers.add(
                     TariffOffer(

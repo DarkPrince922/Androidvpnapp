@@ -487,7 +487,12 @@ private fun PeriodRow(
             FilterChip(
                 selected = selected?.days == period.days,
                 onClick = { onSelect(period) },
-                label = { Text("${period.days} дн. · ${formatKopeks(period.priceKopeks)}") },
+                label = {
+                    Text(
+                        if (period.daily) "Посуточно · ${formatKopeks(period.priceKopeks)} в день"
+                        else "${period.days} дн. · ${formatKopeks(period.priceKopeks)}"
+                    )
+                },
             )
         }
     }

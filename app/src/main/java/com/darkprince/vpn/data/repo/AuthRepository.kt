@@ -159,15 +159,48 @@ class AuthRepository(
 }
 
 fun Exception.userMessage(): String = when (this) {
-    is retrofit2.HttpException -> when (code()) {
+    is retrofit2.HttpException -> serverExplanation() ?: when (code()) {
         400, 422 -> "Неверные данные. Проверьте введённые значения."
         401 -> "Неверный логин или пароль."
+        402 -> "Не хватает денег на балансе. Пополните баланс и попробуйте снова."
         403 -> "Доступ запрещён."
         404 -> "Сервис не найден. Проверьте адрес кабинета."
+        409 -> "Это уже сделано — обновите экран."
         429 -> "Слишком много попыток. Подождите немного."
         in 500..599 -> "Сервер временно недоступен."
         else -> "Ошибка сервера (${code()})."
     }
     is java.io.IOException -> "Нет соединения с сервером. Проверьте интернет и адрес кабинета."
     else -> message ?: "Неизвестная ошибка."
+}
+
+/**
+ * Объяснение сервера — но только русское.
+ *
+ * Кабинет часто знает точную причину отказа: «промокод не найден», «тариф
+ * недоступен», сколько не хватает на балансе. Раньше всё это выбрасывалось,
+ * и любой отказ сводился к «Неверные данные» или «Ошибка сервера (402)».
+ *
+ * Показываем текст как есть, только если он по-русски: часть ответов
+ * кабинета написана по-английски, и такую строку человеку лучше заменить
+ * понятной общей фразой по коду. Причина приезжает строкой, объектом
+ * {"message": …} или, у ошибок разбора, списком [{"msg": …}].
+ *
+ * Тело ответа можно прочитать только раз, поэтому разбор живёт здесь, в
+ * одном месте, а не размазан по экранам.
+ */
+private fun retrofit2.HttpException.serverExplanation(): String? {
+    val raw = runCatching { response()?.errorBody()?.string() }.getOrNull()
+        ?.takeIf { it.isNotBlank() } ?: return null
+    val text = runCatching {
+        val root = org.json.JSONObject(raw)
+        when (val detail = root.opt("detail") ?: root.opt("message")) {
+            is String -> detail
+            is org.json.JSONObject -> detail.optString("message")
+            is org.json.JSONArray -> detail.optJSONObject(0)?.optString("msg")
+            else -> null
+        }
+    }.getOrNull()?.trim() ?: return null
+    val russian = text.any { it in 'а'..'я' || it in 'А'..'Я' || it == 'ё' || it == 'Ё' }
+    return text.takeIf { russian && it.length <= 300 }
 }

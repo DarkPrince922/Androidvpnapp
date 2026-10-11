@@ -9,8 +9,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -20,10 +18,12 @@ import com.darkprince.vpn.data.log.AppLog
 import com.darkprince.vpn.core.xray.XrayConfigBuilder
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.ui.MainActivity
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -73,6 +73,18 @@ class XVpnService : VpnService() {
             context.startService(intent)
         }
 
+        /**
+         * Забыть последний профиль — при выходе из аккаунта и отказе от
+         * чужой подписки.
+         *
+         * Плитка в шторке и автоподключение смотрят только на этот файл.
+         * Пока он лежал, после «Выйти из аккаунта» одно нажатие на плитку
+         * снова поднимало VPN по подписке вышедшего аккаунта.
+         */
+        fun forgetProfile(context: Context) {
+            File(context.filesDir, PROFILE_FILE).delete()
+        }
+
         /** Есть ли сохранённый профиль для быстрого запуска (плитка, автозапуск). */
         fun hasSavedProfile(context: Context): Boolean =
             File(context.filesDir, PROFILE_FILE).let { it.exists() && it.length() > 0 }
@@ -96,6 +108,9 @@ class XVpnService : VpnService() {
     /** Последний startId: останавливаемся только им, иначе новый запуск,
      *  пришедший сразу после остановки, погибнет вместе со старым. */
     private var lastStartId = 0
+    /** Запуски, которые уже приняты, но ещё ждут своей очереди к vpnMutex.
+     *  Пока такой есть, остановка не должна гасить службу целиком. */
+    private val pendingStarts = AtomicInteger(0)
     private var activeProfileName: String = ""
     private var lastPingMs: Long? = null
 
@@ -126,7 +141,8 @@ class XVpnService : VpnService() {
                 // Выключили сами — кнопкой, плиткой или из уведомления.
                 // Автоподключение не должно поднимать туннель обратно.
                 runCatching { ServiceLocator.prefs.setUserStoppedBlocking(true) }
-                scope.launch { vpnMutex.withLock { stopVpn() } }
+                val stopId = startId
+                scope.launch { vpnMutex.withLock { stopVpn(stopId) } }
                 START_NOT_STICKY
             }
             ACTION_PING -> {
@@ -185,7 +201,13 @@ class XVpnService : VpnService() {
         updateNotificationForce(profile.name)
         // повторный START на работающем сервисе = смена сервера:
         // старый туннель гасится и сразу поднимается новый
-        scope.launch { vpnMutex.withLock { startVpn(profile) } }
+        pendingStarts.incrementAndGet()
+        scope.launch {
+            vpnMutex.withLock {
+                pendingStarts.decrementAndGet()
+                startVpn(profile)
+            }
+        }
         return START_STICKY
     }
 
@@ -217,6 +239,10 @@ class XVpnService : VpnService() {
             applyAppFilter(builder)
             val fd = builder.establish()
                 ?: throw IllegalStateException("Нет разрешения на VPN")
+            // Защита оставила старый интерфейс жить до появления нового —
+            // теперь он заменён, и его дескриптор надо закрыть, иначе он
+            // копится с каждым переподключением.
+            tunFd?.takeIf { it !== fd }?.let { runCatching { it.close() } }
             tunFd = fd
 
             // 3. Мост TUN → SOCKS (hev-socks5-tunnel)
@@ -326,18 +352,16 @@ class XVpnService : VpnService() {
      * Без этого переход с Wi-Fi на мобильную выглядит так: значок VPN горит,
      * а трафик не идёт — ядро осталось привязано к исчезнувшей сети.
      *
-     * Просим только сети с NET_CAPABILITY_NOT_VPN. Иначе в подписку попал бы
-     * наш собственный туннель, его появление считалось бы сменой сети, и
-     * переподключение зациклилось бы само на себя.
+     * Следим за сетью по умолчанию для самого приложения. Приложение
+     * исключено из собственного туннеля, поэтому для него это всегда
+     * настоящая сеть под VPN, и ровно одна. Раньше подписка шла на все сети
+     * с интернетом: при включённых Wi-Fi и мобильной обе присылали
+     * onAvailable, это принималось за смену сети, и туннель зря
+     * переподнимался, а underlyingNetwork мог указать не на ту сеть.
      */
     private fun watchNetwork() {
         if (networkCallback != null) return
         val manager = getSystemService(ConnectivityManager::class.java) ?: return
-
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-            .build()
 
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
@@ -362,7 +386,7 @@ class XVpnService : VpnService() {
             }
         }
 
-        runCatching { manager.registerNetworkCallback(request, callback) }
+        runCatching { manager.registerDefaultNetworkCallback(callback) }
             .onSuccess { networkCallback = callback }
             .onFailure { AppLog.write("следить за сетью не вышло: ${it.javaClass.simpleName}") }
     }
@@ -515,7 +539,7 @@ class XVpnService : VpnService() {
         tunFd = null
     }
 
-    private fun stopVpn() {
+    private fun stopVpn(stopId: Int = lastStartId) {
         // Слежение снимаем здесь, а не в teardown: teardown вызывается и при
         // переподключении, а подписку на сеть там терять нельзя.
         unwatchNetwork()
@@ -533,8 +557,14 @@ class XVpnService : VpnService() {
             ServiceLocator.apiClient.onNetworkChanged()
         } catch (_: Exception) {
         }
+        // Если следом за «выключить» уже нажали «включить», тот запуск ждёт
+        // за этим мьютексом. Погасить службу сейчас — значит убить и его.
+        if (pendingStarts.get() > 0) {
+            AppLog.write("следом ждёт новый запуск — службу не гашу")
+            return
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf(lastStartId)
+        stopSelf(stopId)
     }
 
     override fun onRevoke() {
@@ -544,6 +574,10 @@ class XVpnService : VpnService() {
 
     override fun onDestroy() {
         statsJob?.cancel()
+        reconnectJob?.cancel()
+        unwatchNetwork()
+        teardown()
+        scope.cancel()
         super.onDestroy()
     }
 

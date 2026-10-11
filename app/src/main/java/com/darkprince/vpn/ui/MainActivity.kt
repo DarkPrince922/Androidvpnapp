@@ -718,6 +718,7 @@ private fun AppRoot(
                     onDropSharedSubscription = {
                         scope.launch {
                             XVpnService.stop(activity)
+                            XVpnService.forgetProfile(activity)
                             ServiceLocator.subscriptionRepository.exitGuestMode()
                             homeViewModel.refresh(forceServers = true)
                             navController.navigate("home") { popUpTo("home") { inclusive = true } }
@@ -726,6 +727,7 @@ private fun AppRoot(
                     onLogout = {
                         scope.launch {
                             XVpnService.stop(activity)
+                            XVpnService.forgetProfile(activity)
                             // чужую подписку отпускаем в любом случае: она привязана
                             // к этому телефону, а не к аккаунту
                             ServiceLocator.subscriptionRepository.exitGuestMode()
