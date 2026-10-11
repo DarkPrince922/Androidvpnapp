@@ -31,6 +31,8 @@ data class BalanceUiState(
     val openUrl: String? = null,
     val error: String? = null,
     val info: String? = null,
+    /** Растёт после принятого промокода — экран очищает поле. */
+    val promoAccepted: Int = 0,
 )
 
 private val BALANCE_EVENTS = setOf("balance.topup", "balance.change", "payment.received")
@@ -93,6 +95,16 @@ class BalanceViewModel : ViewModel() {
     fun topup(amountRubles: Long, method: PaymentMethodDto, option: String? = null) {
         if (amountRubles <= 0) {
             _state.value = _state.value.copy(error = "Введите сумму")
+            return
+        }
+        // пределы способа знаем заранее — касса всё равно откажет, но непонятно
+        val kopeks = amountRubles * 100
+        method.minAmountKopeks?.takeIf { kopeks < it }?.let {
+            _state.value = _state.value.copy(error = "Минимум для этого способа — ${com.darkprince.vpn.ui.screens.formatKopeks(it)}")
+            return
+        }
+        method.maxAmountKopeks?.takeIf { it > 0 && kopeks > it }?.let {
+            _state.value = _state.value.copy(error = "Максимум для этого способа — ${com.darkprince.vpn.ui.screens.formatKopeks(it)}")
             return
         }
         _state.value = _state.value.copy(creatingPayment = true, error = null, info = null)
@@ -247,7 +259,7 @@ class BalanceViewModel : ViewModel() {
         viewModelScope.launch {
             val (ok, message) = repo.activatePromocode(code)
             if (ok) {
-                _state.value = _state.value.copy(info = message)
+                _state.value = _state.value.copy(info = message, promoAccepted = _state.value.promoAccepted + 1)
                 refresh()
             } else {
                 _state.value = _state.value.copy(error = message)

@@ -109,6 +109,7 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
     }
     var selectedMethod by rememberSaveable { mutableStateOf<String?>(null) }
     var promo by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(state.promoAccepted) { if (state.promoAccepted > 0) promo = "" }
     var showAllHistory by rememberSaveable { mutableStateOf(false) }
 
     // Все варианты всех способов одним рядом: человеку неважно, что СБП и
