@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -29,7 +30,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -61,9 +61,11 @@ class XVpnService : VpnService() {
         private const val MAX_FAILOVER = 3
         private const val TUN_ADDRESS_V6 = "fd66:6470:7276::1"
         /** Отвечает пустым 204 и есть почти везде; его же меряет пинг. */
-        private const val PROBE_URL = "https://www.gstatic.com/generate_204"
+        private val PROBE_URLS = listOf(
+            "https://www.gstatic.com/generate_204",
+            "https://cp.cloudflare.com/generate_204",
+        )
         private const val PROBE_TIMEOUT_S = 6L
-        private const val PROBE_ATTEMPTS = 2
         private const val UNKNOWN_PING = 10_000L
         private const val DEAD_PING = 100_000L
 
@@ -137,6 +139,10 @@ class XVpnService : VpnService() {
     /** Слежение за сетью под туннелем; null — не подписаны. */
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var underlyingNetwork: Network? = null
+    /** Все сети с интернетом, кроме VPN. Меняются только в потоке колбэка. */
+    private val availableNetworks = LinkedHashSet<Network>()
+    /** Рабочая сеть пропала, а другой не было: переподключимся на первой новой. */
+    private var networkWasLost = false
     private var reconnectJob: Job? = null
 
     private val coreCallback = object : CoreCallbackHandler {
@@ -352,9 +358,13 @@ class XVpnService : VpnService() {
             .callTimeout(PROBE_TIMEOUT_S, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false)
             .build()
-        repeat(PROBE_ATTEMPTS) { attemptNo ->
+        // Два разных адреса: правила маршрутизации из подписки могут пустить
+        // один из них мимо прокси или заблокировать, и тогда «нет связи»
+        // было бы ложным — а за ним последовал бы ненужный переход на другой
+        // сервер.
+        PROBE_URLS.forEachIndexed { attemptNo, url ->
             val ok = runCatching {
-                client.newCall(Request.Builder().url(PROBE_URL).build()).execute()
+                client.newCall(Request.Builder().url(url).build()).execute()
                     .use { it.code in 200..399 }
             }.getOrDefault(false)
             if (ok) return true
@@ -425,49 +435,75 @@ class XVpnService : VpnService() {
      * Без этого переход с Wi-Fi на мобильную выглядит так: значок VPN горит,
      * а трафик не идёт — ядро осталось привязано к исчезнувшей сети.
      *
-     * Следим за сетью по умолчанию для самого приложения. Приложение
-     * исключено из собственного туннеля, поэтому для него это всегда
-     * настоящая сеть под VPN, и ровно одна. Раньше подписка шла на все сети
-     * с интернетом: при включённых Wi-Fi и мобильной обе присылали
-     * onAvailable, это принималось за смену сети, и туннель зря
-     * переподнимался, а underlyingNetwork мог указать не на ту сеть.
+     * Подписка — только на сети с NET_CAPABILITY_NOT_VPN, то есть наш
+     * собственный туннель сюда не попадает никогда. Была попытка следить за
+     * «сетью по умолчанию», но на части прошивок пересоздание туннеля при
+     * смене сервера приходило туда как «новая сеть»: служба переподключалась,
+     * туннель пересоздавался снова, и так по кругу.
+     *
+     * Сетей с интернетом может быть несколько сразу — Wi-Fi и мобильная.
+     * Появление второй — не повод переподключаться: рабочая никуда не делась.
+     * Повод — пропажа той, на которой мы работаем: тогда переходим на
+     * оставшуюся, а если не осталось ни одной — ждём первую появившуюся.
      */
     private fun watchNetwork() {
         if (networkCallback != null) return
         val manager = getSystemService(ConnectivityManager::class.java) ?: return
 
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                // система сообщает VPN, поверх какой сети он работает
-                runCatching { setUnderlyingNetworks(arrayOf(network)) }
-
-                val previous = underlyingNetwork
-                underlyingNetwork = network
-                // первая сеть после подключения — это та же, на которой мы
-                // только что поднялись, перезапускать нечего
-                if (previous == null || previous == network) return
-
-                AppLog.write("сеть сменилась, переподключаюсь")
-                scheduleReconnect()
+                availableNetworks += network
+                if (underlyingNetwork != null) return
+                // Приложение исключено из своего туннеля, поэтому его сеть по
+                // умолчанию — настоящая. Она и есть рабочая, если есть.
+                val current = manager.activeNetwork?.takeIf { it in availableNetworks } ?: network
+                useNetwork(current)
+                if (networkWasLost) {
+                    networkWasLost = false
+                    AppLog.write("сеть появилась, переподключаюсь")
+                    scheduleReconnect()
+                }
             }
 
             override fun onLost(network: Network) {
+                availableNetworks -= network
                 if (network != underlyingNetwork) return
-                // сети сейчас нет; ждём появления новой, тогда и перезапустим
-                underlyingNetwork = null
-                AppLog.write("сеть пропала, жду новую")
+                val next = manager.activeNetwork?.takeIf { it in availableNetworks }
+                    ?: availableNetworks.firstOrNull()
+                if (next != null) {
+                    useNetwork(next)
+                    AppLog.write("сеть сменилась, переподключаюсь")
+                    scheduleReconnect()
+                } else {
+                    underlyingNetwork = null
+                    networkWasLost = true
+                    AppLog.write("сеть пропала, жду новую")
+                }
             }
         }
 
-        runCatching { manager.registerDefaultNetworkCallback(callback) }
+        runCatching { manager.registerNetworkCallback(request, callback) }
             .onSuccess { networkCallback = callback }
             .onFailure { AppLog.write("следить за сетью не вышло: ${it.javaClass.simpleName}") }
+    }
+
+    /** Запомнить рабочую сеть и сообщить системе, поверх чего идёт VPN. */
+    private fun useNetwork(network: Network) {
+        underlyingNetwork = network
+        runCatching { setUnderlyingNetworks(arrayOf(network)) }
     }
 
     private fun unwatchNetwork() {
         val callback = networkCallback ?: return
         networkCallback = null
         underlyingNetwork = null
+        networkWasLost = false
+        availableNetworks.clear()
         val manager = getSystemService(ConnectivityManager::class.java)
         runCatching { manager?.unregisterNetworkCallback(callback) }
     }
@@ -646,11 +682,13 @@ class XVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        // Ядро и мост здесь не трогаем: их гасит stopVpn в своём потоке под
+        // мьютексом. Повторная остановка из главного потока могла прийтись на
+        // момент, когда та ещё идёт, — а двойной вызов в нативный код роняет
+        // весь процесс вместе с интерфейсом.
         statsJob?.cancel()
         reconnectJob?.cancel()
         unwatchNetwork()
-        teardown()
-        scope.cancel()
         super.onDestroy()
     }
 

@@ -346,7 +346,12 @@ fun HomeScreen(
             )
         }
       } else {
-        itemsIndexed(state.servers, key = { _, server -> server.key }) { index, server ->
+        itemsIndexed(
+            state.servers,
+            // номер в ключе: если в подписке два узла с одинаковым именем и
+            // адресом, одинаковые ключи роняли бы список
+            key = { index, server -> "${server.key}#$index" },
+        ) { index, server ->
             Box(Modifier.padding(bottom = 10.dp)) {
                 ServerRow(
                     server = server,
