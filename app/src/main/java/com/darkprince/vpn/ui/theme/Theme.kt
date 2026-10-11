@@ -77,6 +77,14 @@ private val NightScheme = darkColorScheme(
     outline = Color(0xFF2A3650),
     error = BrandColors.Danger,
     onError = Color.White,
+    // Карточки, диалоги и меню берут цвет из «контейнеров». Без них Material
+    // подставлял свой нейтрально-серый, и карточки выглядели чужими —
+    // серыми плитами на тёмно-синем фоне.
+    surfaceContainerLowest = Color(0xFF0D131E),
+    surfaceContainerLow = Color(0xFF111827),
+    surfaceContainer = Color(0xFF131C2C),
+    surfaceContainerHigh = Color(0xFF162032),
+    surfaceContainerHighest = Color(0xFF172133),
 )
 
 val NightPalette = AppPalette(
@@ -110,6 +118,11 @@ private val SunsetScheme = darkColorScheme(
     outline = Color(0xFF4A3856),
     error = BrandColors.Danger,
     onError = Color.White,
+    surfaceContainerLowest = Color(0xFF1F1727),
+    surfaceContainerLow = Color(0xFF241B2D),
+    surfaceContainer = Color(0xFF281F32),
+    surfaceContainerHigh = Color(0xFF2C2236),
+    surfaceContainerHighest = Color(0xFF2F2539),
 )
 
 val SunsetPalette = AppPalette(
@@ -143,6 +156,11 @@ private val IndigoScheme = lightColorScheme(
     outline = Color(0xFFC9D2E8),
     error = Color(0xFFC2413F),
     onError = Color.White,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF9FAFE),
+    surfaceContainer = Color(0xFFF5F7FC),
+    surfaceContainerHigh = Color(0xFFF9FAFE),
+    surfaceContainerHighest = Color.White,
 )
 
 val IndigoPalette = AppPalette(
@@ -176,6 +194,11 @@ private val GraphiteScheme = lightColorScheme(
     outline = Color(0xFFD3D3D8),
     error = Color(0xFFB23A38),
     onError = Color.White,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFFAFAFB),
+    surfaceContainer = Color(0xFFF6F6F8),
+    surfaceContainerHigh = Color(0xFFFAFAFB),
+    surfaceContainerHighest = Color.White,
 )
 
 val GraphitePalette = AppPalette(
