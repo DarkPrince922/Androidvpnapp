@@ -317,3 +317,20 @@ data class WithdrawalDto(
 
 @Serializable
 data class WithdrawalListDto(val items: List<WithdrawalDto> = emptyList(), val total: Int = 0)
+
+// ---------- Документы и вопросы ----------
+
+@Serializable
+data class FaqPageDto(val id: Long, val title: String, val content: String = "", val order: Int = 0)
+
+@Serializable
+data class InfoDocumentDto(val content: String = "", @SerialName("updated_at") val updatedAt: String? = null)
+
+@Serializable
+data class InfoVisibilityDto(
+    val faq: Boolean = true,
+    val rules: Boolean = true,
+    val privacy: Boolean = true,
+    val offer: Boolean = true,
+    val recurrent: Boolean = false,
+)

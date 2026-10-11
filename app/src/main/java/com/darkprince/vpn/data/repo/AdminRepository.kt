@@ -191,6 +191,14 @@ class AdminRepository(
         const val USERS_SEND_MESSAGE = "users:send_message"
         const val REMNAWAVE_MANAGE = "remnawave:manage"
         const val PROMOCODES_CREATE = "promocodes:create"
+        const val WITHDRAWALS_READ = "withdrawals:read"
+        const val WITHDRAWALS_APPROVE = "withdrawals:approve"
+        const val WITHDRAWALS_REJECT = "withdrawals:reject"
+        const val PAYMENTS_READ = "payments:read"
+        const val PAYMENTS_EDIT = "payments:edit"
+        const val BROADCASTS_READ = "broadcasts:read"
+        const val BROADCASTS_CREATE = "broadcasts:create"
+        const val BROADCASTS_SEND = "broadcasts:send"
     }
 }
 

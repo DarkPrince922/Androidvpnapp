@@ -87,10 +87,17 @@ import com.darkprince.vpn.ui.vm.TicketFilter
 @Composable
 fun AdminScreen(
     viewModel: AdminViewModel,
+    tools: com.darkprince.vpn.ui.vm.AdminToolsViewModel,
     onOpenTicket: (Long) -> Unit,
     onOpenPerson: (AdminUserDto) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // выводы, платежи и рассылки грузятся своей моделью — при входе в
+    // раздел и по кнопке «Обновить»
+    androidx.compose.runtime.LaunchedEffect(state.section, state.refreshTick) {
+        tools.load(state.section)
+    }
 
     Column(
         modifier = Modifier
@@ -135,7 +142,11 @@ fun AdminScreen(
 
         // Разделы, которых роль не даёт, не показываем вовсе: переключатель
         // с недоступными кнопками обещал бы то, чего нет.
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // разделов бывает до шести — ряд прокручивается, а не сжимается
+        Row(
+            modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             state.sections.forEach { section ->
                 FilterChip(
                     selected = state.section == section,
@@ -160,6 +171,9 @@ fun AdminScreen(
             AdminSection.SUMMARY -> SummarySection(viewModel, state)
             AdminSection.TICKETS -> TicketsSection(viewModel, state, onOpenTicket)
             AdminSection.PEOPLE -> PeopleSection(viewModel, state, onOpenPerson)
+            AdminSection.WITHDRAWALS -> WithdrawalsSection(tools, state)
+            AdminSection.PAYMENTS -> PaymentsSection(tools, state)
+            AdminSection.BROADCASTS -> BroadcastsSection(tools, state)
         }
     }
 }
@@ -912,7 +926,12 @@ private fun AdminMessageBubble(message: SupportMessageDto) {
  * админа.
  */
 @Composable
-fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
+fun AdminPersonScreen(
+    viewModel: AdminViewModel,
+    onBack: () -> Unit,
+    /** Платежи клиента — поиск в разделе «Платежи» по его ID или нику. */
+    onOpenPayments: (String) -> Unit = {},
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val person = state.person
 
@@ -992,6 +1011,11 @@ fun AdminPersonScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
                     SummaryLine("Потратил всего", rubles(person.totalSpentKopeks))
                     detail?.createdAt?.let { SummaryLine("С нами с", shortDate(it)) }
                     detail?.lastActivity?.let { SummaryLine("Был в сети", shortDate(it)) }
+                    val paymentsQuery = person.telegramId?.toString() ?: person.username?.let { "@$it" }
+                    if (state.canReadPayments && paymentsQuery != null) {
+                        Spacer(Modifier.height(8.dp))
+                        ActionChip("Платежи клиента") { onOpenPayments(paymentsQuery) }
+                    }
                     if (state.canBlock) {
                         Spacer(Modifier.height(8.dp))
                         ActionChip(

@@ -452,6 +452,76 @@ interface BedolagaApi {
     @POST("cabinet/admin/promocodes")
     suspend fun adminCreatePromo(@Body body: AdminPromoRequest): JsonElement
 
+    // --- Заявки на вывод ---
+
+    @GET("cabinet/admin/withdrawals")
+    suspend fun adminWithdrawals(
+        @Query("status") status: String? = null,
+        @Query("limit") limit: Int = 50,
+    ): AdminWithdrawalListDto
+
+    @GET("cabinet/admin/withdrawals/{id}")
+    suspend fun adminWithdrawal(@Path("id") id: Long): AdminWithdrawalDetailDto
+
+    @POST("cabinet/admin/withdrawals/{id}/approve")
+    suspend fun adminApproveWithdrawal(@Path("id") id: Long, @Body body: AdminCommentRequest): JsonElement
+
+    @POST("cabinet/admin/withdrawals/{id}/reject")
+    suspend fun adminRejectWithdrawal(@Path("id") id: Long, @Body body: AdminCommentRequest): JsonElement
+
+    @POST("cabinet/admin/withdrawals/{id}/complete")
+    suspend fun adminCompleteWithdrawal(@Path("id") id: Long): JsonElement
+
+    // --- Платежи ---
+
+    @GET("cabinet/admin/payments/search")
+    suspend fun adminSearchPayments(
+        @Query("search") search: String? = null,
+        @Query("status_filter") status: String = "all",
+        @Query("period") period: String = "7d",
+        @Query("per_page") perPage: Int = 50,
+    ): AdminPaymentListDto
+
+    @POST("cabinet/admin/payments/{method}/{id}/check")
+    suspend fun adminCheckPayment(@Path("method") method: String, @Path("id") id: Long): AdminPaymentCheckDto
+
+    // --- Рассылки ---
+
+    @GET("cabinet/admin/broadcasts/filters")
+    suspend fun adminBroadcastFilters(): BroadcastFiltersDto
+
+    @GET("cabinet/admin/broadcasts/buttons")
+    suspend fun adminBroadcastButtons(): BroadcastButtonsDto
+
+    @POST("cabinet/admin/broadcasts")
+    suspend fun adminCreateBroadcast(@Body body: BroadcastCreateRequest): BroadcastDto
+
+    @GET("cabinet/admin/broadcasts")
+    suspend fun adminBroadcasts(@Query("limit") limit: Int = 20): BroadcastListDto
+
+    @POST("cabinet/admin/broadcasts/{id}/stop")
+    suspend fun adminStopBroadcast(@Path("id") id: Long): BroadcastDto
+
+    // --- Документы и вопросы ---
+
+    @GET("cabinet/info/faq")
+    suspend fun faq(@Query("language") language: String = "ru"): List<FaqPageDto>
+
+    @GET("cabinet/info/rules")
+    suspend fun rules(@Query("language") language: String = "ru"): InfoDocumentDto
+
+    @GET("cabinet/info/privacy-policy")
+    suspend fun privacyPolicy(@Query("language") language: String = "ru"): InfoDocumentDto
+
+    @GET("cabinet/info/public-offer")
+    suspend fun publicOffer(@Query("language") language: String = "ru"): InfoDocumentDto
+
+    @GET("cabinet/info/recurrent-payments")
+    suspend fun recurrentTerms(@Query("language") language: String = "ru"): InfoDocumentDto
+
+    @GET("cabinet/info/visibility")
+    suspend fun infoVisibility(): InfoVisibilityDto
+
     // ---------- Новости ----------
 
     @GET("cabinet/news")

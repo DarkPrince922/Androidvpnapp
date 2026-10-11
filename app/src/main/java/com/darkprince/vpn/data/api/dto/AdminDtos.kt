@@ -381,3 +381,140 @@ data class AdminTicketNotificationsDto(
     val items: List<AdminTicketNotificationDto> = emptyList(),
     @SerialName("unread_count") val unreadCount: Int = 0,
 )
+
+// ---------- Заявки на вывод ----------
+
+@Serializable
+data class AdminWithdrawalDto(
+    val id: Long,
+    @SerialName("user_id") val userId: Long,
+    val username: String? = null,
+    @SerialName("first_name") val firstName: String? = null,
+    @SerialName("telegram_id") val telegramId: Long? = null,
+    @SerialName("amount_kopeks") val amountKopeks: Long = 0,
+    val status: String = "",
+    @SerialName("risk_score") val riskScore: Int = 0,
+    @SerialName("risk_level") val riskLevel: String = "low",
+    @SerialName("payment_details") val paymentDetails: String? = null,
+    @SerialName("admin_comment") val adminComment: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+) {
+    val who: String
+        get() = firstName?.takeIf { it.isNotBlank() }
+            ?: username?.let { "@$it" }
+            ?: telegramId?.let { "ID $it" }
+            ?: "Пользователь #$userId"
+}
+
+@Serializable
+data class AdminWithdrawalListDto(
+    val items: List<AdminWithdrawalDto> = emptyList(),
+    val total: Int = 0,
+    @SerialName("pending_count") val pendingCount: Int = 0,
+    @SerialName("pending_total_kopeks") val pendingTotalKopeks: Long = 0,
+)
+
+/** Разбор риска, который бот делает сам: флаги и рекомендация. */
+@Serializable
+data class WithdrawalRiskDto(
+    val flags: List<String> = emptyList(),
+    @SerialName("recommendation_text") val recommendationText: String? = null,
+)
+
+@Serializable
+data class AdminWithdrawalDetailDto(
+    val id: Long,
+    @SerialName("risk_analysis") val riskAnalysis: WithdrawalRiskDto? = null,
+    @SerialName("balance_kopeks") val balanceKopeks: Long = 0,
+    @SerialName("total_referrals") val totalReferrals: Int = 0,
+    @SerialName("total_earnings_kopeks") val totalEarningsKopeks: Long = 0,
+)
+
+@Serializable
+data class AdminCommentRequest(val comment: String? = null)
+
+// ---------- Платежи ----------
+
+@Serializable
+data class AdminPaymentDto(
+    val id: Long,
+    val method: String,
+    @SerialName("method_display") val methodDisplay: String = "",
+    val identifier: String = "",
+    @SerialName("amount_kopeks") val amountKopeks: Long = 0,
+    val status: String = "",
+    @SerialName("status_emoji") val statusEmoji: String = "",
+    @SerialName("status_text") val statusText: String = "",
+    @SerialName("is_paid") val isPaid: Boolean = false,
+    @SerialName("is_checkable") val isCheckable: Boolean = false,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("user_id") val userId: Long? = null,
+    @SerialName("user_telegram_id") val userTelegramId: Long? = null,
+    @SerialName("user_username") val userUsername: String? = null,
+)
+
+@Serializable
+data class AdminPaymentListDto(
+    val items: List<AdminPaymentDto> = emptyList(),
+    val total: Int = 0,
+    val pages: Int = 1,
+)
+
+@Serializable
+data class AdminPaymentCheckDto(
+    val success: Boolean = false,
+    val message: String = "",
+    val payment: AdminPaymentDto? = null,
+    @SerialName("status_changed") val statusChanged: Boolean = false,
+)
+
+// ---------- Рассылки ----------
+
+@Serializable
+data class BroadcastFilterDto(
+    val key: String,
+    val label: String,
+    val count: Int? = null,
+    val group: String? = null,
+)
+
+@Serializable
+data class BroadcastFiltersDto(
+    val filters: List<BroadcastFilterDto> = emptyList(),
+    @SerialName("tariff_filters") val tariffFilters: List<BroadcastFilterDto> = emptyList(),
+    @SerialName("custom_filters") val customFilters: List<BroadcastFilterDto> = emptyList(),
+)
+
+@Serializable
+data class BroadcastButtonDto(val key: String, val label: String, val default: Boolean = false)
+
+@Serializable
+data class BroadcastButtonsDto(val buttons: List<BroadcastButtonDto> = emptyList())
+
+@Serializable
+data class BroadcastCreateRequest(
+    val target: String,
+    @SerialName("message_text") val messageText: String,
+    @SerialName("selected_buttons") val selectedButtons: List<String>,
+    val category: String = "system",
+)
+
+@Serializable
+data class BroadcastDto(
+    val id: Long,
+    @SerialName("target_type") val targetType: String = "",
+    @SerialName("message_text") val messageText: String? = null,
+    @SerialName("total_count") val totalCount: Int = 0,
+    @SerialName("sent_count") val sentCount: Int = 0,
+    @SerialName("failed_count") val failedCount: Int = 0,
+    @SerialName("blocked_count") val blockedCount: Int = 0,
+    val status: String = "",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("progress_percent") val progressPercent: Double = 0.0,
+    val channel: String = "telegram",
+) {
+    val running: Boolean get() = status in setOf("queued", "in_progress", "cancelling")
+}
+
+@Serializable
+data class BroadcastListDto(val items: List<BroadcastDto> = emptyList(), val total: Int = 0)

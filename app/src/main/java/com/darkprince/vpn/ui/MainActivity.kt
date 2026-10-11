@@ -326,6 +326,8 @@ private fun AppRoot(
     val supportViewModel: SupportViewModel = viewModel(viewModelStoreOwner = activity)
     val newsViewModel: NewsViewModel = viewModel(viewModelStoreOwner = activity)
     val adminViewModel: AdminViewModel = viewModel(viewModelStoreOwner = activity)
+    val adminToolsViewModel: com.darkprince.vpn.ui.vm.AdminToolsViewModel =
+        viewModel(viewModelStoreOwner = activity)
     val supportState by supportViewModel.state.collectAsStateWithLifecycle()
     val newsState by newsViewModel.state.collectAsStateWithLifecycle()
     val adminState by adminViewModel.state.collectAsStateWithLifecycle()
@@ -631,6 +633,10 @@ private fun AppRoot(
                     onShare = { text -> activity.shareText(text) },
                 )
             }
+            composable("docs") {
+                val docsViewModel: com.darkprince.vpn.ui.vm.DocsViewModel = viewModel()
+                com.darkprince.vpn.ui.screens.DocsScreen(viewModel = docsViewModel)
+            }
             composable("promo") {
                 val promoViewModel: com.darkprince.vpn.ui.vm.PromoViewModel = viewModel()
                 com.darkprince.vpn.ui.screens.PromoScreen(viewModel = promoViewModel)
@@ -698,6 +704,7 @@ private fun AppRoot(
                 ) {
                     AdminScreen(
                         viewModel = adminViewModel,
+                        tools = adminToolsViewModel,
                         onOpenTicket = { id -> navController.navigate("admin/ticket/$id") },
                         onOpenPerson = { person ->
                             // Человека кладём в состояние, а не в маршрут: в
@@ -715,6 +722,12 @@ private fun AppRoot(
                     onBack = {
                         adminViewModel.closePerson()
                         navController.popBackStack()
+                    },
+                    onOpenPayments = { query ->
+                        adminToolsViewModel.searchFor(query)
+                        adminViewModel.setSection(com.darkprince.vpn.ui.vm.AdminSection.PAYMENTS)
+                        adminViewModel.closePerson()
+                        navController.popBackStack("admin", inclusive = false)
                     },
                 )
             }
@@ -783,6 +796,7 @@ private fun AppRoot(
                     onOpenReferral = { navController.navigate("referral") },
                     onOpenGifts = { navController.navigate("gifts") },
                     onOpenPromo = { navController.navigate("promo") },
+                    onOpenDocs = { navController.navigate("docs") },
                     onOpenApps = { navController.navigate("apps") },
                     autoConnectMode = autoConnectMode,
                     onSelectAutoConnect = { mode ->

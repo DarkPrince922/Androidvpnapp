@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Email
@@ -60,6 +61,7 @@ fun SettingsScreen(
     onOpenReferral: () -> Unit,
     onOpenGifts: () -> Unit,
     onOpenPromo: () -> Unit,
+    onOpenDocs: () -> Unit,
     onOpenApps: () -> Unit,
     autoConnectMode: String,
     onSelectAutoConnect: (String) -> Unit,
@@ -194,6 +196,13 @@ fun SettingsScreen(
                     },
                     badge = newsUnreadCount,
                     onClick = onOpenNews,
+                )
+                RowDivider()
+                SettingsRow(
+                    icon = Icons.Default.Description,
+                    title = "Вопросы и документы",
+                    subtitle = "Частые вопросы, правила, оферта, конфиденциальность",
+                    onClick = onOpenDocs,
                 )
             }
         }

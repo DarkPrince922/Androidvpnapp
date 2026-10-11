@@ -35,6 +35,9 @@ enum class AdminSection(val title: String, val permission: String) {
     SUMMARY("Сводка", AdminRepository.STATS_READ),
     TICKETS("Обращения", AdminRepository.TICKETS_READ),
     PEOPLE("Люди", AdminRepository.USERS_READ),
+    WITHDRAWALS("Выводы", AdminRepository.WITHDRAWALS_READ),
+    PAYMENTS("Платежи", AdminRepository.PAYMENTS_READ),
+    BROADCASTS("Рассылки", AdminRepository.BROADCASTS_READ),
 }
 
 /**
@@ -96,6 +99,8 @@ data class AdminUiState(
     val unlocked: Boolean = false,
     val permissions: AdminPermissionsDto = AdminPermissionsDto(),
     val section: AdminSection = AdminSection.TICKETS,
+    /** Растёт при каждом обновлении: по нему перечитывают свои разделы выводы, платежи, рассылки. */
+    val refreshTick: Int = 0,
     val filter: TicketFilter = TicketFilter.ACTIVE,
     val dashboard: AdminDashboardDto? = null,
     val people: List<AdminUserDto> = emptyList(),
@@ -136,6 +141,11 @@ data class AdminUiState(
     val canBlock: Boolean get() = permissions.allows(AdminRepository.USERS_BLOCK)
     val canRestartNode: Boolean get() = permissions.allows(AdminRepository.REMNAWAVE_MANAGE)
     val canCreatePromo: Boolean get() = permissions.allows(AdminRepository.PROMOCODES_CREATE)
+    val canApproveWithdrawals: Boolean get() = permissions.allows(AdminRepository.WITHDRAWALS_APPROVE)
+    val canRejectWithdrawals: Boolean get() = permissions.allows(AdminRepository.WITHDRAWALS_REJECT)
+    val canReadPayments: Boolean get() = permissions.allows(AdminRepository.PAYMENTS_READ)
+    val canCheckPayments: Boolean get() = permissions.allows(AdminRepository.PAYMENTS_EDIT)
+    val canSendBroadcasts: Boolean get() = permissions.allows(AdminRepository.BROADCASTS_CREATE)
 
     /** Разделы, которые роль вообще позволяет открыть. */
     /** Есть ли ещё страницы. */
@@ -350,6 +360,7 @@ class AdminViewModel : ViewModel() {
     }
 
     fun refresh() {
+        _state.update { it.copy(refreshTick = it.refreshTick + 1) }
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             try {
@@ -390,6 +401,9 @@ class AdminViewModel : ViewModel() {
                         loadPeople(offset = 0)
                         return@launch
                     }
+
+                    // эти разделы грузит AdminToolsViewModel по refreshTick
+                    AdminSection.WITHDRAWALS, AdminSection.PAYMENTS, AdminSection.BROADCASTS -> Unit
                 }
                 _state.update { it.copy(loading = false) }
             } catch (error: Exception) {
