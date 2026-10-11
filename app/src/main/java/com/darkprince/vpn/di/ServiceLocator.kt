@@ -12,6 +12,11 @@ import com.darkprince.vpn.data.repo.SupportRepository
 import com.darkprince.vpn.data.update.AppUpdater
 
 object ServiceLocator {
+    /** Задачи, которые должны дожить до конца, даже если экран уже закрыт. */
+    val appScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+    )
+
     lateinit var appContext: Context
         private set
     lateinit var prefs: AppPrefs

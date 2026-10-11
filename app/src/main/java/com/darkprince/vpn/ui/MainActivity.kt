@@ -34,6 +34,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -818,6 +820,7 @@ private fun AppRoot(
                 }
                 val scope = androidx.compose.runtime.rememberCoroutineScope()
                 val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = activity)
+                var loggingOut by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
                 SettingsScreen(
                     user = user,
                     guestMode = authState.guestMode,
@@ -865,18 +868,45 @@ private fun AppRoot(
                         }
                     },
                     onLogout = {
-                        scope.launch {
-                            XVpnService.stop(activity)
-                            XVpnService.forgetProfile(activity)
-                            // чужую подписку отпускаем в любом случае: она привязана
-                            // к этому телефону, а не к аккаунту
-                            ServiceLocator.subscriptionRepository.exitGuestMode()
-                            if (!authState.guestMode) {
-                                ServiceLocator.authRepository.logout()
-                            }
-                            authViewModel.onLoggedOut()
-                            navController.navigate("login") {
-                                popUpTo("home") { inclusive = true }
+                        // второе нажатие, пока идёт первый выход, ничего не делает
+                        if (!loggingOut) {
+                            loggingOut = true
+                            // в задаче активности, а не экрана: «Назад» посреди
+                            // выхода раньше обрывал его на полпути
+                            activity.lifecycleScope.launch {
+                                try {
+                                    val wasOn = com.darkprince.vpn.vpn.VpnStateStore.state.value !=
+                                        com.darkprince.vpn.vpn.VpnState.DISCONNECTED
+                                    XVpnService.stop(activity)
+                                    XVpnService.forgetProfile(activity)
+                                    // дожидаемся, пока туннель погаснет: иначе стирали
+                                    // данные из-под ещё работающей службы
+                                    if (wasOn) {
+                                        kotlinx.coroutines.withTimeoutOrNull(4_000) {
+                                            com.darkprince.vpn.vpn.VpnStateStore.state.first {
+                                                it == com.darkprince.vpn.vpn.VpnState.DISCONNECTED ||
+                                                    it == com.darkprince.vpn.vpn.VpnState.ERROR
+                                            }
+                                        }
+                                    }
+                                    // чужую подписку отпускаем в любом случае: она привязана
+                                    // к этому телефону, а не к аккаунту
+                                    ServiceLocator.subscriptionRepository.exitGuestMode()
+                                    if (!authState.guestMode) {
+                                        ServiceLocator.authRepository.logout()
+                                    }
+                                } catch (e: Exception) {
+                                    com.darkprince.vpn.data.log.AppLog.write("выход: ${e.javaClass.simpleName}: ${e.message}")
+                                    runCatching { ServiceLocator.prefs.clearSession() }
+                                } finally {
+                                    authViewModel.onLoggedOut()
+                                    runCatching {
+                                        navController.navigate("login") {
+                                            popUpTo(navController.graph.id) { inclusive = true }
+                                        }
+                                    }
+                                    loggingOut = false
+                                }
                             }
                         }
                     },

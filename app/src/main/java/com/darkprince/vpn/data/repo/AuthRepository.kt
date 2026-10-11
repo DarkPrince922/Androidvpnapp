@@ -1,5 +1,6 @@
 package com.darkprince.vpn.data.repo
 
+import kotlinx.coroutines.launch
 import com.darkprince.vpn.data.api.dto.MergeExecuteRequest
 import com.darkprince.vpn.data.api.dto.MergePreviewDto
 import com.darkprince.vpn.data.api.dto.MergeCodeRequest
@@ -203,13 +204,25 @@ class AuthRepository(
         null
     }
 
+    /**
+     * Выход: сначала сразу и локально, потом — сообщить серверу.
+     *
+     * Раньше ждали ответа сервера, и если в этот момент гас VPN, запрос
+     * висел до тайм-аута — полминуты, в течение которых экран не отвечал, а
+     * повторное нажатие запускало второй выход поверх первого. Теперь
+     * сессия стирается сразу, а отзыв токена на сервере уходит фоном и
+     * ограничен по времени: не дошёл — токен истечёт сам.
+     */
     suspend fun logout() {
         val refresh = prefs.cachedRefreshToken
-        try {
-            if (refresh != null) api.logout(LogoutRequest(refresh))
-        } catch (_: Exception) {
-        }
         prefs.clearSession()
+        if (refresh != null) {
+            com.darkprince.vpn.di.ServiceLocator.appScope.launch {
+                kotlinx.coroutines.withTimeoutOrNull(8_000) {
+                    runCatching { api.logout(LogoutRequest(refresh)) }
+                }
+            }
+        }
     }
 }
 
