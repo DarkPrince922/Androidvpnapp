@@ -293,7 +293,7 @@ class PlansViewModel : ViewModel() {
     }
 
     private fun periodTitle(period: PeriodPrice): String =
-        if (period.daily) "посуточно" else "${period.days} дн.
+        if (period.daily) "посуточно" else "${period.days} дн."
 
     fun buyDevices(subId: Long, count: Int) {
         if (count <= 0) return
