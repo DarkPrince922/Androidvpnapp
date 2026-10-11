@@ -106,6 +106,20 @@ import kotlinx.coroutines.withContext
  */
 class MainActivity : FragmentActivity() {
 
+    companion object {
+        /** Какой экран открыть по нажатию на уведомление: plans, support, admin. */
+        const val EXTRA_OPEN = "open"
+    }
+
+    /** Экран, который просит открыть уведомление; навигация забирает и обнуляет. */
+    val openRequest = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_OPEN)?.let { openRequest.value = it }
+    }
+
     private var pendingConnect: (() -> Unit)? = null
 
     private val vpnPermissionLauncher = registerForActivityResult(
@@ -261,6 +275,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // при повороте экрана интент тот же — второй раз не уводим
+        if (savedInstanceState == null) intent?.getStringExtra(EXTRA_OPEN)?.let { openRequest.value = it }
         requestNotificationPermission()
 
         // Фон окна прибит в themes.xml тёмным — его видно, пока Compose не
@@ -396,6 +412,20 @@ private fun AppRoot(
             items + BottomItem("admin", "Панель", Icons.Default.AdminPanelSettings)
         } else {
             items
+        }
+    }
+
+    // Нажали на уведомление: «Тарифы» — продлить, «Поддержка» — ответ,
+    // «Панель» — новое обращение. Только когда вошли: иначе экрана нет.
+    val openRequest by activity.openRequest.collectAsState()
+    LaunchedEffect(openRequest, authState.loggedIn) {
+        val route = openRequest ?: return@LaunchedEffect
+        if (!authState.loggedIn) return@LaunchedEffect
+        activity.openRequest.value = null
+        if (route == "admin" && !adminState.isAdmin) return@LaunchedEffect
+        navController.navigate(route) {
+            popUpTo("home") { saveState = true }
+            launchSingleTop = true
         }
     }
 

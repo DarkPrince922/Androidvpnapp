@@ -14,7 +14,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.darkprince.vpn.R
-import com.darkprince.vpn.data.repo.SubscriptionUserInfo
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.ui.MainActivity
 import kotlinx.coroutines.flow.first
@@ -36,67 +35,21 @@ class SubscriptionRefreshWorker(
         val hasAccount = ServiceLocator.authRepository.isLoggedIn
         val hasSharedSubscription = ServiceLocator.prefs.cachedGuestSubUrl != null
         if (!hasAccount && !hasSharedSubscription) return Result.success()
-        return try {
-            val (_, userInfo) = ServiceLocator.subscriptionRepository.fetchServers(forceRefresh = true)
+        val repo = ServiceLocator.subscriptionRepository
+        val fresh = try {
+            val (_, userInfo) = repo.fetchServers(forceRefresh = true)
             // держим в актуальном состоянии и остальные подписки пользователя
-            ServiceLocator.subscriptionRepository.prefetchAllSubscriptions()
-            checkExpiryNotification(userInfo)
-            checkTicketNotifications()
-            Result.success()
-        } catch (_: Exception) {
-            // сеть/сервер недоступны — попробуем в следующем цикле
-            Result.retry()
-        }
-    }
-
-    /** Уведомление «подписка заканчивается», не чаще раза в день. */
-    private suspend fun checkExpiryNotification(userInfo: SubscriptionUserInfo?) {
-        val daysLeft = try {
-            ServiceLocator.subscriptionRepository.status().daysLeft
+            repo.prefetchAllSubscriptions()
+            userInfo
         } catch (_: Exception) {
             null
-        } ?: userInfo?.expireUnix?.takeIf { it > 0 }?.let {
-            ((it * 1000 - System.currentTimeMillis()) / 86_400_000L).toInt()
-        } ?: return
-
-        if (daysLeft > 3 || daysLeft < 0) return
-        val today = java.time.LocalDate.now().toString()
-        val prefs = ServiceLocator.prefs
-        if (prefs.lastExpiryNotifyDayFlow.first() == today) return
-        prefs.setLastExpiryNotifyDay(today)
-
-        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE)
-            as NotificationManager
-        manager.createNotificationChannel(
-            NotificationChannel(
-                "subscription",
-                "Подписка",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
-        )
-        val contentIntent = PendingIntent.getActivity(
-            applicationContext,
-            1,
-            Intent(applicationContext, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
-        )
-        val text = when (daysLeft) {
-            0 -> "Подписка заканчивается сегодня. Продлите, чтобы не остаться без защиты."
-            1 -> "Подписка заканчивается завтра. Продлите её в приложении."
-            else -> "Подписка заканчивается через $daysLeft дн. Продлите её в приложении."
         }
-        val notification = Notification.Builder(applicationContext, "subscription")
-            .setSmallIcon(R.drawable.ic_stat_vpn)
-            .setContentTitle("Подписка истекает")
-            .setContentText(text)
-            .setStyle(Notification.BigTextStyle().bigText(text))
-            .setContentIntent(contentIntent)
-            .setAutoCancel(true)
-            .build()
-        try {
-            manager.notify(2, notification)
-        } catch (_: SecurityException) {
-        }
+        // Напоминания — даже если серверы скачать не удалось: срок знает
+        // кабинет, и истекающая подписка — как раз частая причина отказа.
+        runCatching { ExpiryNotifier(applicationContext).check(fresh ?: repo.cachedServers()?.second) }
+        runCatching { checkTicketNotifications() }
+        // сеть/сервер недоступны — попробуем в следующем цикле
+        return if (fresh != null) Result.success() else Result.retry()
     }
 
     /**
@@ -127,6 +80,7 @@ class SubscriptionRefreshWorker(
                     title = "Поддержка ответила",
                     text = if (unread == 1) "Есть новый ответ по вашему обращению."
                     else "Новых ответов: $unread.",
+                    open = "support",
                 )
             }
             prefs.setSupportNotified(unread)
@@ -161,12 +115,13 @@ class SubscriptionRefreshWorker(
                 id = 4,
                 title = if (unread == 1) "Новое обращение" else "Обращений без ответа: $unread",
                 text = newest ?: "Откройте «Панель», чтобы ответить.",
+                open = "admin",
             )
         }
         prefs.setAdminTicketsNotified(unread)
     }
 
-    private fun notify(id: Int, title: String, text: String) {
+    private fun notify(id: Int, title: String, text: String, open: String? = null) {
         val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE)
             as NotificationManager
         manager.createNotificationChannel(
@@ -176,11 +131,14 @@ class SubscriptionRefreshWorker(
                 NotificationManager.IMPORTANCE_DEFAULT,
             )
         )
+        val intent = Intent(applicationContext, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        open?.let { intent.putExtra(MainActivity.EXTRA_OPEN, it) }
         val contentIntent = PendingIntent.getActivity(
             applicationContext,
             id,
-            Intent(applicationContext, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification = Notification.Builder(applicationContext, "support")
             .setSmallIcon(R.drawable.ic_stat_vpn)

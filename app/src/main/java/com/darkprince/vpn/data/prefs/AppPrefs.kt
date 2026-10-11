@@ -33,6 +33,7 @@ class AppPrefs(private val context: Context) {
         val SUB_USERINFO = stringPreferencesKey("sub_userinfo")
         val SELECTED_SERVER = intPreferencesKey("selected_server")
         val LAST_EXPIRY_NOTIFY_DAY = stringPreferencesKey("last_expiry_notify_day")
+        val EXPIRED_NOTIFIED = stringPreferencesKey("expired_notified")
         // о скольких непрочитанных обращениях человек уже оповещён: чтобы одно
         // и то же сообщение не всплывало каждый час
         val SUPPORT_NOTIFIED = intPreferencesKey("support_notified_count")
@@ -439,6 +440,14 @@ class AppPrefs(private val context: Context) {
 
     suspend fun setLastExpiryNotifyDay(day: String) {
         context.dataStore.edit { it[Keys.LAST_EXPIRY_NOTIFY_DAY] = day }
+    }
+
+    /** О каких окончаниях уже сказали: «номер@дата окончания» через запятую. */
+    val expiredNotifiedFlow: Flow<String?> =
+        context.dataStore.data.map { it[Keys.EXPIRED_NOTIFIED] }
+
+    suspend fun setExpiredNotified(value: String) {
+        context.dataStore.edit { it[Keys.EXPIRED_NOTIFIED] = value }
     }
 
     val supportNotifiedFlow: Flow<Int> =
