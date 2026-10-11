@@ -187,6 +187,9 @@ data class AdminUserDto(
     @SerialName("device_limit") val deviceLimit: Int = 0,
     @SerialName("days_remaining") val daysRemaining: Int = 0,
     @SerialName("total_spent_kopeks") val totalSpentKopeks: Long = 0,
+    @SerialName("purchase_count") val purchaseCount: Int = 0,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("last_activity") val lastActivity: String? = null,
 ) {
     val displayName: String
         get() = fullName.takeIf { it.isNotBlank() }

@@ -425,6 +425,13 @@ interface BedolagaApi {
     @POST("cabinet/admin/users/{userId}/unblock")
     suspend fun adminUnblockUser(@Path("userId") userId: Long): JsonElement
 
+    /** Кого пригласил человек — для проверки заявки на вывод. */
+    @GET("cabinet/admin/users/{userId}/referrals")
+    suspend fun adminUserReferrals(
+        @Path("userId") userId: Long,
+        @Query("limit") limit: Int = 200,
+    ): AdminUsersListDto
+
     @GET("cabinet/admin/users/{userId}/devices")
     suspend fun adminUserDevices(@Path("userId") userId: Long): AdminDevicesDto
 

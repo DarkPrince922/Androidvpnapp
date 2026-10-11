@@ -171,7 +171,7 @@ fun AdminScreen(
             AdminSection.SUMMARY -> SummarySection(viewModel, state)
             AdminSection.TICKETS -> TicketsSection(viewModel, state, onOpenTicket)
             AdminSection.PEOPLE -> PeopleSection(viewModel, state, onOpenPerson)
-            AdminSection.WITHDRAWALS -> WithdrawalsSection(tools, state)
+            AdminSection.WITHDRAWALS -> WithdrawalsSection(tools, state, onOpenPerson)
             AdminSection.PAYMENTS -> PaymentsSection(tools, state)
             AdminSection.BROADCASTS -> BroadcastsSection(tools, state)
         }

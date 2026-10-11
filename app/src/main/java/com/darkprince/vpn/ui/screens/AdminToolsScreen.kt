@@ -44,11 +44,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.data.api.dto.AdminPaymentDto
+import com.darkprince.vpn.data.api.dto.AdminUserDto
 import com.darkprince.vpn.data.api.dto.AdminWithdrawalDto
 import com.darkprince.vpn.data.api.dto.BroadcastDto
 import com.darkprince.vpn.ui.theme.BrandColors
 import com.darkprince.vpn.ui.vm.AdminToolsViewModel
 import com.darkprince.vpn.ui.vm.AdminUiState
+import com.darkprince.vpn.ui.vm.WithdrawalCheck
 
 // ---------------------------------------------------------------------------
 // Выводы
@@ -61,7 +63,11 @@ import com.darkprince.vpn.ui.vm.AdminUiState
  * «Выплачено». Перед решением видно, что бот думает о риске заявки.
  */
 @Composable
-fun ColumnScope.WithdrawalsSection(tools: AdminToolsViewModel, admin: AdminUiState) {
+fun ColumnScope.WithdrawalsSection(
+    tools: AdminToolsViewModel,
+    admin: AdminUiState,
+    onOpenPerson: (AdminUserDto) -> Unit,
+) {
     val state by tools.state.collectAsStateWithLifecycle()
     var decision by remember { mutableStateOf<Pair<AdminWithdrawalDto, Boolean>?>(null) }
 
@@ -70,6 +76,7 @@ fun ColumnScope.WithdrawalsSection(tools: AdminToolsViewModel, admin: AdminUiSta
             title = if (approve) "Одобрить вывод ${formatKopeks(item.amountKopeks)}?" else "Отклонить заявку?",
             hint = if (approve) "Комментарий для клиента (необязательно)" else "Причина — её увидит клиент",
             confirm = if (approve) "Одобрить" else "Отклонить",
+            presets = if (approve) emptyList() else REJECT_REASONS,
             onConfirm = { comment ->
                 decision = null
                 if (approve) tools.approveWithdrawal(item.id, comment) else tools.rejectWithdrawal(item.id, comment)
@@ -100,6 +107,8 @@ fun ColumnScope.WithdrawalsSection(tools: AdminToolsViewModel, admin: AdminUiSta
             WithdrawalCard(
                 item = item,
                 detail = state.withdrawalDetail?.takeIf { it.id == item.id },
+                check = state.withdrawalCheck?.takeIf { it.withdrawalId == item.id },
+                onOpenPerson = onOpenPerson,
                 busy = state.busy,
                 canApprove = admin.canApproveWithdrawals,
                 canReject = admin.canRejectWithdrawals,
@@ -139,6 +148,8 @@ private fun withdrawalState(status: String): String = when (status) {
 private fun WithdrawalCard(
     item: AdminWithdrawalDto,
     detail: com.darkprince.vpn.data.api.dto.AdminWithdrawalDetailDto?,
+    check: WithdrawalCheck?,
+    onOpenPerson: (AdminUserDto) -> Unit,
     busy: Boolean,
     canApprove: Boolean,
     canReject: Boolean,
@@ -179,6 +190,7 @@ private fun WithdrawalCard(
             d.riskAnalysis?.flags?.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             d.riskAnalysis?.recommendationText?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
         }
+        check?.let { WithdrawalCheckBlock(it, onOpenPerson) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (item.status) {
                 "pending" -> {
@@ -187,10 +199,115 @@ private fun WithdrawalCard(
                 }
                 "approved" -> if (canApprove) Action("Выплачено", enabled = !busy, onClick = onComplete)
             }
-            if (detail == null && item.status == "pending") Action("Риски", onClick = onToggle)
+            if (detail == null && item.status == "pending") Action("Проверить", onClick = onToggle)
         }
     }
 }
+
+/** Причины отказа по пунктам правил партнёрской программы. */
+private val REJECT_REASONS = listOf(
+    "Накрутка" to "Приглашённые аккаунты принадлежат вам или оплачены вами — это запрещено п. 3.1 правил партнёрской программы.",
+    "Спам" to "Приглашения рассылались как спам — это запрещено п. 3.2 правил партнёрской программы.",
+    "Возврат платежа" to "Платёж приглашённого был возвращён или оспорен — вознаграждение аннулировано по п. 4.3 правил.",
+)
+
+/**
+ * Своя проверка заявки: кого человек пригласил и не похоже ли это на
+ * накрутку. Красное — почти наверняка обман, оранжевое — стоит посмотреть.
+ */
+@Composable
+private fun WithdrawalCheckBlock(check: WithdrawalCheck, onOpenPerson: (AdminUserDto) -> Unit) {
+    var showAll by remember(check.withdrawalId) { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("Проверка", style = MaterialTheme.typography.titleSmall)
+        when {
+            check.loading -> Text(
+                "Смотрю приглашённых и устройства…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            check.unavailable != null -> Text(
+                check.unavailable,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            else -> {
+                if (check.warnings.isEmpty()) {
+                    Text("● Подозрительного не найдено", style = MaterialTheme.typography.bodySmall, color = BrandColors.Success)
+                }
+                check.warnings.forEach { warning ->
+                    Text(
+                        "● ${warning.text}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (warning.severe) BrandColors.Danger else BrandColors.Warning,
+                    )
+                }
+                if (check.totalFriends > check.devicesChecked && check.devicesChecked > 0) {
+                    Text(
+                        "Устройства сверены у первых ${check.devicesChecked} из ${check.totalFriends}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (check.friends.isNotEmpty()) {
+                    Text(
+                        "Пригласил: ${check.totalFriends}",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    val shown = if (showAll) check.friends else check.friends.take(FRIENDS_PREVIEW)
+                    shown.forEach { friend -> FriendRow(friend) { onOpenPerson(friend) } }
+                    if (!showAll && check.friends.size > FRIENDS_PREVIEW) {
+                        Text(
+                            "Показать всех (${check.friends.size})",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { showAll = true }
+                                .padding(vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FriendRow(friend: AdminUserDto, onClick: () -> Unit) {
+    val bought = when {
+        friend.purchaseCount > 0 -> "покупок ${friend.purchaseCount} · ${formatKopeks(friend.totalSpentKopeks)}"
+        friend.subscriptionIsTrial -> "только пробная"
+        else -> "не покупал"
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+    ) {
+        Text(friend.displayName, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+        Text(
+            listOfNotNull(
+                friend.createdAt?.let { "рег. ${cabinetDate(it)}" },
+                bought,
+                if (friend.lastActivity == null) "не заходил" else null,
+            ).joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (friend.purchaseCount > 0) MaterialTheme.colorScheme.onSurfaceVariant else BrandColors.Warning,
+        )
+    }
+}
+
+private const val FRIENDS_PREVIEW = 10
 
 // ---------------------------------------------------------------------------
 // Платежи
@@ -526,6 +643,7 @@ private fun CommentDialog(
     title: String,
     hint: String,
     confirm: String,
+    presets: List<Pair<String, String>> = emptyList(),
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -534,12 +652,29 @@ private fun CommentDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(
-                value = comment,
-                onValueChange = { if (it.length <= 2000) comment = it },
-                label = { Text(hint) },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // готовые причины — по пунктам правил, чтобы не набирать руками
+                if (presets.isNotEmpty()) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        presets.forEach { (label, text) ->
+                            FilterChip(
+                                selected = comment == text,
+                                onClick = { comment = text },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = comment,
+                    onValueChange = { if (it.length <= 2000) comment = it },
+                    label = { Text(hint) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         },
         confirmButton = { TextButton(onClick = { onConfirm(comment) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },

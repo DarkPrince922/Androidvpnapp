@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.data.api.dto.AdminCommentRequest
 import com.darkprince.vpn.data.api.dto.AdminPaymentDto
+import com.darkprince.vpn.data.api.dto.AdminUserDto
 import com.darkprince.vpn.data.api.dto.AdminWithdrawalDetailDto
 import com.darkprince.vpn.data.api.dto.AdminWithdrawalDto
 import com.darkprince.vpn.data.api.dto.BroadcastButtonDto
@@ -15,6 +16,8 @@ import com.darkprince.vpn.data.repo.cabinetMessage
 import com.darkprince.vpn.di.ServiceLocator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +38,8 @@ data class AdminToolsUiState(
     val pendingTotalKopeks: Long = 0,
     /** Разбор риска по открытой заявке. */
     val withdrawalDetail: AdminWithdrawalDetailDto? = null,
+    /** Своя проверка открытой заявки: друзья, устройства, реквизиты. */
+    val withdrawalCheck: WithdrawalCheck? = null,
 
     // платежи
     val paymentQuery: String = "",
@@ -87,7 +92,7 @@ class AdminToolsViewModel : ViewModel() {
     // --- Выводы ---
 
     fun setWithdrawalStatus(status: String?) {
-        _state.update { it.copy(withdrawalStatus = status, withdrawalDetail = null) }
+        _state.update { it.copy(withdrawalStatus = status, withdrawalDetail = null, withdrawalCheck = null) }
         loadWithdrawals()
     }
 
@@ -102,18 +107,111 @@ class AdminToolsViewModel : ViewModel() {
         }
     }
 
-    /** Флаги риска — бот считает их сам; показываем перед решением. */
+    /**
+     * Флаги риска — бот считает их сам; показываем перед решением. Рядом
+     * своя проверка: то, что админ иначе смотрел бы руками по карточкам.
+     */
     fun openWithdrawal(id: Long) {
         if (_state.value.withdrawalDetail?.id == id) {
-            _state.update { it.copy(withdrawalDetail = null) }
+            _state.update { it.copy(withdrawalDetail = null, withdrawalCheck = null) }
             return
+        }
+        val item = _state.value.withdrawals.firstOrNull { it.id == id }
+        _state.update {
+            it.copy(withdrawalCheck = item?.let { w -> WithdrawalCheck(withdrawalId = w.id, loading = true) })
         }
         viewModelScope.launch {
             runCatching { api.adminWithdrawal(id) }
                 .onSuccess { detail -> _state.update { it.copy(withdrawalDetail = detail) } }
                 .onFailure { e -> _state.update { it.copy(error = adminErrorMessage(e)) } }
         }
+        if (item != null) viewModelScope.launch {
+            val check = checkWithdrawal(item)
+            _state.update { if (it.withdrawalCheck?.withdrawalId == id) it.copy(withdrawalCheck = check) else it }
+        }
     }
+
+    private suspend fun checkWithdrawal(item: AdminWithdrawalDto): WithdrawalCheck = coroutineScope {
+        val friendsCall = async { runCatching { api.adminUserReferrals(item.userId) } }
+        val ownDevicesCall = async { runCatching { api.adminUserDevices(item.userId).devices } }
+        val othersCall = async { runCatching { api.adminWithdrawals(status = null, limit = 100).items } }
+
+        val friendsList = friendsCall.await().getOrElse { e ->
+            return@coroutineScope WithdrawalCheck(
+                withdrawalId = item.id,
+                unavailable = if (e is retrofit2.HttpException && e.code() == 403) {
+                    "Нет права смотреть людей — проверка недоступна"
+                } else {
+                    "Не удалось загрузить приглашённых: ${adminErrorMessage(e)}"
+                },
+            )
+        }
+        val friends = friendsList.users
+        val warnings = mutableListOf<CheckWarning>()
+
+        // общие устройства: «друг» сидит с того же телефона, что и пригласивший
+        val ownHwids = ownDevicesCall.await().getOrNull().orEmpty().map { it.hwid }.filter { it.isNotBlank() }.toSet()
+        val checked = friends.take(DEVICE_CHECK_LIMIT)
+        if (ownHwids.isNotEmpty() && checked.isNotEmpty()) {
+            val shared = checked.chunked(6).flatMap { chunk ->
+                chunk.map { friend ->
+                    async {
+                        val hwids = runCatching { api.adminUserDevices(friend.id).devices }.getOrNull().orEmpty()
+                        friend.takeIf { hwids.any { it.hwid in ownHwids } }
+                    }
+                }.awaitAll()
+            }.filterNotNull()
+            if (shared.isNotEmpty()) {
+                warnings += CheckWarning(
+                    "Общие устройства с пригласившим: ${shared.joinToString { it.displayName }}",
+                    severe = true,
+                )
+            }
+        }
+
+        // те же реквизиты у другого человека — один получатель на несколько аккаунтов
+        val details = item.paymentDetails?.let(::normalizeDetails)
+        if (!details.isNullOrEmpty()) {
+            val others = othersCall.await().getOrNull().orEmpty()
+                .filter { it.userId != item.userId && it.paymentDetails?.let(::normalizeDetails) == details }
+                .distinctBy { it.userId }
+            if (others.isNotEmpty()) {
+                warnings += CheckWarning(
+                    "Эти реквизиты есть в заявках: ${others.joinToString { it.who }}",
+                    severe = true,
+                )
+            }
+        }
+
+        if (friends.size >= 3) {
+            val (day, sameDay) = friends.mapNotNull { it.createdAt?.take(10) }
+                .groupingBy { it }.eachCount()
+                .maxByOrNull { it.value }?.toPair() ?: ("" to 0)
+            if (sameDay >= 3 && sameDay * 2 >= friends.size) {
+                warnings += CheckWarning("$sameDay из ${friends.size} зарегистрированы в один день ($day)")
+            }
+            val noPurchase = friends.count { it.purchaseCount == 0 }
+            if (noPurchase * 2 >= friends.size) {
+                warnings += CheckWarning("$noPurchase из ${friends.size} ничего не купили")
+            }
+            val idle = friends.count { it.lastActivity == null }
+            if (idle * 2 >= friends.size) {
+                warnings += CheckWarning("$idle из ${friends.size} не заходили после регистрации")
+            }
+        }
+
+        WithdrawalCheck(
+            withdrawalId = item.id,
+            friends = friends,
+            totalFriends = friendsList.total,
+            devicesChecked = if (ownHwids.isEmpty()) 0 else checked.size,
+            warnings = warnings,
+        )
+    }
+
+    /** Карта с пробелами и без, кошелёк в разном регистре — один и тот же получатель. */
+    private fun normalizeDetails(text: String): String =
+        text.lowercase().filter { it.isLetterOrDigit() }
 
     fun approveWithdrawal(id: Long, comment: String) =
         act("Заявка одобрена. Переведите деньги и отметьте «Выплачено»") {
@@ -133,7 +231,7 @@ class AdminToolsViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 block()
-                _state.update { it.copy(busy = false, info = success, withdrawalDetail = null) }
+                _state.update { it.copy(busy = false, info = success, withdrawalDetail = null, withdrawalCheck = null) }
                 loadWithdrawals()
             } catch (e: Exception) {
                 _state.update { it.copy(busy = false, error = e.cabinetMessage()) }
@@ -272,3 +370,21 @@ class AdminToolsViewModel : ViewModel() {
         _state.update { it.copy(info = null, error = null) }
     }
 }
+
+/** Предупреждение проверки; [severe] — почти наверняка обман. */
+data class CheckWarning(val text: String, val severe: Boolean = false)
+
+data class WithdrawalCheck(
+    val withdrawalId: Long,
+    val loading: Boolean = false,
+    /** Проверку провести нельзя — почему. */
+    val unavailable: String? = null,
+    val friends: List<AdminUserDto> = emptyList(),
+    val totalFriends: Int = 0,
+    /** Скольких друзей сверили по устройствам. */
+    val devicesChecked: Int = 0,
+    val warnings: List<CheckWarning> = emptyList(),
+)
+
+/** Устройства — отдельный запрос на каждого друга; больше не ждём. */
+private const val DEVICE_CHECK_LIMIT = 30
