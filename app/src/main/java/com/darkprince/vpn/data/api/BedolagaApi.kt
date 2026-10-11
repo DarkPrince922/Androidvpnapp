@@ -531,6 +531,14 @@ interface BedolagaApi {
 
     // ---------- Новости ----------
 
+    // --- Напоминания на главной ---
+
+    @GET("cabinet/reminders/active")
+    suspend fun activeReminders(@Query("lang") lang: String = "ru"): List<ReminderCardDto>
+
+    @POST("cabinet/reminders/{id}/dismiss")
+    suspend fun dismissReminder(@Path("id") id: Long): retrofit2.Response<Unit>
+
     @GET("cabinet/news")
     suspend fun news(
         @Query("limit") limit: Int = 20,

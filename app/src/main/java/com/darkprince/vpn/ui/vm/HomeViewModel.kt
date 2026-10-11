@@ -45,6 +45,8 @@ data class HomeUiState(
     val selectedSubscriptionId: Long? = null,
     /** Чьи серверы сейчас в [servers]: номер подписки, для которой их скачали. */
     val serversSubId: Long? = null,
+    /** Карточки напоминаний из кабинета: продлить, пригласить друга и т.п. */
+    val reminders: List<com.darkprince.vpn.data.api.dto.ReminderCardDto> = emptyList(),
 ) {
     /**
      * Выбранная подписка, а если её в списке уже нет — активная.
@@ -160,6 +162,25 @@ class HomeViewModel : ViewModel() {
         refresh(forceServers = true)
     }
 
+    /**
+     * Напоминания приходят отдельным запросом и сами по себе: их сбой не
+     * должен мешать подписке и серверам, поэтому ошибку просто глотаем.
+     */
+    private fun loadReminders() {
+        viewModelScope.launch {
+            val cards = runCatching { ServiceLocator.apiClient.api.activeReminders() }.getOrNull() ?: return@launch
+            _state.update { it.copy(reminders = cards) }
+        }
+    }
+
+    /** Закрыть карточку: убираем сразу, кабинет запомнит, что её закрыли. */
+    fun dismissReminder(id: Long) {
+        _state.update { it.copy(reminders = it.reminders.filterNot { r -> r.id == id }) }
+        viewModelScope.launch {
+            runCatching { ServiceLocator.apiClient.api.dismissReminder(id) }
+        }
+    }
+
     fun refresh(forceServers: Boolean = false, notify: Boolean = false) {
         _state.value = _state.value.copy(loading = true, error = null)
         if (notify) _notice.value = null
@@ -198,6 +219,7 @@ class HomeViewModel : ViewModel() {
 
             // без аккаунта кабинет недоступен — только подписка по ссылке
             val guest = !ServiceLocator.authRepository.isLoggedIn
+            if (guest) _state.value = _state.value.copy(reminders = emptyList()) else loadReminders()
             // 404 — подписки правда нет; обрыв сети — это не «нет подписки»:
             // оставляем прежнюю карточку, а не пугаем «Нет активной подписки»
             val sub = if (guest) null else try {

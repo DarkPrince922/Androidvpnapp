@@ -268,7 +268,10 @@ private fun MySubscriptionCard(
     onOpenUrl: (String) -> Unit,
 ) {
     var selectedPeriod by remember(card.id) { mutableStateOf<PeriodPrice?>(null) }
-    val period = selectedPeriod ?: card.periods.firstOrNull()
+    val period = selectedPeriod ?: card.periods.firstOrNull { it.highlighted } ?: card.periods.firstOrNull()
+    // Подписка без тарифа: продлить её нельзя, докупки ей не продаются —
+    // только переход на тариф. Кнопки, которые кончились бы отказом, не рисуем.
+    val legacy = card.sub.requiresTariffSelection
     var extrasOpen by rememberSaveable(card.id) { mutableStateOf(false) }
     var autopayOpen by rememberSaveable(card.id) { mutableStateOf(false) }
     var confirmRevoke by remember(card.id) { mutableStateOf(false) }
@@ -293,8 +296,8 @@ private fun MySubscriptionCard(
             },
         )
     }
-    val hasDevices = card.devices != null
-    val hasTraffic = !card.unlimitedTraffic && card.trafficPackages.isNotEmpty()
+    val hasDevices = card.devices != null && !legacy
+    val hasTraffic = !legacy && !card.unlimitedTraffic && card.trafficPackages.isNotEmpty()
 
     GroupCard {
         Column(
@@ -321,6 +324,20 @@ private fun MySubscriptionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                card.sub.graceUntil?.let { until ->
+                    Text(
+                        "Временный доступ до ${cabinetDate(until)}. Продлите подписку, чтобы VPN не отключился.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BrandColors.Warning,
+                    )
+                }
+                if (legacy) {
+                    Text(
+                        "Подписка оформлена до появления тарифов. Продлить её можно, перейдя на тариф ниже.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BrandColors.Warning,
+                    )
+                }
                 if (showWorkingRow) {
                     if (working) {
                         Text(
@@ -344,7 +361,7 @@ private fun MySubscriptionCard(
                 }
             }
 
-            if (card.periods.isNotEmpty()) {
+            if (card.periods.isNotEmpty() && !legacy) {
                 PeriodGrid(
                     periods = card.periods,
                     selected = period,
@@ -358,7 +375,7 @@ private fun MySubscriptionCard(
             }
 
             val autopay = card.autopay
-            if (card.autopayAllowed && autopay != null && autopay.enabled != null) {
+            if (!legacy && card.autopayAllowed && autopay != null && autopay.enabled != null) {
                 ExpandRow(
                     title = "Автопродление",
                     summary = autopaySummary(autopay),
@@ -432,6 +449,8 @@ private fun MySubscriptionCard(
             if (switchable || card.sub.isActive) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (switchable) SmallAction("Сменить тариф", enabled = !purchasing, onClick = onSwitch)
+                    // у подписки без тарифа блока устройств нет, а отключить лишние нужно
+                    if (legacy && card.devices != null) SmallAction("Устройства", onClick = onOpenDevices)
                     if (card.sub.isActive) {
                         SmallAction("Сбросить ссылку", enabled = !purchasing, onClick = { confirmRevoke = true })
                     }
@@ -681,6 +700,7 @@ private fun SwitchTariffDialog(
 private fun TermBadge(card: OwnedSubscription) {
     val days = card.daysLeft
     val (text, color) = when {
+        card.sub.graceUntil != null -> "Временный доступ" to BrandColors.Warning
         !card.sub.isActive -> (card.sub.status ?: "Не активна") to BrandColors.Danger
         days == null -> "Активна" to BrandColors.Success
         days < 0 -> "Истекла" to BrandColors.Danger
@@ -924,7 +944,7 @@ private fun OfferCard(
     onBuy: (PeriodPrice) -> Unit,
 ) {
     var selectedPeriod by remember(tariff.id) { mutableStateOf<PeriodPrice?>(null) }
-    val period = selectedPeriod ?: tariff.periods.firstOrNull()
+    val period = selectedPeriod ?: tariff.periods.firstOrNull { it.highlighted } ?: tariff.periods.firstOrNull()
 
     GroupCard {
         Column(
@@ -932,6 +952,7 @@ private fun OfferCard(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (tariff.highlighted) BestValueBadge()
                 Text(tariff.name, style = MaterialTheme.typography.titleLarge)
                 tariff.description?.let {
                     Text(
@@ -996,6 +1017,7 @@ private fun PeriodGrid(
             selected = selected?.days == period.days,
             onClick = { onSelect(period) },
             modifier = modifier,
+            badge = if (period.highlighted) "Выгодно" else null,
         )
     }
 }
@@ -1039,6 +1061,7 @@ private fun OptionTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    badge: String? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(16.dp)
@@ -1056,6 +1079,14 @@ private fun OptionTile(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         val content = if (selected) scheme.onPrimary else scheme.onSurface
+        badge?.let {
+            Text(
+                "★ $it",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (selected) content else BrandColors.Warning,
+                maxLines = 1,
+            )
+        }
         Text(title, style = MaterialTheme.typography.titleSmall, color = content, maxLines = 1)
         Text(
             subtitle,
@@ -1065,4 +1096,18 @@ private fun OptionTile(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/** Отметка выгодного тарифа: админ ставит её в кабинете. */
+@Composable
+private fun BestValueBadge() {
+    Text(
+        "★ Выгодно",
+        style = MaterialTheme.typography.labelMedium,
+        color = BrandColors.Warning,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(BrandColors.Warning.copy(alpha = 0.14f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }

@@ -162,6 +162,13 @@ data class SubscriptionListItem(
     @SerialName("autopay_enabled") val autopayEnabled: Boolean? = null,
     /** Суточный тариф: продлевается сам каждый день, автоплатёж ему не нужен. */
     @SerialName("is_daily") val isDaily: Boolean? = null,
+    /**
+     * Подписка куплена до появления тарифов: продлить её нельзя, только
+     * перейти на тариф. Докупки устройств и трафика ей тоже не продаются.
+     */
+    @SerialName("requires_tariff_selection") val requiresTariffSelection: Boolean = false,
+    /** Временный доступ после окончания подписки — до какого момента. */
+    @SerialName("grace_until") val graceUntil: String? = null,
 ) {
     val displayName: String
         get() = tariffName?.takeIf { it.isNotBlank() }
@@ -429,4 +436,21 @@ data class NewsArticleDto(
     @SerialName("read_time_minutes") val readTimeMinutes: Int = 1,
     @SerialName("views_count") val viewsCount: Int = 0,
     @SerialName("author_name") val authorName: String? = null,
+)
+
+/** Карточка напоминания на главной: админ заводит её в кабинете. */
+@Serializable
+data class ReminderCardDto(
+    val id: Long,
+    val title: String = "",
+    val body: String = "",
+    val button: ReminderButtonDto? = null,
+)
+
+/** cabinet — путь внутри кабинета, url — внешняя ссылка. */
+@Serializable
+data class ReminderButtonDto(
+    val kind: String = "url",
+    val target: String = "",
+    val text: String = "",
 )

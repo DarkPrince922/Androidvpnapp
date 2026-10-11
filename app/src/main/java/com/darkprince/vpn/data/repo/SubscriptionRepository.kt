@@ -44,13 +44,24 @@ data class TariffOffer(
     val periods: List<PeriodPrice>,
     val trafficLimitGb: Int?,
     val deviceLimit: Int?,
+    /** Админ отметил тариф как выгодный — на карточке значок. */
+    val highlighted: Boolean = false,
 )
 
 /**
  * Срок и цена. [daily] — суточный тариф: у него нет сроков, только цена за
  * день, а срок в один день сервер ставит при покупке сам.
  */
-data class PeriodPrice(val days: Int, val priceKopeks: Long, val daily: Boolean = false)
+data class PeriodPrice(
+    val days: Int,
+    val priceKopeks: Long,
+    val daily: Boolean = false,
+    /** Самый выгодный срок тарифа — по отметке админа. */
+    val highlighted: Boolean = false,
+)
+
+private fun JsonObject.flag(key: String): Boolean =
+    (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull == true
 
 @kotlinx.serialization.Serializable
 data class SubscriptionUserInfo(
@@ -367,6 +378,7 @@ class SubscriptionRepository(
                         periods = periods,
                         trafficLimitGb = obj["traffic_limit_gb"]?.jsonPrimitive?.intOrNull,
                         deviceLimit = obj["device_limit"]?.jsonPrimitive?.intOrNull,
+                        highlighted = obj.flag("is_highlighted"),
                     )
                 )
             }
@@ -384,7 +396,7 @@ class SubscriptionRepository(
                     ?: po["period_days"]?.jsonPrimitive?.intOrNull ?: continue
                 val price = po["price_kopeks"]?.jsonPrimitive?.longOrNull
                     ?: po["price"]?.jsonPrimitive?.longOrNull ?: continue
-                result.add(PeriodPrice(days, price))
+                result.add(PeriodPrice(days, price, highlighted = po.flag("is_highlighted")))
             }
         }
         return result.sortedBy { it.days }
@@ -421,7 +433,7 @@ class SubscriptionRepository(
                 ?: obj["days"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
             val price = obj["price_kopeks"]?.jsonPrimitive?.longOrNull
                 ?: obj["price"]?.jsonPrimitive?.longOrNull ?: return@mapNotNull null
-            PeriodPrice(days, price)
+            PeriodPrice(days, price, highlighted = obj.flag("is_highlighted"))
         }.sortedBy { it.days }
     }
 

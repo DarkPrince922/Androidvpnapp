@@ -585,6 +585,24 @@ private fun AppRoot(
                         }
                     },
                     onDisconnectClick = { XVpnService.stop(activity) },
+                    onReminderButton = { button ->
+                        if (button.kind == "cabinet") {
+                            val route = reminderRoute(button.target)
+                            if (route != null) {
+                                navController.navigate(route) {
+                                    popUpTo("home") { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            } else {
+                                // своего экрана нет — открываем тот же раздел веб-кабинета
+                                val base = ServiceLocator.prefs.cachedBaseUrl?.trimEnd('/')
+                                if (base != null) activity.openExternal(base + "/" + button.target.trimStart('/'))
+                            }
+                        } else {
+                            activity.openExternal(button.target)
+                        }
+                    },
                 )
             }
             composable("servers") {
@@ -932,6 +950,27 @@ private fun cabinetEventText(event: com.darkprince.vpn.data.api.CabinetEvent): S
         "ticket.new" -> null
         "referral.bonus" -> money("bonus_kopeks")?.let { "Бонус за приглашённого: $it" }
             ?: "Начислен бонус за приглашённого"
+        else -> null
+    }
+}
+
+/**
+ * Путь кабинета из кнопки напоминания → экран приложения. Админ пишет путь
+ * веб-кабинета («/subscription», «/balance»…), а у приложения экраны свои.
+ */
+private fun reminderRoute(target: String): String? {
+    val path = target.lowercase()
+    return when {
+        "balance" in path || "topup" in path -> "balance"
+        "referral" in path || "partner" in path -> "referral"
+        "gift" in path -> "gifts"
+        "support" in path || "ticket" in path -> "support"
+        "promo" in path || "loyalty" in path || "discount" in path -> "promo"
+        "news" in path -> "news"
+        "faq" in path || "info" in path || "rules" in path -> "docs"
+        "device" in path -> "devices"
+        "subscription" in path || "tariff" in path || "purchase" in path || "renew" in path -> "plans"
+        path.trim('/').isEmpty() || "dashboard" in path -> "home"
         else -> null
     }
 }

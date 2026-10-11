@@ -35,12 +35,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -84,6 +86,7 @@ import com.darkprince.vpn.ui.theme.LocalPalette
 import com.darkprince.vpn.ui.theme.CircleActionButton
 import com.darkprince.vpn.ui.theme.ConnectionMap
 import com.darkprince.vpn.ui.theme.EmojiTile
+import com.darkprince.vpn.ui.theme.BrandColors
 import com.darkprince.vpn.ui.theme.GroupCard
 import com.darkprince.vpn.ui.theme.QuietMapBackdrop
 import com.darkprince.vpn.ui.theme.SectionHeader
@@ -110,6 +113,7 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onConnectClick: () -> Unit,
     onDisconnectClick: () -> Unit,
+    onReminderButton: (com.darkprince.vpn.data.api.dto.ReminderButtonDto) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val vpnState by viewModel.vpnState.collectAsStateWithLifecycle()
@@ -258,6 +262,17 @@ fun HomeScreen(
         ServiceDownBanner(
             "Обновить подписку, оплатить и продлить можно будет, когда сервис вернётся.",
             Modifier.padding(bottom = 12.dp),
+        )
+      }
+
+      // напоминания из кабинета — над подпиской: это то, что админ просит
+      // сделать сейчас, и ниже их никто не увидит
+      items(state.reminders, key = { "reminder-${it.id}" }) { card ->
+        ReminderCard(
+            card = card,
+            onButton = onReminderButton,
+            onDismiss = { viewModel.dismissReminder(card.id) },
+            modifier = Modifier.padding(bottom = 12.dp),
         )
       }
 
@@ -766,6 +781,23 @@ private fun SubscriptionCard(
             )
         }
 
+        current?.graceUntil?.let { until ->
+            Text(
+                "Временный доступ до ${cabinetDate(until)} — продлите подписку, чтобы VPN не отключился",
+                style = MaterialTheme.typography.bodySmall,
+                color = BrandColors.Warning,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        if (current?.requiresTariffSelection == true) {
+            Text(
+                "Подписка оформлена до появления тарифов. Чтобы продлить её, выберите тариф в «Тарифах».",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+
         Spacer(Modifier.height(10.dp))
 
         // Текущий сервер — просто напоминание, куда подключаемся. Выбирают
@@ -861,4 +893,49 @@ private fun daysUntil(endDate: String): Int? = try {
         .toInt()
 } catch (_: Exception) {
     null
+}
+
+/** Карточка напоминания: заголовок, текст, кнопка из кабинета и «закрыть». */
+@Composable
+private fun ReminderCard(
+    card: com.darkprince.vpn.data.api.dto.ReminderCardDto,
+    onButton: (com.darkprince.vpn.data.api.dto.ReminderButtonDto) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    GroupCard(modifier) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 4.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(Modifier.weight(1f).padding(top = 4.dp)) {
+                Text(card.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                if (card.body.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        card.body,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            androidx.compose.material3.IconButton(onClick = onDismiss) {
+                Icon(
+                    androidx.compose.material.icons.Icons.Default.Close,
+                    contentDescription = "Закрыть",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        val button = card.button?.takeIf { it.text.isNotBlank() && it.target.isNotBlank() }
+        if (button != null) {
+            androidx.compose.material3.TextButton(
+                onClick = { onButton(button) },
+                modifier = Modifier.padding(start = 6.dp, bottom = 4.dp),
+            ) { Text(button.text) }
+        } else {
+            Spacer(Modifier.height(12.dp))
+        }
+    }
 }
