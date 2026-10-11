@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,8 +73,18 @@ import com.darkprince.vpn.ui.vm.OwnedSubscription
 fun PlansScreen(
     viewModel: PlansViewModel,
     onOpenDevices: (Long) -> Unit,
+    onNeedTopUp: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // Денег не хватило — сразу на пополнение: недостающая сумма там уже
+    // стоит, а выбранная подписка оплатится после зачисления.
+    LaunchedEffect(state.needTopUp) {
+        if (state.needTopUp) {
+            viewModel.consumeTopUp()
+            onNeedTopUp()
+        }
+    }
 
     LazyColumn(
         modifier = Modifier

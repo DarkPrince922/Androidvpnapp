@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.data.api.dto.SubscriptionListItem
 import com.darkprince.vpn.data.repo.DevicesInfo
+import com.darkprince.vpn.data.repo.PendingPurchase
 import com.darkprince.vpn.data.repo.PeriodPrice
+import com.darkprince.vpn.data.repo.PurchaseResult
 import com.darkprince.vpn.data.repo.TariffOffer
 import com.darkprince.vpn.data.repo.TrafficPackage
 import com.darkprince.vpn.data.repo.userMessage
@@ -80,6 +82,8 @@ data class PlansUiState(
     val purchasing: Boolean = false,
     val error: String? = null,
     val info: String? = null,
+    /** Денег не хватило — экрану пора увести человека на пополнение. */
+    val needTopUp: Boolean = false,
 ) {
     private val ownedTariffIds: Set<Long>
         get() = cards.mapNotNull { it.sub.tariffId }.toSet()
@@ -226,13 +230,70 @@ class PlansViewModel : ViewModel() {
         }
     }
 
-    fun purchase(tariff: TariffOffer, period: PeriodPrice) = act("Подписка оформлена!") {
-        repo.purchaseTariff(tariff.id, period.days)
+    fun purchase(tariff: TariffOffer, period: PeriodPrice) = buy(
+        pending = PendingPurchase(
+            kind = "buy",
+            tariffId = tariff.id,
+            periodDays = period.days,
+            priceKopeks = period.priceKopeks,
+            missingKopeks = period.priceKopeks,
+            title = "${tariff.name} · ${periodTitle(period)}",
+        ),
+        success = "Подписка оформлена!",
+    ) { repo.purchaseTariffChecked(tariff.id, period.days) }
+
+    fun renew(subId: Long, period: PeriodPrice) {
+        val card = _state.value.cards.firstOrNull { it.id == subId }
+        buy(
+            pending = PendingPurchase(
+                kind = "renew",
+                subscriptionId = subId,
+                periodDays = period.days,
+                priceKopeks = period.priceKopeks,
+                missingKopeks = period.priceKopeks,
+                title = "${card?.title ?: "Подписка"} · продление на ${periodTitle(period)}",
+            ),
+            success = "Подписка продлена!",
+        ) { repo.renewChecked(period.days, subId) }
     }
 
-    fun renew(subId: Long, period: PeriodPrice) = act("Подписка продлена!") {
-        repo.renew(period.days, subId)
+    /**
+     * Купить или продлить. Не хватило денег — запоминаем выбор и просим
+     * экран увести человека на пополнение: там уже стоит недостающая сумма,
+     * а после зачисления эта покупка оплатится сама.
+     */
+    private fun buy(pending: PendingPurchase, success: String, block: suspend () -> PurchaseResult) {
+        _state.update { it.copy(purchasing = true, error = null, info = null) }
+        viewModelScope.launch {
+            when (val result = block()) {
+                PurchaseResult.Ok -> {
+                    ServiceLocator.pendingPurchases.clear()
+                    _state.update { it.copy(purchasing = false, info = success) }
+                    refresh()
+                }
+                is PurchaseResult.NotEnough -> {
+                    val snapshot = runOrNull { repo.subscriptions() }.orEmpty()
+                        .associate { it.id to it.endDate }
+                    ServiceLocator.pendingPurchases.save(
+                        pending.copy(
+                            missingKopeks = result.missingKopeks ?: pending.priceKopeks,
+                            endDatesBefore = snapshot,
+                        )
+                    )
+                    _state.update { it.copy(purchasing = false, needTopUp = true) }
+                }
+                is PurchaseResult.Failed -> _state.update { it.copy(purchasing = false, error = result.message) }
+            }
+        }
     }
+
+    /** Экран увёл на пополнение — флаг больше не нужен. */
+    fun consumeTopUp() {
+        _state.update { it.copy(needTopUp = false) }
+    }
+
+    private fun periodTitle(period: PeriodPrice): String =
+        if (period.daily) "посуточно" else "${period.days} дн.
 
     fun buyDevices(subId: Long, count: Int) {
         if (count <= 0) return

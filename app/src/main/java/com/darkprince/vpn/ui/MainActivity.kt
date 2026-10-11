@@ -540,6 +540,15 @@ private fun AppRoot(
                     // ведём в устройства именно той подписки, из карточки
                     // которой нажали, — выбирать её заново незачем
                     onOpenDevices = { subId -> navController.navigate("devices?sub=$subId") },
+                    // как переход по нижней панели: «Баланс» — свой раздел,
+                    // а не экран поверх тарифов
+                    onNeedTopUp = {
+                        navController.navigate("balance") {
+                            popUpTo("home") { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
                 )
             }
             composable("balance") {

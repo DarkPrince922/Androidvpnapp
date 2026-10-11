@@ -355,6 +355,14 @@ class SubscriptionRepository(
         return result.sortedBy { it.days }
     }
 
+    /** То же, что [purchaseTariff], но нехватку денег отличает от прочих ошибок. */
+    suspend fun purchaseTariffChecked(tariffId: Long, periodDays: Int): PurchaseResult =
+        attemptPurchase { api.purchaseTariff(PurchaseTariffRequest(tariffId, periodDays)) }
+
+    /** То же, что [renew], но нехватку денег отличает от прочих ошибок. */
+    suspend fun renewChecked(periodDays: Int, subscriptionId: Long?): PurchaseResult =
+        attemptPurchase { api.renew(RenewRequest(periodDays), subscriptionId) }
+
     suspend fun purchaseTariff(tariffId: Long, periodDays: Int): String? = try {
         api.purchaseTariff(PurchaseTariffRequest(tariffId, periodDays))
         null

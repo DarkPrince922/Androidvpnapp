@@ -23,6 +23,8 @@ object ServiceLocator {
     lateinit var subscriptionRepository: SubscriptionRepository
         private set
     lateinit var balanceRepository: BalanceRepository
+
+    lateinit var pendingPurchases: com.darkprince.vpn.data.repo.PendingPurchaseStore
         private set
     lateinit var supportRepository: SupportRepository
 
@@ -42,6 +44,7 @@ object ServiceLocator {
         authRepository = AuthRepository(apiClient, prefs)
         subscriptionRepository = SubscriptionRepository(apiClient, prefs)
         balanceRepository = BalanceRepository(apiClient)
+        pendingPurchases = com.darkprince.vpn.data.repo.PendingPurchaseStore(prefs)
         supportRepository = SupportRepository(apiClient, prefs, appContext)
         newsRepository = NewsRepository(apiClient, prefs)
         adminRepository = AdminRepository(apiClient, prefs)

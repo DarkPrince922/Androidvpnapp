@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.data.api.dto.PaymentMethodDto
 import com.darkprince.vpn.data.api.dto.TransactionDto
+import com.darkprince.vpn.data.repo.PendingPurchase
+import com.darkprince.vpn.data.repo.PurchaseResult
 import com.darkprince.vpn.data.repo.userMessage
 import com.darkprince.vpn.di.ServiceLocator
 import kotlinx.coroutines.Job
@@ -21,6 +23,10 @@ data class BalanceUiState(
     val loading: Boolean = false,
     val creatingPayment: Boolean = false,
     val pendingPayment: PendingPayment? = null,
+    /** Покупка, ради которой пополняют: оплатится сама после зачисления. */
+    val pendingPurchase: PendingPurchase? = null,
+    /** Сейчас оплачиваем отложенную покупку. */
+    val completingPurchase: Boolean = false,
     /** URL оплаты, который нужно открыть в браузере. */
     val openUrl: String? = null,
     val error: String? = null,
@@ -50,12 +56,15 @@ class BalanceViewModel : ViewModel() {
                 }
                 val kopeks = balance.balanceKopeks
                     ?: balance.balanceRubles?.let { (it * 100).toLong() }
+                val pending = ServiceLocator.pendingPurchases.load()
                 _state.value = _state.value.copy(
                     balanceKopeks = kopeks,
                     methods = methods,
                     transactions = transactions,
                     loading = false,
+                    pendingPurchase = pending,
                 )
+                if (pending != null && kopeks != null) completePurchase(pending, kopeks)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.userMessage())
             }
@@ -83,6 +92,76 @@ class BalanceViewModel : ViewModel() {
             } catch (e: Exception) {
                 _state.value = _state.value.copy(creatingPayment = false, error = e.userMessage())
             }
+        }
+    }
+
+    /**
+     * Денег стало достаточно — оплачиваем то, ради чего пополняли.
+     *
+     * Сначала смотрим, не сделал ли это уже сам бот: у него есть своя
+     * автопокупка после пополнения. Если срок подписки успел измениться,
+     * второй раз не платим.
+     */
+    private suspend fun completePurchase(pending: PendingPurchase, balanceKopeks: Long) {
+        if (balanceKopeks < pending.priceKopeks || _state.value.completingPurchase) return
+        _state.value = _state.value.copy(completingPurchase = true, error = null)
+        val subs = ServiceLocator.subscriptionRepository
+        val current = try {
+            subs.subscriptions()
+        } catch (_: Exception) {
+            null
+        }
+        if (current == null) {
+            // не знаем, что с подписками, — платить вслепую нельзя
+            _state.value = _state.value.copy(completingPurchase = false)
+            return
+        }
+        if (pending.alreadyDone(current)) {
+            ServiceLocator.pendingPurchases.clear()
+            _state.value = _state.value.copy(
+                completingPurchase = false,
+                pendingPurchase = null,
+                info = "Готово: «${pending.title}» уже оплачено",
+            )
+            return
+        }
+        val result = when (pending.kind) {
+            "renew" -> subs.renewChecked(pending.periodDays, pending.subscriptionId)
+            else -> subs.purchaseTariffChecked(pending.tariffId ?: 0L, pending.periodDays)
+        }
+        when (result) {
+            PurchaseResult.Ok -> {
+                ServiceLocator.pendingPurchases.clear()
+                _state.value = _state.value.copy(
+                    completingPurchase = false,
+                    pendingPurchase = null,
+                    info = "Готово: «${pending.title}» оплачено с баланса",
+                )
+                refresh()
+            }
+            is PurchaseResult.NotEnough -> {
+                // цена могла вырасти, пока платили, — ждём ещё пополнения
+                val updated = pending.copy(missingKopeks = result.missingKopeks ?: pending.missingKopeks)
+                ServiceLocator.pendingPurchases.save(updated)
+                _state.value = _state.value.copy(completingPurchase = false, pendingPurchase = updated)
+            }
+            is PurchaseResult.Failed -> {
+                ServiceLocator.pendingPurchases.clear()
+                _state.value = _state.value.copy(
+                    completingPurchase = false,
+                    pendingPurchase = null,
+                    error = "Деньги зачислены, но оформить «${pending.title}» не вышло: " +
+                        "${result.message}. Попробуйте на экране «Тарифы».",
+                )
+            }
+        }
+    }
+
+    /** Человек передумал: пополнение останется просто пополнением. */
+    fun cancelPendingPurchase() {
+        viewModelScope.launch {
+            ServiceLocator.pendingPurchases.clear()
+            _state.value = _state.value.copy(pendingPurchase = null)
         }
     }
 

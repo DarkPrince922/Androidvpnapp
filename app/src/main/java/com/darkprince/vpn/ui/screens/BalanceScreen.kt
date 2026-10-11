@@ -35,6 +35,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -94,6 +95,15 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
     }
 
     var amount by rememberSaveable { mutableStateOf("300") }
+
+    // Пришли сюда за недостающей суммой — подставляем её: ровно столько,
+    // сколько не хватает, округлив вверх до рубля (и не меньше 10 ₽ — меньше
+    // касса не принимает).
+    val pendingPurchase = state.pendingPurchase
+    LaunchedEffect(pendingPurchase?.createdAt, pendingPurchase?.missingKopeks) {
+        val missing = pendingPurchase?.missingKopeks ?: return@LaunchedEffect
+        amount = ((missing + 99) / 100).coerceAtLeast(10).toString()
+    }
     var selectedMethod by rememberSaveable { mutableStateOf<String?>(null) }
     var promo by rememberSaveable { mutableStateOf("") }
     var showAllHistory by rememberSaveable { mutableStateOf(false) }
@@ -134,6 +144,10 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                     style = MaterialTheme.typography.displaySmall,
                 )
             }
+        }
+
+        pendingPurchase?.let { pending ->
+            item { PendingPurchaseBanner(pending, state.completingPurchase, viewModel::cancelPendingPurchase) }
         }
 
         item {
@@ -308,6 +322,51 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
         }
 
         item { Spacer(Modifier.height(16.dp)) }
+    }
+}
+
+/**
+ * Зачем пополняем: «Не хватает 182 ₽ на „Стандарт · 30 дн.“». После
+ * зачисления покупка оплатится сама — об этом и говорим, чтобы человек не
+ * шёл потом на «Тарифы» платить второй раз.
+ */
+@Composable
+private fun PendingPurchaseBanner(
+    pending: com.darkprince.vpn.data.repo.PendingPurchase,
+    completing: Boolean,
+    onCancel: () -> Unit,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(accent.copy(alpha = 0.12f))
+            .border(1.dp, accent.copy(alpha = 0.5f), shape)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            "Не хватает ${formatKopeks(pending.missingKopeks)}",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            "на «${pending.title}» за ${formatKopeks(pending.priceKopeks)}",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            if (completing) "Оплачиваем подписку…"
+            else "Пополните баланс — подписка оплатится сама, сразу после зачисления.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (!completing) {
+            TextButton(
+                onClick = onCancel,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+            ) { Text("Не оплачивать автоматически") }
+        }
     }
 }
 

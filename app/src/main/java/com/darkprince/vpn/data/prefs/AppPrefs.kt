@@ -53,6 +53,8 @@ class AppPrefs(private val context: Context) {
         // почему в прошлый раз оборвалась сессия: человек видит это на экране
         // входа, а мы — в обращении в поддержку
         val SESSION_END = stringPreferencesKey("session_end_reason")
+        // покупка, на которую не хватило денег: после пополнения её оплачиваем
+        val PENDING_PURCHASE = stringPreferencesKey("pending_purchase")
     }
 
     @Volatile var cachedBaseUrl: String = ""
@@ -392,6 +394,14 @@ class AppPrefs(private val context: Context) {
     suspend fun clearSessionEndReason() {
         cachedSessionEnd = null
         context.dataStore.edit { p -> p.remove(Keys.SESSION_END) }
+    }
+
+    suspend fun pendingPurchaseJson(): String? = context.dataStore.data.first()[Keys.PENDING_PURCHASE]
+
+    suspend fun setPendingPurchaseJson(json: String?) {
+        context.dataStore.edit { p ->
+            if (json == null) p.remove(Keys.PENDING_PURCHASE) else p[Keys.PENDING_PURCHASE] = json
+        }
     }
 
     suspend fun setUserJson(json: String?) {
