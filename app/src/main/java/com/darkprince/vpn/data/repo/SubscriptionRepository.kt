@@ -17,6 +17,7 @@ import com.darkprince.vpn.data.api.dto.SubscriptionListItem
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
 import com.darkprince.vpn.data.api.dto.TrafficPurchaseRequest
 import com.darkprince.vpn.data.prefs.AppPrefs
+import com.darkprince.vpn.di.ServiceLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -215,6 +216,29 @@ class SubscriptionRepository(
             }
         }
 
+    /**
+     * Истекла ли выбранная подписка — по свежим данным, без кэша.
+     *
+     * null — узнать не удалось (нет сети, кабинет недоступен): тогда не
+     * мешаем подключаться. Аккаунту отвечает кабинет, гостю — заголовок
+     * подписки.
+     */
+    suspend fun freshlyExpired(): Boolean? = withContext(Dispatchers.IO) {
+        if (isLoggedIn) {
+            val subs = subscriptions() ?: return@withContext null
+            val selected = prefs.selectedSubscriptionFlow.first()
+            val sub = subs.firstOrNull { it.id == selected }
+                ?: subs.singleOrNull()
+                ?: return@withContext null
+            sub.status.equals("expired", ignoreCase = true)
+        } else {
+            val url = prefs.cachedGuestSubUrl ?: return@withContext null
+            val expire = runCatching { downloadSubscription(null, url).second?.expireUnix }.getOrNull()
+                ?: return@withContext null
+            expire in 1 until System.currentTimeMillis() / 1000
+        }
+    }
+
     /** Сохранённая копия текущей подписки (без сети). */
     suspend fun cachedServers(): Pair<List<ProxyProfile>, SubscriptionUserInfo?>? =
         cachedServersFor(prefs.selectedSubscriptionFlow.first())
@@ -260,6 +284,12 @@ class SubscriptionRepository(
             val userInfo = response.header("subscription-userinfo")?.let(::parseUserInfo)
             val profiles = LinkParser.parseSubscriptionContent(body)
             if (profiles.isNotEmpty()) prefs.setServersRawFor(subId, body)
+            // Плитка и автоподключение поднимают VPN по сохранённому узлу. Без
+            // этого после сброса ссылки или правки узла в панели они
+            // подключались бы со старыми ключами, пока не откроешь приложение.
+            if (profiles.isNotEmpty() && subId == prefs.selectedSubscriptionFlow.first()) {
+                com.darkprince.vpn.vpn.XVpnService.refreshSavedProfile(ServiceLocator.appContext, profiles)
+            }
             if (userInfo != null) {
                 prefs.setUserInfoFor(
                     subId,

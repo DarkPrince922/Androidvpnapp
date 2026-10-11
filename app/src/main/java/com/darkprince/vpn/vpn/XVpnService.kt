@@ -33,6 +33,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -96,6 +97,25 @@ class XVpnService : VpnService() {
          */
         fun forgetProfile(context: Context) {
             File(context.filesDir, PROFILE_FILE).delete()
+        }
+
+        /**
+         * Подменить сохранённый узел свежей версией того же узла из только
+         * что скачанной подписки: ключи могли смениться (сброс ссылки), а
+         * плитка и автоподключение читают только этот файл.
+         */
+        fun refreshSavedProfile(context: Context, fresh: List<ProxyProfile>) {
+            runCatching {
+                val file = File(context.filesDir, PROFILE_FILE)
+                if (!file.exists()) return
+                val saved = Json.decodeFromString(ProxyProfile.serializer(), file.readText())
+                val match = fresh.firstOrNull { it.key == saved.key }
+                    ?: fresh.firstOrNull { it.name == saved.name }
+                    ?: return
+                if (match != saved) {
+                    file.writeText(Json.encodeToString(ProxyProfile.serializer(), match))
+                }
+            }
         }
 
         /** Есть ли сохранённый профиль для быстрого запуска (плитка, автозапуск). */
@@ -220,12 +240,60 @@ class XVpnService : VpnService() {
         // старый туннель гасится и сразу поднимается новый
         pendingStarts.incrementAndGet()
         scope.launch {
+            // Подписка закончилась — подключаться бессмысленно: сервер не
+            // пустит, а туннель без интернета светился бы «Подключено».
+            // Только по нажатию человека: «постоянный VPN» не трогаем.
+            if (!bySystem && subscriptionExpired()) {
+                vpnMutex.withLock {
+                    pendingStarts.decrementAndGet()
+                    AppLog.write("подписка закончилась — не подключаюсь")
+                    VpnStateStore.setState(VpnState.ERROR, "Подписка закончилась — продлите её в «Тарифах»")
+                    notifyExpired()
+                    stopVpn()
+                }
+                return@launch
+            }
             vpnMutex.withLock {
                 pendingStarts.decrementAndGet()
                 startVpn(profile)
             }
         }
         return START_STICKY
+    }
+
+    /**
+     * Истекла ли подписка. Сеть спрашиваем, только если об этом говорит уже
+     * сохранённый срок: обычное подключение не должно ждать кабинета, а при
+     * белых списках он может и не ответить. Не смогли уточнить — пускаем.
+     */
+    private suspend fun subscriptionExpired(): Boolean {
+        val repo = ServiceLocator.subscriptionRepository
+        val expire = runCatching { repo.cachedServers()?.second?.expireUnix }.getOrNull() ?: return false
+        if (expire <= 0 || expire * 1000 > System.currentTimeMillis()) return false
+        return withTimeoutOrNull(8_000) { runCatching { repo.freshlyExpired() }.getOrNull() } == true
+    }
+
+    private fun notifyExpired() {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel("subscription", "Подписка", NotificationManager.IMPORTANCE_DEFAULT)
+        )
+        val intent = Intent(this, com.darkprince.vpn.ui.MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(com.darkprince.vpn.ui.MainActivity.EXTRA_OPEN, "plans")
+        val pending = PendingIntent.getActivity(
+            this, 7, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val text = "VPN не подключён: подписка закончилась. Продлите её — это минута."
+        val notification = Notification.Builder(this, "subscription")
+            .setSmallIcon(R.drawable.ic_stat_vpn)
+            .setContentTitle("Подписка закончилась")
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .build()
+        runCatching { manager.notify(7, notification) }
     }
 
     private fun startVpn(profile: ProxyProfile) {
