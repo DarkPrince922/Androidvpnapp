@@ -1,5 +1,10 @@
 package com.darkprince.vpn.ui.screens
 
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -479,21 +484,53 @@ private fun PeriodRow(
     selected: PeriodPrice?,
     onSelect: (PeriodPrice) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        periods.forEach { period ->
-            FilterChip(
-                selected = selected?.days == period.days,
-                onClick = { onSelect(period) },
-                label = {
-                    Text(
-                        if (period.daily) "Посуточно · ${formatKopeks(period.priceKopeks)} в день"
-                        else "${period.days} дн. · ${formatKopeks(period.priceKopeks)}"
+    // Плитки по две в ряд: срок крупно, цена под ним. Выбранная заливается
+    // акцентом — так видно сразу, без поиска галочки в ряду чипов.
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        periods.chunked(2).forEach { pair ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                pair.forEach { period ->
+                    PeriodTile(
+                        period = period,
+                        selected = selected?.days == period.days,
+                        onClick = { onSelect(period) },
+                        modifier = Modifier.weight(1f),
                     )
-                },
-            )
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
+    }
+}
+
+@Composable
+private fun PeriodTile(
+    period: PeriodPrice,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = modifier
+            .clip(shape)
+            .background(if (selected) scheme.primary else scheme.surface)
+            .border(1.dp, if (selected) scheme.primary else scheme.outline.copy(alpha = 0.6f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        val content = if (selected) scheme.onPrimary else scheme.onSurface
+        Text(
+            if (period.daily) "Посуточно" else "${period.days} дн.",
+            style = MaterialTheme.typography.titleMedium,
+            color = content,
+        )
+        Text(
+            if (period.daily) "${formatKopeks(period.priceKopeks)} в день" else formatKopeks(period.priceKopeks),
+            style = MaterialTheme.typography.bodyMedium,
+            color = content.copy(alpha = 0.85f),
+        )
     }
 }

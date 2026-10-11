@@ -1,5 +1,6 @@
 package com.darkprince.vpn.ui.screens
 
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -64,15 +65,21 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
             Text("Баланс и оплата", style = MaterialTheme.typography.headlineSmall)
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Баланс", style = MaterialTheme.typography.labelMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        state.balanceKopeks?.let { formatKopeks(it) } ?: "—",
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                }
+            // Сумма на счёте — главное на экране: крупно и по центру, без рамки.
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    "На счёте",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    state.balanceKopeks?.let { formatKopeks(it) } ?: "—",
+                    style = MaterialTheme.typography.displaySmall,
+                )
             }
         }
         item {
@@ -88,6 +95,18 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
+                    Spacer(Modifier.height(10.dp))
+                    // Частые суммы одним нажатием — набирать цифры не нужно.
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(100, 300, 500, 1000).forEach { rub ->
+                            FilterChip(
+                                selected = amount == rub.toString(),
+                                onClick = { amount = rub.toString() },
+                                label = { Text("$rub ₽") },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                     if (state.methods.isEmpty() && !state.loading) {
                         Text(
