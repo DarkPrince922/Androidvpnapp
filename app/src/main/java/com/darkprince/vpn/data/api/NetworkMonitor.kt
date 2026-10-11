@@ -22,6 +22,14 @@ object NetworkMonitor {
 
     fun start(context: Context) {
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
+        // Запустились без сети — помним об этом сразу. Иначе первое её
+        // появление не считалось бы возвращением, и экраны, открытые
+        // офлайн, так и оставались пустыми.
+        online = runCatching {
+            manager.getNetworkCapabilities(manager.activeNetwork)
+                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        }.getOrDefault(true)
+        if (!online) lostAt = SystemClock.elapsedRealtime() - MIN_OUTAGE_MS
         runCatching {
             manager.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
                 override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {

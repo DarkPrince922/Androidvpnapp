@@ -132,7 +132,7 @@ data class SwitchState(
 /** Ссылку подписки сбросили. [working] — по ней шло подключение. */
 data class RevokeDone(val subId: Long, val working: Boolean)
 
-private const val STALE_MS = 60_000L
+private const val STALE_MS = 20_000L
 
 class PlansViewModel : ViewModel() {
     private val repo = ServiceLocator.subscriptionRepository

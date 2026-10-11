@@ -48,8 +48,10 @@ class SubscriptionRefreshWorker(
         // кабинет, и истекающая подписка — как раз частая причина отказа.
         runCatching { ExpiryNotifier(applicationContext).check(fresh ?: repo.cachedServers()?.second) }
         runCatching { checkTicketNotifications() }
-        // сеть/сервер недоступны — попробуем в следующем цикле
-        return if (fresh != null) Result.success() else Result.retry()
+        // Не скачали — просто ждём следующего часа. Повтор с нарастающей
+        // паузой будил телефон лишний раз, а у человека без подписки (или с
+        // истёкшей) падал каждый час заново — и каждый раз повторялся.
+        return Result.success()
     }
 
     /**

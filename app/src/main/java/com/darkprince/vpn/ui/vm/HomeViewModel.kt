@@ -22,6 +22,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -382,7 +383,13 @@ class HomeViewModel : ViewModel() {
                                 -1L
                             }
                             results[profile.key] = ms
-                            _state.value = _state.value.copy(pings = results.toMap())
+                            // update, а не «прочитать и записать копию»: замер идёт в
+                            // фоновых потоках, и копия затирала то, что успело
+                            // поменяться на экране, — вплоть до серверов прежнего
+                            // аккаунта после выхода
+                            if (_state.value.servers === servers) {
+                                _state.update { it.copy(pings = results.toMap()) }
+                            }
                             // Складываем замеры на диск: службе они понадобятся
                             // при переборе запасных узлов, а мерить заново в
                             // момент сбоя — это минуты без связи.
@@ -391,7 +398,7 @@ class HomeViewModel : ViewModel() {
                     }
                 }
             }
-            _state.value = _state.value.copy(pinging = false)
+            _state.update { it.copy(pinging = false) }
         }
     }
 
