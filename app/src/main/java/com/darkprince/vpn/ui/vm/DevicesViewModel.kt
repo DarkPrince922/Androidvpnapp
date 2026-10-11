@@ -24,6 +24,8 @@ data class DevicesUiState(
         get() = subscriptions.firstOrNull { it.id == selectedSubscriptionId }
 }
 
+private const val OFFLINE_ERROR = "Не удалось загрузить устройства — нет связи с сервисом"
+
 class DevicesViewModel : ViewModel() {
     private val repo = ServiceLocator.subscriptionRepository
 
@@ -35,6 +37,14 @@ class DevicesViewModel : ViewModel() {
 
     init {
         load()
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.ServiceHealth.backOnline.collect {
+                if (_state.value.error != null) {
+                    _state.value = _state.value.copy(error = null)
+                    load()
+                }
+            }
+        }
     }
 
     /**
@@ -49,9 +59,11 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun load(subscriptionId: Long? = _state.value.selectedSubscriptionId) {
-        _state.value = _state.value.copy(loading = true, error = null)
+        // ошибку не стираем: её мог только что поставить отказ удаления, и
+        // следом идущая перезагрузка списка прятала её раньше, чем прочтёшь
+        _state.value = _state.value.copy(loading = true)
         viewModelScope.launch {
-            val subs = repo.subscriptions().orEmpty()
+            val subs = repo.subscriptions() ?: _state.value.subscriptions
             // По умолчанию — рабочая подписка, та же, по которой идёт
             // подключение на главной. Свой переключатель ниже остаётся, но
             // он локальный: смотреть чужие устройства можно, а рабочую
@@ -66,19 +78,25 @@ class DevicesViewModel : ViewModel() {
             } catch (_: Exception) {
                 null
             }
+            // без сети раньше показывалось «устройств нет» — а они есть
             _state.value = _state.value.copy(
-                devices = devices,
+                devices = devices ?: _state.value.devices,
                 subscriptions = subs,
                 selectedSubscriptionId = targetId,
-                deviceLimit = limit,
+                deviceLimit = limit ?: _state.value.deviceLimit,
                 loading = false,
+                error = when {
+                    devices == null -> OFFLINE_ERROR
+                    _state.value.error == OFFLINE_ERROR -> null
+                    else -> _state.value.error
+                },
             )
         }
     }
 
     fun selectSubscription(id: Long) {
         if (id == _state.value.selectedSubscriptionId) return
-        _state.value = _state.value.copy(selectedSubscriptionId = id, devices = emptyList())
+        _state.value = _state.value.copy(selectedSubscriptionId = id, devices = emptyList(), error = null, info = null)
         load(id)
     }
 

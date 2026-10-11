@@ -65,8 +65,10 @@ internal class ExpiryNotifier(private val context: Context) {
             }
             if (days > 3 || sub.id in notifiedToday) continue
 
-            val text = textFor(sub, days, name, balance) ?: continue
+            // решение на сегодня принято, даже если оно «промолчать»: иначе
+            // каждый час заново спрашивали бы кабинет об автопродлении
             notifiedToday += sub.id
+            val text = textFor(sub, days, name, balance) ?: continue
             post(id = 100 + sub.id.toInt() % 1000, title = text.first, text = text.second)
         }
 

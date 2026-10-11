@@ -14,6 +14,7 @@ class App : Application() {
         super.onCreate()
         recordCrashes()
         ServiceLocator.init(this)
+        com.darkprince.vpn.data.api.NetworkMonitor.start(this)
         SubscriptionRefreshWorker.schedule(this)
         // Ожидание сети восстанавливаем при каждом запуске: одноразовое
         // задание живёт до первого срабатывания, и если система успела его

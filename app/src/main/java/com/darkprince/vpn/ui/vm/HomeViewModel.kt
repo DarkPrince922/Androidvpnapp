@@ -116,6 +116,16 @@ class HomeViewModel : ViewModel() {
                 if (event.type.startsWith("subscription.") || event.type == "autopay.success") refresh()
             }
         }
+        // открыли без сети — когда она появится, догружаем сами
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.ServiceHealth.backOnline.collect {
+                val s = _state.value
+                val loggedIn = ServiceLocator.authRepository.isLoggedIn
+                if (!s.loading && (s.error != null || s.servers.isEmpty() || (loggedIn && s.subscription == null))) {
+                    refresh(forceServers = s.servers.isEmpty())
+                }
+            }
+        }
     }
 
     /**
@@ -187,11 +197,13 @@ class HomeViewModel : ViewModel() {
 
             // без аккаунта кабинет недоступен — только подписка по ссылке
             val guest = !ServiceLocator.authRepository.isLoggedIn
+            // 404 — подписки правда нет; обрыв сети — это не «нет подписки»:
+            // оставляем прежнюю карточку, а не пугаем «Нет активной подписки»
             val sub = if (guest) null else try {
                 subRepo.status()
             } catch (e: Exception) {
                 error = e.userMessage()
-                null
+                if ((e as? retrofit2.HttpException)?.code() == 404) null else _state.value.subscription
             }
             val fresh = try {
                 subRepo.fetchServers(forceRefresh = forceServers)

@@ -39,6 +39,9 @@ class ReferralViewModel : ViewModel() {
 
     init {
         refresh()
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.ServiceHealth.backOnline.collect { if (_state.value.info == null || _state.value.error != null) refresh() }
+        }
     }
 
     fun refresh() {

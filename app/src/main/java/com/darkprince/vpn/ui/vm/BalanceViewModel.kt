@@ -45,6 +45,12 @@ class BalanceViewModel : ViewModel() {
         refresh()
         // Деньги зачислены — сокет кабинета говорит об этом сразу. Опрос
         // после оплаты остаётся: он нужен, если сокет не поднялся.
+        // связь вернулась после неудачной загрузки — пробуем снова сами
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.ServiceHealth.backOnline.collect {
+                if (_state.value.error != null || _state.value.balanceKopeks == null) refresh()
+            }
+        }
         viewModelScope.launch {
             com.darkprince.vpn.data.api.CabinetEvents.events.collect { event ->
                 if (event.type in BALANCE_EVENTS) {

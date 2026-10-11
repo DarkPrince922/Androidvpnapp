@@ -67,6 +67,9 @@ class GiftsViewModel : ViewModel() {
 
     init {
         refresh()
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.ServiceHealth.backOnline.collect { if (_state.value.config == null) refresh() }
+        }
     }
 
     fun refresh() {

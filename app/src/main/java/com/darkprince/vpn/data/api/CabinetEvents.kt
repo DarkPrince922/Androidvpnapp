@@ -56,6 +56,16 @@ object CabinetEvents {
         socket = null
     }
 
+    /**
+     * Сеть вернулась: если сейчас ждём паузу перед повтором — не ждём, а
+     * подключаемся сразу. Живое соединение не трогаем.
+     */
+    fun kick() {
+        if (loop?.isActive != true || socket != null) return
+        loop?.cancel()
+        loop = scope.launch { runLoop() }
+    }
+
     /** Вход или выход: соединение с прежним токеном больше не годится. */
     fun sessionChanged() {
         stop()

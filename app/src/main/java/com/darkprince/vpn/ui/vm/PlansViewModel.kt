@@ -132,14 +132,25 @@ data class SwitchState(
 /** Ссылку подписки сбросили. [working] — по ней шло подключение. */
 data class RevokeDone(val subId: Long, val working: Boolean)
 
+private const val STALE_MS = 60_000L
+
 class PlansViewModel : ViewModel() {
     private val repo = ServiceLocator.subscriptionRepository
 
     private val _state = MutableStateFlow(PlansUiState())
     val state: StateFlow<PlansUiState> = _state
 
+    /** Последняя загрузка не удалась — по возвращении связи пробуем снова. */
+    private var lastLoadFailed = false
+    private var lastLoadedAt = 0L
+
     init {
         refresh()
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.ServiceHealth.backOnline.collect {
+                if (lastLoadFailed && !_state.value.purchasing) refresh()
+            }
+        }
         // продление, автоплатёж, докупка — сразу перечитываем карточки
         viewModelScope.launch {
             com.darkprince.vpn.data.api.CabinetEvents.events.collect { event ->
@@ -152,17 +163,33 @@ class PlansViewModel : ViewModel() {
     fun refresh() {
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
-            val (tariffs, trial, subs) = coroutineScope {
-                val tariffsDeferred = async { runOrNull { repo.tariffs() } ?: emptyList() }
+            val (tariffsOrNull, trial, subsOrNull) = coroutineScope {
+                val tariffsDeferred = async { runOrNull { repo.tariffs() } }
                 val trialDeferred = async {
                     runOrNull {
                         val info = repo.trialInfo()
                         info.available ?: info.isAvailable ?: false
                     } ?: false
                 }
-                val subsDeferred = async { repo.subscriptions().orEmpty() }
+                val subsDeferred = async { repo.subscriptions() }
                 Triple(tariffsDeferred.await(), trialDeferred.await(), subsDeferred.await())
             }
+            // Не ответил кабинет — оставляем то, что уже на экране. Раньше
+            // обрыв сети стирал и подписки, и тарифы, а вернуть их можно было
+            // только уйдя с экрана и вернувшись.
+            lastLoadFailed = tariffsOrNull == null || subsOrNull == null
+            lastLoadedAt = System.currentTimeMillis()
+            if (subsOrNull == null && tariffsOrNull == null && (_state.value.cards.isNotEmpty() || _state.value.tariffs.isNotEmpty())) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = "Нет связи с сервисом — показаны прежние данные. Обновим, как только связь вернётся.",
+                    )
+                }
+                return@launch
+            }
+            val tariffs = tariffsOrNull ?: _state.value.tariffs
+            val subs = subsOrNull ?: _state.value.cards.map { it.sub }
             val working = ServiceLocator.prefs.selectedSubscriptionFlow.first()
 
             // Действующие сверху, истёкшие следом: продлить истёкшую тоже надо
@@ -171,15 +198,24 @@ class PlansViewModel : ViewModel() {
                 compareByDescending<SubscriptionListItem> { it.isActive }
                     .thenBy { it.endDate ?: "" }
             )
+            // подробности прежней карточки переносим: пока догружаются новые,
+            // а тем более без сети, цены продления и устройства не пропадают
+            val previous = _state.value.cards.associateBy { it.id }
             val cards = ordered.map { sub ->
+                val prev = previous[sub.id]
                 OwnedSubscription(
                     sub = sub,
                     tariff = tariffs.firstOrNull { it.id == sub.tariffId },
+                    devices = prev?.devices,
+                    renewalOptions = prev?.renewalOptions.orEmpty(),
+                    trafficPackages = prev?.trafficPackages.orEmpty(),
+                    autopay = prev?.autopay,
+                    loading = prev == null,
                 )
             }
 
             val error = if (tariffs.isEmpty() && subs.isEmpty() && !trial) {
-                "Не удалось загрузить предложения. Проверьте соединение и потяните для обновления."
+                "Не удалось загрузить тарифы. Обновим сами, как только появится связь."
             } else null
 
             launch { loadPromo() }
@@ -214,8 +250,8 @@ class PlansViewModel : ViewModel() {
                 }
             }
         }
-        val renewalsDeferred = async { runOrNull { repo.renewalOptions(subId) } ?: emptyList() }
-        val trafficDeferred = async { runOrNull { repo.trafficPackages(subId) } ?: emptyList() }
+        val renewalsDeferred = async { runOrNull { repo.renewalOptions(subId) } }
+        val trafficDeferred = async { runOrNull { repo.trafficPackages(subId) } }
         val card = _state.value.cards.firstOrNull { it.id == subId }
         val autopayDeferred = async {
             if (card?.autopayAllowed == true) runOrNull { repo.autopayInfo(subId) } else null
@@ -226,12 +262,13 @@ class PlansViewModel : ViewModel() {
         val traffic = trafficDeferred.await()
         val autopay = autopayDeferred.await()
 
+        // не ответило — оставляем прежнее, а не стираем
         updateCard(subId) {
             it.copy(
-                devices = devices,
-                renewalOptions = renewals,
-                trafficPackages = traffic,
-                autopay = autopay,
+                devices = devices ?: it.devices,
+                renewalOptions = renewals ?: it.renewalOptions,
+                trafficPackages = traffic ?: it.trafficPackages,
+                autopay = autopay ?: it.autopay,
                 loading = false,
             )
         }
@@ -294,6 +331,14 @@ class PlansViewModel : ViewModel() {
     private var bankPending: Long? = null
 
     fun onResumed() {
+        // Вкладка живёт между переходами, и без этого «Тарифы» показывали
+        // данные часовой давности: оплатили на «Балансе» — а здесь старый срок.
+        val stale = System.currentTimeMillis() - lastLoadedAt > STALE_MS
+        if ((lastLoadFailed || stale) && !_state.value.purchasing && !_state.value.loading) {
+            bankPending = null
+            refresh()
+            return
+        }
         val subId = bankPending ?: return
         bankPending = null
         viewModelScope.launch {

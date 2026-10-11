@@ -582,10 +582,11 @@ class SubscriptionRepository(
     }
 
     /** Подключённые устройства подписки. */
-    suspend fun devicesList(subscriptionId: Long? = null): List<DeviceDto> = try {
+    /** null — спросить не удалось: это не то же самое, что «устройств нет». */
+    suspend fun devicesList(subscriptionId: Long? = null): List<DeviceDto>? = try {
         api.devicesList(subscriptionId).devices
     } catch (_: Exception) {
-        emptyList()
+        null
     }
 
     suspend fun deleteDevice(hwid: String, subscriptionId: Long? = null): String? = try {

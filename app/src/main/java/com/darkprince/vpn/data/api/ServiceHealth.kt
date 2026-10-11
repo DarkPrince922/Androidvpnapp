@@ -83,7 +83,28 @@ object ServiceHealth {
             _status.value = Status.OK
             recheckJob?.cancel()
             classifyJob?.cancel()
+            _backOnline.tryEmit(Unit)
         }
+    }
+
+    private val _backOnline = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * «Связь вернулась»: кабинет снова отвечает или телефон снова в сети.
+     *
+     * Экраны, которым не удалось загрузиться, по этому сигналу пробуют
+     * снова. Раньше после обрыва они так и оставались с ошибкой, пока
+     * человек не уйдёт с экрана и не вернётся.
+     */
+    val backOnline: kotlinx.coroutines.flow.SharedFlow<Unit> = _backOnline
+
+    /**
+     * Сеть телефона появилась после пропажи. Если кабинет числился
+     * недоступным — проверяем сразу, не дожидаясь очередных 30 секунд.
+     */
+    fun networkReturned() {
+        _backOnline.tryEmit(Unit)
+        if (_status.value != Status.OK) scope.launch { runCatching { ping?.invoke() } }
     }
 
     fun reportFailure() {

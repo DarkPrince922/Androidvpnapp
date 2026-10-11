@@ -32,6 +32,9 @@ class PromoViewModel : ViewModel() {
 
     init {
         refresh()
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.ServiceHealth.backOnline.collect { if (_state.value.loyalty == null && _state.value.offers.isEmpty()) refresh() }
+        }
     }
 
     fun refresh() {
