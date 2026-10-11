@@ -190,6 +190,9 @@ class HomeViewModel : ViewModel() {
             if (prefs.selectedSubscriptionFlow.first() != selectedId) return@launch
             // если данные в итоге есть — сетевую ошибку не показываем
             if (servers.isNotEmpty()) error = null
+            // кабинет лежит — об этом уже говорит полоса «сервис недоступен»,
+            // вторая строка с той же бедой только пугает
+            if (com.darkprince.vpn.data.api.ServiceHealth.isDown) error = null
             val selected = resolveSelected(selectedId, servers)
             _state.value = _state.value.copy(
                 subscription = sub,

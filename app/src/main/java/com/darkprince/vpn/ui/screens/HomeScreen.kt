@@ -1,5 +1,6 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -251,6 +252,13 @@ fun HomeScreen(
 
         Spacer(Modifier.height(18.dp))
         }
+      }
+
+      item {
+        ServiceDownBanner(
+            "Обновить подписку, оплатить и продлить можно будет, когда сервис вернётся.",
+            Modifier.padding(bottom = 12.dp),
+        )
       }
 
       item {

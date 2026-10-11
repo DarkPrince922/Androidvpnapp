@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.serviceDown
+import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -95,6 +97,7 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
     }
 
     var amount by rememberSaveable { mutableStateOf("300") }
+    val down = serviceDown()
 
     // Пришли сюда за недостающей суммой — подставляем её: ровно столько,
     // сколько не хватает, округлив вверх до рубля (и не меньше 10 ₽ — меньше
@@ -144,6 +147,10 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                     style = MaterialTheme.typography.displaySmall,
                 )
             }
+        }
+
+        item {
+            ServiceDownBanner("Пополнить баланс и применить промокод можно будет, когда сервис вернётся.")
         }
 
         pendingPurchase?.let { pending ->
@@ -210,7 +217,8 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                         },
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(18.dp),
-                        enabled = !state.creatingPayment && state.methods.isNotEmpty() && rubles > 0,
+                        enabled = !state.creatingPayment && state.methods.isNotEmpty() && rubles > 0 &&
+                            !down,
                     ) {
                         Text(
                             when {
@@ -273,13 +281,13 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                     )
                     TextButton(
                         onClick = { viewModel.activatePromo(promo) },
-                        enabled = promo.isNotBlank(),
+                        enabled = promo.isNotBlank() && !down,
                     ) { Text("Применить") }
                 }
             }
         }
 
-        state.error?.let { error ->
+        state.error?.takeIf { !down }?.let { error ->
             item { Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         }
         state.info?.let { info ->

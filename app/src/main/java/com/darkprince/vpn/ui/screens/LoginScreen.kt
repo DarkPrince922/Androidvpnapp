@@ -1,5 +1,6 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -88,6 +89,11 @@ fun LoginScreen(
                 .fillMaxWidth(0.88f)
                 // соотношение сторон исходника: иначе высота поедет от плотности
                 .aspectRatio(1200f / 280f),
+        )
+        ServiceDownBanner(
+            "Вход и регистрация заработают, как только сервис вернётся. " +
+                "Если вам дали ссылку на подписку — подключиться по ней можно уже сейчас.",
+            Modifier.padding(top = 16.dp),
         )
 
         if (upgradeMode) {

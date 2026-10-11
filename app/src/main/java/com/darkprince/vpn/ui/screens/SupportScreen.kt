@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.serviceDown
+import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -165,11 +167,16 @@ fun SupportScreen(
                     item { Spacer(Modifier.height(8.dp)) }
                 }
 
+                ServiceDownBanner(
+                    "Новые обращения и ответы — когда сервис вернётся.",
+                    Modifier.padding(bottom = 8.dp),
+                )
                 Button(
                     onClick = {
                         if (activeTicket != null) onOpenTicket(activeTicket.id)
                         else showCreateDialog = true
                     },
+                    enabled = !serviceDown() || activeTicket != null,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (activeTicket == null) "Новое обращение" else "Открыть текущее обращение")

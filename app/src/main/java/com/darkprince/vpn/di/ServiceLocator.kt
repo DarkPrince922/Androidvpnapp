@@ -48,6 +48,7 @@ object ServiceLocator {
         supportRepository = SupportRepository(apiClient, prefs, appContext)
         newsRepository = NewsRepository(apiClient, prefs)
         adminRepository = AdminRepository(apiClient, prefs)
+        com.darkprince.vpn.data.api.ServiceHealth.init(appContext) { apiClient.api.branding() }
         // клиент тот же, что для подписки: при поднятом туннеле он ходит через
         // ядро, поэтому обновление доедет и там, где сайт заблокирован
         appUpdater = AppUpdater(appContext, apiClient.plainOkHttp)

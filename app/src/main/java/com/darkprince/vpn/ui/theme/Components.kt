@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -475,4 +476,52 @@ fun UnreadBadge(count: Int) {
             color = MaterialTheme.colorScheme.onSecondary,
         )
     }
+}
+
+/**
+ * Полоса «сервис недоступен». Показывается сама, пока кабинет не отвечает
+ * (см. [com.darkprince.vpn.data.api.ServiceHealth]), и гаснет сама, когда
+ * он вернулся. Вместо россыпи «нет связи» на каждом экране — одно спокойное
+ * объяснение: VPN работает, недоступно только то, что требует кабинета.
+ *
+ * [unavailable] — что именно сейчас не выйдет на этом экране.
+ */
+@Composable
+fun ServiceDownBanner(
+    unavailable: String = "Оплата, продление и покупки станут доступны, когда сервис вернётся.",
+    modifier: Modifier = Modifier,
+) {
+    val down by com.darkprince.vpn.data.api.ServiceHealth.down
+        .collectAsState()
+    androidx.compose.animation.AnimatedVisibility(visible = down, modifier = modifier) {
+        val accent = BrandColors.Warning
+        val shape = RoundedCornerShape(18.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(accent.copy(alpha = 0.12f))
+                .border(1.dp, accent.copy(alpha = 0.45f), shape)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Text(
+                "Сервис временно недоступен",
+                style = MaterialTheme.typography.titleSmall,
+                color = accent,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "VPN работает по сохранённой подписке. $unavailable",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Лежит ли сейчас кабинет — для выключения кнопок, которым он нужен. */
+@Composable
+fun serviceDown(): Boolean {
+    val down by com.darkprince.vpn.data.api.ServiceHealth.down.collectAsState()
+    return down
 }

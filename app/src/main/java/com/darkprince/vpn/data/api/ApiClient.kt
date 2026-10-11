@@ -36,6 +36,21 @@ class ApiClient(private val prefs: AppPrefs) {
         coerceInputValues = true
     }
 
+    /**
+     * Отмечает, жив ли кабинет: обрыв и 5xx — сбой, любой другой ответ —
+     * жив. Смотрит на каждый запрос к кабинету, поэтому знание всегда свежее.
+     */
+    private val healthInterceptor = Interceptor { chain ->
+        val response = try {
+            chain.proceed(chain.request())
+        } catch (e: java.io.IOException) {
+            ServiceHealth.reportFailure()
+            throw e
+        }
+        if (response.code in 500..599) ServiceHealth.reportFailure() else ServiceHealth.reportOk()
+        response
+    }
+
     /** Подставляет актуальный базовый URL из настроек. */
     private val baseUrlInterceptor = Interceptor { chain ->
         val base = prefs.cachedBaseUrl
@@ -182,7 +197,10 @@ class ApiClient(private val prefs: AppPrefs) {
     }
 
     val okHttp: OkHttpClient = OkHttpClient.Builder()
+        // сначала адрес: без настроенного кабинета (гость) сбоем сервиса
+        // это не считается — до него просто нечего спрашивать
         .addInterceptor(baseUrlInterceptor)
+        .addInterceptor(healthInterceptor)
         .addInterceptor(authInterceptor)
         .authenticator(tokenAuthenticator)
         .proxySelector(vpnAwareProxySelector)
@@ -212,6 +230,7 @@ class ApiClient(private val prefs: AppPrefs) {
         .client(
             OkHttpClient.Builder()
                 .addInterceptor(baseUrlInterceptor)
+                .addInterceptor(healthInterceptor)
                 .proxySelector(vpnAwareProxySelector)
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)

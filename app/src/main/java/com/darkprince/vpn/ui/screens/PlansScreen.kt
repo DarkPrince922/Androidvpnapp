@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.serviceDown
+import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import com.darkprince.vpn.vpn.VpnStateStore
 import com.darkprince.vpn.vpn.VpnState
 import androidx.compose.animation.AnimatedVisibility
@@ -80,6 +82,10 @@ fun PlansScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val vpnState by VpnStateStore.state.collectAsStateWithLifecycle()
     val vpnOn = vpnState == VpnState.CONNECTED || vpnState == VpnState.CONNECTING
+    // Кабинет лежит — купить, продлить и докупить всё равно не выйдет.
+    // Кнопки гасим заранее, а не даём нажать и получить ошибку.
+    val down = serviceDown()
+    val busy = state.purchasing || down
 
     // Денег не хватило — сразу на пополнение: недостающая сумма там уже
     // стоит, а выбранная подписка оплатится после зачисления.
@@ -99,6 +105,7 @@ fun PlansScreen(
         item {
             Spacer(Modifier.height(4.dp))
             Text("Тарифы", style = MaterialTheme.typography.headlineSmall)
+            ServiceDownBanner(modifier = Modifier.padding(top = 10.dp))
         }
 
         if (state.loading) {
@@ -122,7 +129,7 @@ fun PlansScreen(
                         Text("Пробный период", style = MaterialTheme.typography.titleLarge)
                         PrimaryAction(
                             text = "Попробовать бесплатно",
-                            enabled = !state.purchasing,
+                            enabled = !busy,
                             onClick = { viewModel.activateTrial() },
                         )
                     }
@@ -139,7 +146,7 @@ fun PlansScreen(
             items(state.cards, key = { "sub-${it.id}" }) { card ->
                 MySubscriptionCard(
                     card = card,
-                    purchasing = state.purchasing,
+                    purchasing = busy,
                     working = card.id == state.workingSubscriptionId,
                     // при одной подписке выбирать нечего — строку не показываем
                     showWorkingRow = state.cards.size > 1,
@@ -161,13 +168,14 @@ fun PlansScreen(
             items(state.offers, key = { "offer-${it.id}" }) { tariff ->
                 OfferCard(
                     tariff = tariff,
-                    purchasing = state.purchasing,
+                    purchasing = busy,
                     onBuy = { period -> viewModel.purchase(tariff, period) },
                 )
             }
         }
 
-        state.error?.let { error ->
+        // при лежащем кабинете ошибка запроса — та же новость, что в полосе сверху
+        state.error?.takeIf { !down }?.let { error ->
             item { Text(error, color = MaterialTheme.colorScheme.error) }
         }
         state.info?.let { info ->

@@ -213,6 +213,10 @@ interface BedolagaApi {
 
     // ---------- Админка ----------
 
+    /** Открытая страница кабинета — ею проверяем, ожил ли он. */
+    @GET("cabinet/branding")
+    suspend fun branding(): JsonElement
+
     @GET("cabinet/auth/me/is-admin")
     suspend fun isAdmin(): IsAdminDto
 

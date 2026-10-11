@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.serviceDown
+import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +42,8 @@ import com.darkprince.vpn.ui.vm.DevicesViewModel
 @Composable
 fun DevicesScreen(viewModel: DevicesViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // без кабинета отключить устройство нельзя — кнопки гасим заранее
+    val down = serviceDown()
 
     var confirmDelete by remember { mutableStateOf<DeviceDto?>(null) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
@@ -53,6 +57,10 @@ fun DevicesScreen(viewModel: DevicesViewModel) {
     ) {
         Text("Подключённые устройства", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(8.dp))
+        ServiceDownBanner(
+            "Отключать и переименовывать устройства можно будет, когда сервис вернётся.",
+            Modifier.padding(bottom = 8.dp),
+        )
         Text(
             "Отключите лишние устройства, чтобы освободить места в лимите подписки.",
             style = MaterialTheme.typography.bodySmall,
@@ -95,7 +103,7 @@ fun DevicesScreen(viewModel: DevicesViewModel) {
             if (state.devices.isNotEmpty()) {
                 TextButton(
                     onClick = { confirmDeleteAll = true },
-                    enabled = !state.busy,
+                    enabled = !state.busy && !down,
                 ) {
                     Text("Отключить все")
                 }
@@ -123,7 +131,7 @@ fun DevicesScreen(viewModel: DevicesViewModel) {
                 Spacer(Modifier.height(12.dp))
                 OutlinedButton(
                     onClick = { viewModel.registerThisDevice() },
-                    enabled = !state.busy,
+                    enabled = !state.busy && !down,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Зарегистрировать это устройство")
@@ -148,7 +156,7 @@ fun DevicesScreen(viewModel: DevicesViewModel) {
                                 Spacer(Modifier.height(8.dp))
                                 OutlinedButton(
                                     onClick = { viewModel.registerThisDevice() },
-                                    enabled = !state.busy,
+                                    enabled = !state.busy && !down,
                                 ) {
                                     Text("Зарегистрировать")
                                 }
@@ -196,13 +204,13 @@ fun DevicesScreen(viewModel: DevicesViewModel) {
                             }
                             IconButton(
                                 onClick = { renaming = device },
-                                enabled = !state.busy,
+                                enabled = !state.busy && !down,
                             ) {
                                 Icon(Icons.Default.Edit, contentDescription = "Переименовать")
                             }
                             IconButton(
                                 onClick = { confirmDelete = device },
-                                enabled = !state.busy,
+                                enabled = !state.busy && !down,
                             ) {
                                 Icon(
                                     Icons.Default.Delete,
