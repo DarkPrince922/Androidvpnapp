@@ -192,16 +192,25 @@ jobs:
           VERSION="${VERSION#v}"
           CODE=$(echo "$VERSION" | awk -F. '{ printf "%d", $1 * 10000 + $2 * 100 + $3 }')
 
-          cat > android.json <<JSON
-          {
-            "version": "$VERSION",
-            "versionCode": $CODE,
-            "notes": "DarkPrince VPN $VERSION",
-            "url": "https://dprince.online/downloads/DarkPrinceVPN.apk",
-            "sha256": "$(sha256sum "$DEST" | cut -d" " -f1)"
+          # Что нового — из .github/release-notes/<версия>.txt, если файл есть:
+          # этот текст приложение показывает в окне обновления. Короткий, до
+          # десятка строк: окно не прокручивается.
+          NOTES_FILE=".github/release-notes/$VERSION.txt"
+          SHA=$(sha256sum "$DEST" | cut -d" " -f1)
+          VERSION="$VERSION" CODE="$CODE" SHA="$SHA" NOTES_FILE="$NOTES_FILE" python3 - <<'PY'
+          import json, os
+          path = os.environ["NOTES_FILE"]
+          notes = open(path, encoding="utf-8").read().strip() if os.path.exists(path) else ""
+          manifest = {
+              "version": os.environ["VERSION"],
+              "versionCode": int(os.environ["CODE"]),
+              "notes": notes or f"DarkPrince VPN {os.environ['VERSION']}",
+              "url": "https://dprince.online/downloads/DarkPrinceVPN.apk",
+              "sha256": os.environ["SHA"],
           }
-          JSON
-          sed -i 's/^          //' android.json
+          with open("android.json", "w", encoding="utf-8") as f:
+              json.dump(manifest, f, ensure_ascii=False, indent=2)
+          PY
           cat android.json
 
       - name: Создать GitHub Release
@@ -210,8 +219,14 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           APK: ${{ steps.apk.outputs.path }}
         run: |
+          WHATS_NEW=""
+          if [ -f ".github/release-notes/$VERSION.txt" ]; then
+            WHATS_NEW="$(cat ".github/release-notes/$VERSION.txt")"
+          fi
           NOTES=$(cat <<EOF
           Версия $VERSION
+
+          $WHATS_NEW
 
           Установка: скачайте APK и разрешите установку из неизвестных источников.
 
