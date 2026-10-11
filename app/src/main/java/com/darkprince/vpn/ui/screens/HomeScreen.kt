@@ -1,5 +1,6 @@
 package com.darkprince.vpn.ui.screens
 
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -261,6 +262,9 @@ fun HomeScreen(
                     onRefresh = { viewModel.refresh(forceServers = true, notify = true) },
                     onPing = { viewModel.pingAll() },
                     onSelectSubscription = { viewModel.selectSubscription(it) },
+                    // пока VPN поднят, подписку не меняем: туннель идёт по
+                    // серверу текущей, и смена на ходу его рвала
+                    locked = vpnState == VpnState.CONNECTED || vpnState == VpnState.CONNECTING,
                 )
             }
         }
@@ -586,6 +590,7 @@ private fun SubscriptionCard(
     onRefresh: () -> Unit,
     onPing: () -> Unit,
     onSelectSubscription: (Long) -> Unit,
+    locked: Boolean,
 ) {
     val accent = MaterialTheme.colorScheme.primary
     val current = state.selectedSubscription
@@ -621,6 +626,13 @@ private fun SubscriptionCard(
         ?: userInfo?.totalBytes?.takeIf { it > 0 }?.let { it / 1_073_741_824.0 }
 
     var menuOpen by remember { mutableStateOf(false) }
+    var lockHint by remember { mutableStateOf(false) }
+    LaunchedEffect(lockHint) {
+        if (lockHint) {
+            delay(3000)
+            lockHint = false
+        }
+    }
 
     GroupCard {
         Row(
@@ -635,7 +647,7 @@ private fun SubscriptionCard(
                     .clip(RoundedCornerShape(10.dp))
                     .then(
                         if (state.subscriptions.size > 1) {
-                            Modifier.clickable { menuOpen = true }
+                            Modifier.clickable { if (locked) lockHint = true else menuOpen = true }
                         } else Modifier
                     )
                     .padding(vertical = 4.dp),
@@ -643,8 +655,9 @@ private fun SubscriptionCard(
             ) {
                 if (state.subscriptions.size > 1) {
                     Icon(
-                        Icons.Default.ExpandMore,
-                        contentDescription = "Сменить подписку",
+                        if (locked) Icons.Default.Lock else Icons.Default.ExpandMore,
+                        contentDescription = if (locked) "Подписку можно сменить после отключения VPN"
+                            else "Сменить подписку",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp),
                     )
@@ -662,7 +675,16 @@ private fun SubscriptionCard(
             CircleActionButton(Icons.Default.Speed, "Проверить пинг", onPing)
         }
 
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+        AnimatedVisibility(visible = lockHint) {
+            Text(
+                "Отключите VPN, чтобы сменить подписку",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
+            )
+        }
+
+        DropdownMenu(expanded = menuOpen && !locked, onDismissRequest = { menuOpen = false }) {
             state.subscriptions.forEach { item ->
                 DropdownMenuItem(
                     text = {

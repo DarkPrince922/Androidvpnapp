@@ -207,6 +207,10 @@ class PlansViewModel : ViewModel() {
      */
     fun makeWorking(subId: Long) {
         if (subId == _state.value.workingSubscriptionId) return
+        if (VpnStateStore.state.value.let { it == VpnState.CONNECTED || it == VpnState.CONNECTING }) {
+            _state.update { it.copy(info = "Отключите VPN, чтобы сменить подписку") }
+            return
+        }
         val name = _state.value.cards.firstOrNull { it.id == subId }?.title
         _state.update { it.copy(purchasing = true, error = null, info = null) }
         viewModelScope.launch {

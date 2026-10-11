@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.vpn.VpnStateStore
+import com.darkprince.vpn.vpn.VpnState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -76,6 +78,8 @@ fun PlansScreen(
     onNeedTopUp: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val vpnState by VpnStateStore.state.collectAsStateWithLifecycle()
+    val vpnOn = vpnState == VpnState.CONNECTED || vpnState == VpnState.CONNECTING
 
     // Денег не хватило — сразу на пополнение: недостающая сумма там уже
     // стоит, а выбранная подписка оплатится после зачисления.
@@ -139,6 +143,7 @@ fun PlansScreen(
                     working = card.id == state.workingSubscriptionId,
                     // при одной подписке выбирать нечего — строку не показываем
                     showWorkingRow = state.cards.size > 1,
+                    switchLocked = vpnOn,
                     onMakeWorking = { viewModel.makeWorking(card.id) },
                     onRenew = { period -> viewModel.renew(card.id, period) },
                     onBuyDevices = { count -> viewModel.buyDevices(card.id, count) },
@@ -191,6 +196,7 @@ private fun MySubscriptionCard(
     purchasing: Boolean,
     working: Boolean,
     showWorkingRow: Boolean,
+    switchLocked: Boolean,
     onMakeWorking: () -> Unit,
     onRenew: (PeriodPrice) -> Unit,
     onBuyDevices: (Int) -> Unit,
@@ -239,7 +245,15 @@ private fun MySubscriptionCard(
                     } else if (card.sub.isActive) {
                         // Не молча при открытии карточки: переключение гасит
                         // поднятый туннель, и делать это за человека нельзя.
-                        SmallAction("Подключаться по этой", enabled = !purchasing, onClick = onMakeWorking)
+                        if (switchLocked) {
+                            Text(
+                                "Чтобы подключаться по этой, сначала отключите VPN",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            SmallAction("Подключаться по этой", enabled = !purchasing, onClick = onMakeWorking)
+                        }
                     }
                 }
             }

@@ -213,6 +213,9 @@ class HomeViewModel : ViewModel() {
     /** Переключение между подписками: серверы перезагружаются под выбранную. */
     fun selectSubscription(id: Long) {
         if (id == _state.value.selectedSubscriptionId) return
+        // Пока VPN поднят, подписку не меняем — экран это и не даёт сделать,
+        // а здесь страховка от второго пути сюда.
+        if (VpnStateStore.state.value.let { it == VpnState.CONNECTED || it == VpnState.CONNECTING }) return
         viewModelScope.launch {
             // Сохранённый профиль — сервер прежней подписки. Оставь его, и
             // автоподключение или «постоянный VPN» подняли бы туннель по ней.
