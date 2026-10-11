@@ -48,6 +48,7 @@ class AppPrefs(private val context: Context) {
         val AUTOCONNECT = stringPreferencesKey("autoconnect_mode")
         val KILL_SWITCH = booleanPreferencesKey("kill_switch")
         val FAILOVER = booleanPreferencesKey("failover")
+        val USER_STOPPED = booleanPreferencesKey("user_stopped")
         val PINGS = stringPreferencesKey("last_pings")
         // почему в прошлый раз оборвалась сессия: человек видит это на экране
         // входа, а мы — в обращении в поддержку
@@ -152,6 +153,22 @@ class AppPrefs(private val context: Context) {
 
     fun failoverBlocking(): Boolean = runBlocking {
         context.dataStore.data.first()[Keys.FAILOVER] ?: true
+    }
+
+    /**
+     * VPN выключили сами — кнопкой, плиткой или из уведомления.
+     *
+     * Автоподключение обязано это уважать. Без флага режим «при появлении
+     * сети» поднимал туннель обратно через секунды после того, как человек
+     * его выключил, и выключить VPN по-настоящему было нельзя. Флаг снимается
+     * явным подключением и перезагрузкой телефона.
+     */
+    fun userStoppedBlocking(): Boolean = runBlocking {
+        context.dataStore.data.first()[Keys.USER_STOPPED] ?: false
+    }
+
+    fun setUserStoppedBlocking(stopped: Boolean) = runBlocking {
+        context.dataStore.edit { it[Keys.USER_STOPPED] = stopped }
     }
 
     /**

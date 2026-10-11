@@ -11,6 +11,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import java.util.concurrent.TimeUnit
 import com.darkprince.vpn.data.log.AppLog
 import com.darkprince.vpn.data.prefs.AppPrefs
 import com.darkprince.vpn.di.ServiceLocator
@@ -30,6 +31,10 @@ object AutoConnect {
 
     fun shouldConnect(context: Context, prefs: AppPrefs): Boolean {
         if (prefs.autoConnectBlocking() == AppPrefs.AUTO_OFF) return false
+        if (prefs.userStoppedBlocking()) {
+            AppLog.write("автоподключение: VPN выключили вручную — не трогаю")
+            return false
+        }
         if (VpnService.prepare(context) != null) {
             AppLog.write("автоподключение: нет разрешения на VPN")
             return false
@@ -53,13 +58,24 @@ object AutoConnect {
      *
      * Своего наблюдателя за сетью держать негде: пока туннель не поднят, у
      * приложения нет ни одного живого процесса, а система его не разбудит.
-     * Поэтому просим об этом её саму — задание с условием «есть сеть»
-     * запускается тогда, когда сеть появилась, и переживает перезагрузку.
-     * После каждого срабатывания ставим следующее: одноразовое задание с
-     * условием — единственный способ получить событие, а не опрос.
+     * Поэтому просим об этом её саму — заданием с условием «есть сеть».
+     *
+     * Важная тонкость: такое задание срабатывает не в момент появления сети,
+     * а когда условие выполнено, — то есть сразу, если сеть уже есть.
+     * Раньше задание после каждого срабатывания ставило себя заново без
+     * паузы и крутилось без остановки, пока телефон в сети. Пауза
+     * [delayMinutes] это разрывает: пока сеть есть, проверка случается не
+     * чаще раза в [RECHECK_MINUTES] минут, а если сеть за это время пропала,
+     * задание дождётся её возвращения и сработает ровно тогда — это и есть
+     * «при появлении сети».
      */
-    fun arm(context: Context) {
+    fun arm(
+        context: Context,
+        delayMinutes: Long = RECHECK_MINUTES,
+        policy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP,
+    ) {
         val request = OneTimeWorkRequestBuilder<AutoConnectWorker>()
+            .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -67,7 +83,7 @@ object AutoConnect {
             )
             .build()
         WorkManager.getInstance(context)
-            .enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.REPLACE, request)
+            .enqueueUniqueWork(WORK_NAME, policy, request)
     }
 
     fun disarm(context: Context) {
@@ -80,6 +96,10 @@ object AutoConnect {
     }
 
     const val WORK_NAME = "autoconnect"
+
+    /** Как часто проверять, пока сеть есть. Реже — дольше ждать после
+     *  обрыва, чаще — лишние пробуждения телефона. */
+    const val RECHECK_MINUTES = 15L
 }
 
 /** Сеть появилась — поднимаемся и снова становимся в ожидание. */
@@ -98,7 +118,9 @@ class AutoConnectWorker(
         }
         // Встаём в ожидание следующего раза независимо от того, подключились
         // ли сейчас: сеть пропадёт и появится снова, и повод повторится.
-        AutoConnect.arm(applicationContext)
+        // Себя заменяем явно: с KEEP система оставила бы текущее, уже
+        // заканчивающееся задание, и цепочка оборвалась бы.
+        AutoConnect.arm(applicationContext, policy = ExistingWorkPolicy.REPLACE)
         return Result.success()
     }
 }
@@ -122,6 +144,9 @@ class BootReceiver : BroadcastReceiver() {
         val mode = prefs.autoConnectBlocking()
         if (mode == AppPrefs.AUTO_OFF) return
 
+        // Перезагрузка — новый старт: человек выбрал «подключаться при
+        // включении телефона», и прошлое ручное выключение тут не довод.
+        prefs.setUserStoppedBlocking(false)
         AutoConnect.sync(context.applicationContext, mode)
         if (AutoConnect.shouldConnect(context.applicationContext, prefs)) {
             AutoConnect.connect(context.applicationContext, "телефон включился")

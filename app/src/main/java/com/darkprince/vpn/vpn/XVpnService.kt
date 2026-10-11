@@ -121,43 +121,71 @@ class XVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
-        when (intent?.action) {
+        return when (intent?.action) {
             ACTION_STOP -> {
+                // Выключили сами — кнопкой, плиткой или из уведомления.
+                // Автоподключение не должно поднимать туннель обратно.
+                runCatching { ServiceLocator.prefs.setUserStoppedBlocking(true) }
                 scope.launch { vpnMutex.withLock { stopVpn() } }
-                return START_NOT_STICKY
+                START_NOT_STICKY
             }
             ACTION_PING -> {
                 scope.launch { measurePing() }
-                return START_STICKY
+                START_STICKY
             }
-            ACTION_START -> {
-                // уведомление показываем первым: после startForegroundService
-                // система даёт лишь несколько секунд, иначе убивает процесс
-                startForeground(
-                    NOTIFICATION_ID,
-                    buildNotification(activeProfileName.ifBlank { "Подключение…" })
-                )
-                val profile = readSavedProfile()
-                if (profile == null) {
-                    AppLog.write("запуск без выбранного сервера")
-                    VpnStateStore.setState(VpnState.ERROR, "Сервер не выбран")
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf(startId)
-                    return START_NOT_STICKY
-                }
-                activeProfileName = profile.name
-                lastPingMs = null
-                // Явный запуск начинает новый заход перебора: то, что не
-                // поднялось десять минут назад, могло уже подняться.
-                tried.clear()
-                requested = profile.name
-                VpnStateStore.setSwitchedFrom(null)
-                updateNotificationForce(profile.name)
-                // повторный START на работающем сервисе = смена сервера:
-                // старый туннель гасится и сразу поднимается новый
-                scope.launch { vpnMutex.withLock { startVpn(profile) } }
-            }
+            ACTION_START -> startFromSaved(startId, bySystem = false)
+            // Система поднимает нас сама в двух случаях: «Постоянный VPN» из
+            // настроек телефона присылает свою команду, а после гибели
+            // процесса START_STICKY приходит вовсе без намерения. Раньше оба
+            // молча пропускались: сервис висел без туннеля, а с «блокировать
+            // соединения без VPN» человек оставался без интернета.
+            VpnService.SERVICE_INTERFACE, null -> startFromSaved(startId, bySystem = true)
+            else -> START_NOT_STICKY
         }
+    }
+
+    /**
+     * Поднимает туннель по сохранённому профилю.
+     *
+     * [bySystem] — запуск пришёл не от человека, а от системы. Флаг ручного
+     * выключения тогда не трогаем: «Постоянный VPN» — это выбор человека в
+     * настройках телефона, а перезапуск после гибели процесса означает, что
+     * туннель в тот момент работал.
+     */
+    private fun startFromSaved(startId: Int, bySystem: Boolean): Int {
+        // уведомление показываем первым: после startForegroundService
+        // система даёт лишь несколько секунд, иначе убивает процесс
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification(activeProfileName.ifBlank { "Подключение…" })
+        )
+        val profile = readSavedProfile()
+        if (profile == null) {
+            AppLog.write(
+                if (bySystem) "система запустила VPN, но сервер ещё ни разу не выбирали"
+                else "запуск без выбранного сервера"
+            )
+            VpnStateStore.setState(VpnState.ERROR, "Сервер не выбран")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        if (bySystem) {
+            AppLog.write("VPN поднят системой: постоянный VPN или перезапуск службы")
+        } else {
+            runCatching { ServiceLocator.prefs.setUserStoppedBlocking(false) }
+        }
+        activeProfileName = profile.name
+        lastPingMs = null
+        // Явный запуск начинает новый заход перебора: то, что не
+        // поднялось десять минут назад, могло уже подняться.
+        tried.clear()
+        requested = profile.name
+        VpnStateStore.setSwitchedFrom(null)
+        updateNotificationForce(profile.name)
+        // повторный START на работающем сервисе = смена сервера:
+        // старый туннель гасится и сразу поднимается новый
+        scope.launch { vpnMutex.withLock { startVpn(profile) } }
         return START_STICKY
     }
 
