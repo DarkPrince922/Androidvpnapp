@@ -358,13 +358,27 @@ data class ReferralInfoResponse(
 }
 
 @Serializable
-data class PromoActivateRequest(val code: String)
+data class PromoActivateRequest(
+    val code: String,
+    /** Подписка, к которой применить код, — когда у человека их несколько. */
+    @SerialName("subscription_id") val subscriptionId: Long? = null,
+)
 
 @Serializable
 data class PromoActivateResponse(
     val success: Boolean? = null,
     val message: String? = null,
     @SerialName("bonus_description") val bonusDescription: String? = null,
+    /** select_subscription — код на дни, а подписок несколько: нужно выбрать. */
+    val error: String? = null,
+    @SerialName("eligible_subscriptions") val eligibleSubscriptions: List<PromoSubscriptionOption> = emptyList(),
+)
+
+@Serializable
+data class PromoSubscriptionOption(
+    val id: Long,
+    @SerialName("tariff_name") val tariffName: String? = null,
+    @SerialName("days_left") val daysLeft: Int? = null,
 )
 
 // Ответы неизвестной/переменной формы храним как JsonObject и разбираем адаптивно.

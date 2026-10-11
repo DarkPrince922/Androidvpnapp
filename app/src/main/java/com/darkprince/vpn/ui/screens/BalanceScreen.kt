@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -119,6 +120,41 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
 
     val history = if (showAllHistory) state.transactions
         else state.transactions.take(HISTORY_PREVIEW)
+
+    // код на дни, а подписок несколько — бот спрашивает, к какой применить
+    state.promoChoice?.let { choice ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissPromoChoice,
+            title = { Text("К какой подписке применить?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    choice.options.forEach { option ->
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { viewModel.activatePromo(choice.code, option.id) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                option.tariffName?.takeIf { it.isNotBlank() } ?: "Подписка #${option.id}",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            option.daysLeft?.let { days ->
+                                Text(
+                                    if (days > 0) "осталось $days дн." else "истекла",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = viewModel::dismissPromoChoice) { Text("Отмена") } },
+        )
+    }
 
     LazyColumn(
         modifier = Modifier

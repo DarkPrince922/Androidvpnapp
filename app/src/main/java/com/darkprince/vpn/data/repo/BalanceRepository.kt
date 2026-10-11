@@ -51,17 +51,53 @@ class BalanceRepository(private val client: ApiClient) {
 
     suspend fun referralInfo() = api.referralInfo()
 
-    /** Активация промокода. Возвращает Pair(успех, сообщение). */
-    suspend fun activatePromocode(code: String): Pair<Boolean, String> = try {
+    /**
+     * Активация промокода. Код на дни при нескольких подписках бот не
+     * применяет сам, а просит выбрать подписку — тогда отдаём список.
+     */
+    suspend fun activatePromocode(code: String, subscriptionId: Long? = null): PromoResult = try {
         val response = api.activatePromocode(
-            com.darkprince.vpn.data.api.dto.PromoActivateRequest(code.trim())
+            com.darkprince.vpn.data.api.dto.PromoActivateRequest(code.trim(), subscriptionId)
         )
-        val ok = response.success ?: true
-        val message = listOfNotNull(response.message, response.bonusDescription)
-            .joinToString(" ")
-            .ifBlank { if (ok) "Промокод активирован!" else "Не удалось активировать промокод" }
-        ok to message
+        when {
+            response.error == "select_subscription" && response.eligibleSubscriptions.isNotEmpty() ->
+                PromoResult.ChooseSubscription(code.trim(), response.eligibleSubscriptions)
+            response.success == false -> PromoResult.Failed("Не удалось активировать промокод")
+            // message у кабинета английский — показываем, что именно дал код
+            else -> PromoResult.Ok(
+                response.bonusDescription?.takeIf { it.isNotBlank() } ?: "Промокод активирован!"
+            )
+        }
     } catch (e: Exception) {
-        false to e.userMessage()
+        PromoResult.Failed(e.cabinetMessage(PROMO_ERRORS))
     }
 }
+
+sealed interface PromoResult {
+    data class Ok(val message: String) : PromoResult
+    data class Failed(val message: String) : PromoResult
+    data class ChooseSubscription(
+        val code: String,
+        val options: List<com.darkprince.vpn.data.api.dto.PromoSubscriptionOption>,
+    ) : PromoResult
+}
+
+/**
+ * Коды отказа кабинета. Ищем код в кавычках: иначе «used» совпал бы
+ * с already_used_by_user, а «not_found» — с subscription_not_found.
+ */
+private val PROMO_ERRORS = listOf(
+    "\"already_used_by_user\"" to "Вы уже активировали этот промокод.",
+    "\"not_found\"" to "Такого промокода нет. Проверьте, правильно ли он введён.",
+    "\"expired\"" to "Срок действия промокода закончился.",
+    "\"not_yet_valid\"" to "Промокод ещё не начал действовать.",
+    "\"inactive\"" to "Промокод отключён.",
+    "\"used\"" to "Промокод уже использовали максимальное число раз.",
+    "\"active_discount_exists\"" to "У вас уже есть активная скидка — сначала используйте её.",
+    "\"no_subscription_for_days\"" to "Этот промокод продлевает подписку, а у вас её пока нет. Сначала оформите подписку или пробный период.",
+    "\"subscription_not_found\"" to "Подписка не найдена. Обновите экран.",
+    "\"not_first_purchase\"" to "Промокод действует только на первую покупку.",
+    "\"daily_limit\"" to "Слишком много промокодов за сегодня. Попробуйте завтра.",
+    "\"trial_subscription_exists\"" to "Пробный промокод не подходит: у вас уже есть подписка.",
+    "\"traffic_not_applicable\"" to "Промокод добавляет трафик, а у вашей подписки он и так безлимитный.",
+)

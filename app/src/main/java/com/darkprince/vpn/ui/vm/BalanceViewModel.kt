@@ -33,6 +33,8 @@ data class BalanceUiState(
     val info: String? = null,
     /** Растёт после принятого промокода — экран очищает поле. */
     val promoAccepted: Int = 0,
+    /** Код на дни, а подписок несколько — ждём, к какой применить. */
+    val promoChoice: com.darkprince.vpn.data.repo.PromoResult.ChooseSubscription? = null,
 )
 
 private val BALANCE_EVENTS = setOf("balance.topup", "balance.change", "payment.received")
@@ -253,18 +255,25 @@ class BalanceViewModel : ViewModel() {
         super.onCleared()
     }
 
-    fun activatePromo(code: String) {
+    fun activatePromo(code: String, subscriptionId: Long? = null) {
         if (code.isBlank()) return
-        _state.value = _state.value.copy(error = null, info = null)
+        _state.value = _state.value.copy(error = null, info = null, promoChoice = null)
         viewModelScope.launch {
-            val (ok, message) = repo.activatePromocode(code)
-            if (ok) {
-                _state.value = _state.value.copy(info = message, promoAccepted = _state.value.promoAccepted + 1)
-                refresh()
-            } else {
-                _state.value = _state.value.copy(error = message)
+            when (val result = repo.activatePromocode(code, subscriptionId)) {
+                is com.darkprince.vpn.data.repo.PromoResult.Ok -> {
+                    _state.value = _state.value.copy(info = result.message, promoAccepted = _state.value.promoAccepted + 1)
+                    refresh()
+                }
+                is com.darkprince.vpn.data.repo.PromoResult.Failed ->
+                    _state.value = _state.value.copy(error = result.message)
+                is com.darkprince.vpn.data.repo.PromoResult.ChooseSubscription ->
+                    _state.value = _state.value.copy(promoChoice = result)
             }
         }
+    }
+
+    fun dismissPromoChoice() {
+        _state.value = _state.value.copy(promoChoice = null)
     }
 
     fun checkPending() {
