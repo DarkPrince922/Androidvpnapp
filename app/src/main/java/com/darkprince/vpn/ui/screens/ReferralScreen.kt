@@ -195,9 +195,11 @@ private fun TermsCard(terms: ReferralTermsDto?, fallbackPercent: Double?) {
     } else if (percent != null && percent > 0) {
         lines += "$percent% с каждого пополнения друга — на ваш баланс"
     }
-    terms?.inviterBonusKopeks?.takeIf { it > 0 }?.let { lines += "${formatKopeks(it)} вам, когда друг пополнит впервые" }
-    terms?.firstTopupBonusKopeks?.takeIf { it > 0 }?.let { lines += "${formatKopeks(it)} другу за первое пополнение" }
-    terms?.minimumTopupKopeks?.takeIf { it > 0 }?.let { lines += "Считаются пополнения от ${formatKopeks(it)}" }
+    // порог касается только бонусов за первое пополнение — процент бот
+    // начисляет с любой суммы
+    val from = terms?.minimumTopupKopeks?.takeIf { it > 0 }?.let { " от ${formatKopeks(it)}" }.orEmpty()
+    terms?.inviterBonusKopeks?.takeIf { it > 0 }?.let { lines += "${formatKopeks(it)} вам, когда друг впервые пополнит баланс$from" }
+    terms?.firstTopupBonusKopeks?.takeIf { it > 0 }?.let { lines += "${formatKopeks(it)} другу при первом пополнении$from" }
     if (lines.isEmpty()) return
     GroupCard {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
