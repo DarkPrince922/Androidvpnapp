@@ -15,7 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PersonAdd
@@ -56,6 +58,8 @@ fun SettingsScreen(
     guestMode: Boolean,
     usingSharedSubscription: Boolean,
     onOpenReferral: () -> Unit,
+    onOpenGifts: () -> Unit,
+    onOpenPromo: () -> Unit,
     onOpenApps: () -> Unit,
     autoConnectMode: String,
     onSelectAutoConnect: (String) -> Unit,
@@ -316,9 +320,25 @@ fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.Default.PersonAdd,
                     title = "Пригласить друга",
-                    subtitle = "Бонусы с платежей приглашённых",
+                    subtitle = "Бонусы с платежей приглашённых и вывод",
                     tint = MaterialTheme.colorScheme.secondary,
                     onClick = onOpenReferral,
+                )
+                RowDivider()
+                SettingsRow(
+                    icon = Icons.Default.CardGiftcard,
+                    title = "Подарки",
+                    subtitle = "Подарить подписку или активировать код",
+                    tint = MaterialTheme.colorScheme.secondary,
+                    onClick = onOpenGifts,
+                )
+                RowDivider()
+                SettingsRow(
+                    icon = Icons.Default.LocalOffer,
+                    title = "Скидки и бонусы",
+                    subtitle = "Персональные предложения и уровни лояльности",
+                    tint = MaterialTheme.colorScheme.secondary,
+                    onClick = onOpenPromo,
                 )
             }
         }

@@ -95,6 +95,7 @@ import com.darkprince.vpn.vpn.XVpnService
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -298,6 +299,18 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
+
+    // События кабинета нужны, пока приложение на экране: в фоне их всё
+    // равно некому показать, а держать сокет ради этого — тратить батарею.
+    override fun onStart() {
+        super.onStart()
+        com.darkprince.vpn.data.api.CabinetEvents.start()
+    }
+
+    override fun onStop() {
+        com.darkprince.vpn.data.api.CabinetEvents.stop()
+        super.onStop()
+    }
 }
 
 private data class BottomItem(val route: String, val label: String, val icon: ImageVector)
@@ -323,6 +336,21 @@ private fun AppRoot(
         supportViewModel.sessionChanged()
         newsViewModel.sessionChanged()
         adminViewModel.sessionChanged()
+        com.darkprince.vpn.data.api.CabinetEvents.sessionChanged()
+    }
+
+    // Самое важное из событий кабинета — коротким сообщением, на каком бы
+    // экране человек ни был. Экраны сами обновляются по тем же событиям.
+    LaunchedEffect(Unit) {
+        com.darkprince.vpn.data.api.CabinetEvents.events.collect { event ->
+            when (event.type) {
+                "ticket.admin_reply" -> supportViewModel.refreshUnread()
+                "ticket.new", "ticket.user_reply" -> if (adminState.isAdmin) adminViewModel.refresh()
+            }
+            cabinetEventText(event)?.let {
+                android.widget.Toast.makeText(activity, it, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     // открыть Telegram, когда начата deep-link авторизация
@@ -549,7 +577,27 @@ private fun AppRoot(
                             restoreState = true
                         }
                     },
+                    onOpenUrl = activity::openExternal,
+                    onOpenPromo = { navController.navigate("promo") },
                 )
+                // Ссылку сбросили: старые ключи мертвы. Перекачиваем серверы и,
+                // если подключение шло по этой подписке, переподключаемся на
+                // новые — иначе VPN остался бы «включён» без связи.
+                LaunchedEffect(plansState.revoked) {
+                    val revoked = plansState.revoked ?: return@LaunchedEffect
+                    plansViewModel.consumeRevoked()
+                    val wasOn = com.darkprince.vpn.vpn.VpnStateStore.state.value.let {
+                        it == com.darkprince.vpn.vpn.VpnState.CONNECTED ||
+                            it == com.darkprince.vpn.vpn.VpnState.CONNECTING
+                    }
+                    homeViewModel.refresh(forceServers = true)
+                    homeViewModel.state.first { !it.loading }
+                    if (revoked.working && wasOn) {
+                        homeViewModel.selectedProfile()?.let { profile ->
+                            onConnect { XVpnService.start(activity, profile) }
+                        }
+                    }
+                }
             }
             composable("balance") {
                 val balanceViewModel: BalanceViewModel = viewModel()
@@ -563,7 +611,29 @@ private fun AppRoot(
                 BalanceScreen(viewModel = balanceViewModel)
             }
             composable("referral") {
-                ReferralScreen(onShare = { text -> activity.shareText(text) })
+                val referralViewModel: com.darkprince.vpn.ui.vm.ReferralViewModel = viewModel()
+                ReferralScreen(
+                    viewModel = referralViewModel,
+                    onShare = { text -> activity.shareText(text) },
+                )
+            }
+            composable("gifts") {
+                val giftsViewModel: com.darkprince.vpn.ui.vm.GiftsViewModel = viewModel()
+                val giftsState by giftsViewModel.state.collectAsStateWithLifecycle()
+                LaunchedEffect(giftsState.openUrl) {
+                    giftsState.openUrl?.let {
+                        giftsViewModel.consumeOpenUrl()
+                        activity.openExternal(it)
+                    }
+                }
+                com.darkprince.vpn.ui.screens.GiftsScreen(
+                    viewModel = giftsViewModel,
+                    onShare = { text -> activity.shareText(text) },
+                )
+            }
+            composable("promo") {
+                val promoViewModel: com.darkprince.vpn.ui.vm.PromoViewModel = viewModel()
+                com.darkprince.vpn.ui.screens.PromoScreen(viewModel = promoViewModel)
             }
             composable("apps") {
                 val appsViewModel: AppsViewModel = viewModel()
@@ -711,6 +781,8 @@ private fun AppRoot(
                     selectedThemeId = LocalPalette.current.id,
                     onSelectTheme = { scope.launch { prefs.setTheme(it.id) } },
                     onOpenReferral = { navController.navigate("referral") },
+                    onOpenGifts = { navController.navigate("gifts") },
+                    onOpenPromo = { navController.navigate("promo") },
                     onOpenApps = { navController.navigate("apps") },
                     autoConnectMode = autoConnectMode,
                     onSelectAutoConnect = { mode ->
@@ -764,5 +836,27 @@ private fun AppRoot(
                 )
             }
         }
+    }
+}
+
+/** Что сказать человеку о событии кабинета; null — молча обновить экраны. */
+private fun cabinetEventText(event: com.darkprince.vpn.data.api.CabinetEvent): String? {
+    fun money(key: String) = event.long(key)?.let { com.darkprince.vpn.ui.screens.formatKopeks(it) }
+    return when (event.type) {
+        "balance.topup" -> money("amount_kopeks")?.let { "Баланс пополнен на $it" } ?: "Баланс пополнен"
+        "autopay.success" -> "Подписка продлена автоматически" +
+            (money("amount_kopeks")?.let { ", списано $it" } ?: "")
+        "autopay.insufficient_funds" -> "Автопродление не прошло: на балансе не хватает" +
+            (event.long("required_kopeks")?.let { req ->
+                val have = event.long("balance_kopeks") ?: 0
+                " ${com.darkprince.vpn.ui.screens.formatKopeks((req - have).coerceAtLeast(0))}"
+            } ?: " денег")
+        "autopay.failed" -> "Автопродление не прошло" + (event.text("reason")?.let { ": $it" } ?: "")
+        "subscription.expired" -> "Подписка закончилась"
+        "ticket.admin_reply" -> "Поддержка ответила на ваше обращение"
+        "ticket.new" -> null
+        "referral.bonus" -> money("bonus_kopeks")?.let { "Бонус за приглашённого: $it" }
+            ?: "Начислен бонус за приглашённого"
+        else -> null
     }
 }

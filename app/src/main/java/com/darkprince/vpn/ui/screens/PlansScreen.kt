@@ -32,7 +32,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +63,8 @@ import com.darkprince.vpn.ui.theme.GroupCard
 import com.darkprince.vpn.ui.theme.SectionHeader
 import com.darkprince.vpn.ui.vm.PlansViewModel
 import com.darkprince.vpn.ui.vm.OwnedSubscription
+import com.darkprince.vpn.ui.vm.SwitchState
+import com.darkprince.vpn.data.repo.AutopayInfo
 
 /**
  * Тарифы.
@@ -78,6 +83,8 @@ fun PlansScreen(
     viewModel: PlansViewModel,
     onOpenDevices: (Long) -> Unit,
     onNeedTopUp: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+    onOpenPromo: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val vpnState by VpnStateStore.state.collectAsStateWithLifecycle()
@@ -96,6 +103,34 @@ fun PlansScreen(
         }
     }
 
+    // вернулись из банка — узнаём, подтвердился ли автоплатёж
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.onResumed()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(state.openUrl) {
+        state.openUrl?.let {
+            viewModel.consumeOpenUrl()
+            onOpenUrl(it)
+        }
+    }
+
+    state.switch?.let { switch ->
+        SwitchTariffDialog(
+            switch = switch,
+            busy = busy,
+            onPick = viewModel::previewSwitch,
+            onBack = viewModel::backToSwitchList,
+            onConfirm = viewModel::confirmSwitch,
+            onDismiss = viewModel::cancelSwitch,
+        )
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -106,6 +141,12 @@ fun PlansScreen(
             Spacer(Modifier.height(4.dp))
             Text("Тарифы", style = MaterialTheme.typography.headlineSmall)
             ServiceDownBanner(modifier = Modifier.padding(top = 10.dp))
+            PromoStrip(
+                discountPercent = state.discount?.discountPercent,
+                discountUntil = state.discount?.expiresAt,
+                offersWaiting = state.offersWaiting,
+                onClick = onOpenPromo,
+            )
         }
 
         if (state.loading) {
@@ -157,6 +198,13 @@ fun PlansScreen(
                     onReduceDevices = { limit -> viewModel.reduceDevices(card.id, limit) },
                     onBuyTraffic = { gb -> viewModel.buyTraffic(card.id, gb) },
                     onOpenDevices = { onOpenDevices(card.id) },
+                    canSwitch = state.tariffs.any { it.id != card.sub.tariffId },
+                    onSwitch = { viewModel.startSwitch(card.id) },
+                    onRevoke = { viewModel.revoke(card.id) },
+                    onAutopay = { enabled, days -> viewModel.setAutopay(card.id, enabled, days) },
+                    onEnableRecurrent = { viewModel.enableRecurrent(card.id) },
+                    onCancelRecurrent = { viewModel.cancelRecurrent(card.id) },
+                    onOpenUrl = { url -> viewModel.openUrl(url, card.id) },
                 )
             }
         }
@@ -211,10 +259,40 @@ private fun MySubscriptionCard(
     onReduceDevices: (Int) -> Unit,
     onBuyTraffic: (Int) -> Unit,
     onOpenDevices: () -> Unit,
+    canSwitch: Boolean,
+    onSwitch: () -> Unit,
+    onRevoke: () -> Unit,
+    onAutopay: (Boolean, Int?) -> Unit,
+    onEnableRecurrent: () -> Unit,
+    onCancelRecurrent: () -> Unit,
+    onOpenUrl: (String) -> Unit,
 ) {
     var selectedPeriod by remember(card.id) { mutableStateOf<PeriodPrice?>(null) }
     val period = selectedPeriod ?: card.periods.firstOrNull()
     var extrasOpen by rememberSaveable(card.id) { mutableStateOf(false) }
+    var autopayOpen by rememberSaveable(card.id) { mutableStateOf(false) }
+    var confirmRevoke by remember(card.id) { mutableStateOf(false) }
+
+    if (confirmRevoke) {
+        AlertDialog(
+            onDismissRequest = { confirmRevoke = false },
+            title = { Text("Сбросить ссылку?") },
+            text = {
+                Text(
+                    "Подписка получит новую ссылку, а старая перестанет работать — " +
+                        "везде, куда её добавляли вручную (Happ, v2rayNG и другие). " +
+                        "Это приложение подхватит новую само.\n\n" +
+                        "Пригодится, если ссылка попала к чужим людям."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmRevoke = false; onRevoke() }) { Text("Сбросить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRevoke = false }) { Text("Отмена") }
+            },
+        )
+    }
     val hasDevices = card.devices != null
     val hasTraffic = !card.unlimitedTraffic && card.trafficPackages.isNotEmpty()
 
@@ -279,6 +357,31 @@ private fun MySubscriptionCard(
                 )
             }
 
+            val autopay = card.autopay
+            if (card.autopayAllowed && autopay != null && autopay.enabled != null) {
+                ExpandRow(
+                    title = "Автопродление",
+                    summary = autopaySummary(autopay),
+                    warn = false,
+                    open = autopayOpen,
+                    onToggle = { autopayOpen = !autopayOpen },
+                )
+                AnimatedVisibility(
+                    visible = autopayOpen,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                ) {
+                    AutopayBlock(
+                        autopay = autopay,
+                        busy = purchasing,
+                        onAutopay = onAutopay,
+                        onEnableRecurrent = onEnableRecurrent,
+                        onCancelRecurrent = onCancelRecurrent,
+                        onOpenUrl = onOpenUrl,
+                    )
+                }
+            }
+
             if (hasDevices || hasTraffic) {
                 ExpandRow(
                     title = if (hasTraffic) "Устройства и трафик" else "Устройства",
@@ -323,8 +426,254 @@ private fun MySubscriptionCard(
                     }
                 }
             }
+
+            // Редкие действия — маленькими «таблетками» внизу, не мешая продлению
+            val switchable = canSwitch && card.sub.isActive && card.sub.isTrial != true && card.sub.tariffId != null
+            if (switchable || card.sub.isActive) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (switchable) SmallAction("Сменить тариф", enabled = !purchasing, onClick = onSwitch)
+                    if (card.sub.isActive) {
+                        SmallAction("Сбросить ссылку", enabled = !purchasing, onClick = { confirmRevoke = true })
+                    }
+                }
+            }
         }
     }
+}
+
+private fun autopaySummary(autopay: AutopayInfo): String = when {
+    autopay.recurrentOn -> "СБП"
+    autopay.enabled == true -> "за ${autopay.daysBefore} дн."
+    else -> "выкл."
+}
+
+/**
+ * Автопродление: с баланса или через СБП. Включить можно что-то одно — бот
+ * сам выключает второе, чтобы не списать дважды, — поэтому оба способа
+ * показаны рядом и с пояснением.
+ */
+@Composable
+private fun AutopayBlock(
+    autopay: AutopayInfo,
+    busy: Boolean,
+    onAutopay: (Boolean, Int?) -> Unit,
+    onEnableRecurrent: () -> Unit,
+    onCancelRecurrent: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+) {
+    val enabled = autopay.enabled == true
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("С баланса", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (enabled) "Спишем цену продления за ${autopay.daysBefore} дн. до конца подписки"
+                    else "Продлим сами, если на балансе хватит денег",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(checked = enabled, enabled = !busy, onCheckedChange = { onAutopay(it, null) })
+        }
+        if (enabled) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "За сколько дней:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                listOf(1, 3, 7).forEach { days ->
+                    DayChip(
+                        days = days,
+                        selected = autopay.daysBefore == days,
+                        enabled = !busy,
+                        onClick = { onAutopay(true, days) },
+                    )
+                }
+            }
+        }
+
+        val recurrent = autopay.recurrent
+        if (recurrent != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Через СБП", style = MaterialTheme.typography.titleSmall)
+                val status = recurrent.status.lowercase()
+                when {
+                    status == "active" -> {
+                        Text(
+                            listOfNotNull(
+                                "Подключён",
+                                recurrent.amountKopeks?.let { formatKopeks(it) },
+                                recurrent.nextChargeAt?.let { "следующее списание ${cabinetDate(it)}" },
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BrandColors.Success,
+                        )
+                        SmallAction("Отключить", enabled = !busy, onClick = onCancelRecurrent)
+                    }
+                    autopay.recurrentOn -> {
+                        Text(
+                            "Ждёт подтверждения в банке",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BrandColors.Warning,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            recurrent.redirectUrl?.let { url ->
+                                SmallAction("Подтвердить", enabled = !busy, onClick = { onOpenUrl(url) })
+                            }
+                            SmallAction("Отменить", enabled = !busy, onClick = onCancelRecurrent)
+                        }
+                    }
+                    else -> {
+                        Text(
+                            "Банк сам спишет оплату за следующий период — баланс пополнять не нужно. " +
+                                "Включение выключит автопродление с баланса.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        SmallAction("Подключить", enabled = !busy, onClick = onEnableRecurrent)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DayChip(days: Int, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Text(
+        "$days",
+        style = MaterialTheme.typography.labelLarge,
+        color = if (selected) scheme.onPrimary else scheme.onSurface,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) scheme.primary else scheme.onSurface.copy(alpha = 0.06f))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    )
+}
+
+/** «12.05» из даты кабинета; не разобрали — первые десять знаков как есть. */
+internal fun cabinetDate(raw: String): String = runCatching {
+    val instant = runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+        .getOrElse { java.time.LocalDateTime.parse(raw).toInstant(java.time.ZoneOffset.UTC) }
+    java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy")
+        .format(instant.atZone(java.time.ZoneId.systemDefault()))
+}.getOrElse { raw.take(10) }
+
+/** Полоса над тарифами: действующая скидка или предложения, которые ждут. */
+@Composable
+private fun PromoStrip(
+    discountPercent: Int?,
+    discountUntil: String?,
+    offersWaiting: Int,
+    onClick: () -> Unit,
+) {
+    val text = when {
+        offersWaiting > 0 -> "🎁 Для вас есть предложение — заберите скидку"
+        discountPercent != null -> "Действует скидка $discountPercent%" +
+            (discountUntil?.let { " до ${cabinetDate(it)}" } ?: "") + " — уже в ценах"
+        else -> return
+    }
+    val accent = MaterialTheme.colorScheme.secondary
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = accent,
+        modifier = Modifier
+            .padding(top = 10.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(accent.copy(alpha = 0.12f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    )
+}
+
+/**
+ * Смена тарифа в два шага: выбрать, на какой, — и увидеть, во что это
+ * обойдётся. Доплату бот считает за оставшиеся дни, поэтому цена здесь своя,
+ * не та, что на карточке тарифа.
+ */
+@Composable
+private fun SwitchTariffDialog(
+    switch: SwitchState,
+    busy: Boolean,
+    onPick: (TariffOffer) -> Unit,
+    onBack: () -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val target = switch.target
+    val preview = switch.preview
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (target == null) "Сменить тариф" else "${switch.fromName} → ${target.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                when {
+                    target == null -> {
+                        Text(
+                            "Оставшиеся дни перенесутся на новый тариф. Докупленные устройства и трафик не переносятся.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        switch.candidates.forEach { tariff ->
+                            Text(
+                                tariff.name + (offerSummary(tariff).takeIf { it.isNotBlank() }?.let { "  ·  $it" } ?: ""),
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                                    .clickable { onPick(tariff) }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
+                    switch.loading -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        CircularProgressIndicator()
+                    }
+                    switch.error != null -> Text(switch.error, color = MaterialTheme.colorScheme.error)
+                    preview != null -> {
+                        Text("Осталось дней: ${preview.remainingDays}")
+                        Text(
+                            if (preview.upgradeCostKopeks > 0) "Доплата: ${formatKopeks(preview.upgradeCostKopeks)}" +
+                                (preview.discountPercent?.let { " (скидка $it%)" } ?: "")
+                            else "Без доплаты",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        if (preview.missingAmountKopeks > 0) {
+                            Text(
+                                "На балансе ${formatKopeks(preview.balanceKopeks)}, не хватает " +
+                                    "${formatKopeks(preview.missingAmountKopeks)}. Пополните — и тариф сменится сам.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BrandColors.Warning,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (preview != null && target != null) {
+                TextButton(enabled = !busy, onClick = onConfirm) {
+                    Text(if (preview.missingAmountKopeks > 0) "Пополнить и перейти" else "Перейти")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = if (target == null) onDismiss else onBack) {
+                Text(if (target == null) "Отмена" else "Назад")
+            }
+        },
+    )
 }
 
 /** Срок подписки цветной «таблеткой»: зелёный — время есть, жёлтый — на исходе, красный — вышел. */

@@ -160,6 +160,8 @@ data class SubscriptionListItem(
     @SerialName("subscription_url") val subscriptionUrl: String? = null,
     @SerialName("is_trial") val isTrial: Boolean? = null,
     @SerialName("autopay_enabled") val autopayEnabled: Boolean? = null,
+    /** Суточный тариф: продлевается сам каждый день, автоплатёж ему не нужен. */
+    @SerialName("is_daily") val isDaily: Boolean? = null,
 ) {
     val displayName: String
         get() = tariffName?.takeIf { it.isNotBlank() }

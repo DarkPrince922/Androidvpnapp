@@ -22,7 +22,10 @@ import retrofit2.HttpException
  */
 @Serializable
 data class PendingPurchase(
-    /** "renew" — продлить свою подписку, "buy" — купить тариф. */
+    /**
+     * "renew" — продлить свою подписку, "buy" — купить тариф, "switch" —
+     * перевести подписку [subscriptionId] на тариф [tariffId].
+     */
     val kind: String,
     val subscriptionId: Long? = null,
     val tariffId: Long? = null,
@@ -44,6 +47,10 @@ data class PendingPurchase(
 
     /** Видно ли по свежему списку подписок, что покупка уже состоялась. */
     fun alreadyDone(subscriptions: List<SubscriptionListItem>): Boolean {
+        // смена тарифа видна сразу: у подписки уже новый тариф
+        if (kind == "switch") {
+            return subscriptions.any { it.id == subscriptionId && it.tariffId == tariffId }
+        }
         val relevant = when (kind) {
             "renew" -> subscriptions.filter { it.id == subscriptionId }
             else -> subscriptions.filter { it.tariffId == tariffId }
@@ -104,7 +111,7 @@ internal suspend fun attemptPurchase(block: suspend () -> Unit): PurchaseResult 
     PurchaseResult.Failed(e.userMessage())
 }
 
-private fun HttpException.missingAmountKopeks(): Long? = runCatching {
+internal fun HttpException.missingAmountKopeks(): Long? = runCatching {
     val body = response()?.errorBody()?.string() ?: return null
     val detail = Json.parseToJsonElement(body) as? JsonObject ?: return null
     val inner = detail["detail"] as? JsonObject ?: return null

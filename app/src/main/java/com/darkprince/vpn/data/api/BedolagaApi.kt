@@ -1,5 +1,6 @@
 package com.darkprince.vpn.data.api
 
+import com.darkprince.vpn.data.api.dto.*
 import com.darkprince.vpn.data.api.dto.MergeResultDto
 import com.darkprince.vpn.data.api.dto.MergeExecuteRequest
 import com.darkprince.vpn.data.api.dto.MergePreviewDto
@@ -227,6 +228,118 @@ interface BedolagaApi {
         @Body body: RenewRequest,
         @Query("subscription_id") subscriptionId: Long? = null,
     ): RawJson
+
+    // --- Автопродление, смена тарифа, перевыпуск ссылки ---
+
+    @GET("cabinet/subscription")
+    suspend fun subscriptionAutopay(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): SubscriptionAutopayDto
+
+    @PATCH("cabinet/subscription/autopay")
+    suspend fun updateAutopay(
+        @Body body: AutopayRequest,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): AutopayResponse
+
+    /** 403 — автоплатёж через СБП в боте выключен. */
+    @GET("cabinet/subscription/platega-recurrent")
+    suspend fun recurrentStatus(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RecurrentStatusDto
+
+    @POST("cabinet/subscription/platega-recurrent/enable")
+    suspend fun enableRecurrent(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RecurrentEnableResponse
+
+    @POST("cabinet/subscription/platega-recurrent/cancel")
+    suspend fun cancelRecurrent(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
+
+    @POST("cabinet/subscription/tariff/switch/preview")
+    suspend fun tariffSwitchPreview(
+        @Body body: TariffSwitchRequest,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): TariffSwitchPreviewDto
+
+    @POST("cabinet/subscription/tariff/switch")
+    suspend fun tariffSwitch(
+        @Body body: TariffSwitchRequest,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RawJson
+
+    @POST("cabinet/subscription/revoke")
+    suspend fun revokeSubscription(
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): RevokeResponse
+
+    // --- Подарки ---
+
+    @GET("cabinet/gift/config")
+    suspend fun giftConfig(): GiftConfigDto
+
+    @POST("cabinet/gift/purchase")
+    suspend fun giftPurchase(@Body body: GiftPurchaseRequest): GiftPurchaseResponse
+
+    @GET("cabinet/gift/purchase/{token}")
+    suspend fun giftPurchaseStatus(@Path("token") token: String): GiftPurchaseStatusDto
+
+    @GET("cabinet/gift/sent")
+    suspend fun giftsSent(): List<SentGiftDto>
+
+    @GET("cabinet/gift/received")
+    suspend fun giftsReceived(): List<ReceivedGiftDto>
+
+    @POST("cabinet/gift/activate")
+    suspend fun giftActivate(@Body body: GiftActivateRequest): GiftActivateResponse
+
+    // --- Скидки и уровни ---
+
+    @GET("cabinet/promo/offers")
+    suspend fun promoOffers(): List<PromoOfferDto>
+
+    @GET("cabinet/promo/active-discount")
+    suspend fun activeDiscount(): ActiveDiscountDto
+
+    @POST("cabinet/promo/claim")
+    suspend fun claimOffer(@Body body: ClaimOfferRequest): ClaimOfferResponse
+
+    @GET("cabinet/promo/group-discounts")
+    suspend fun groupDiscounts(): GroupDiscountsDto
+
+    @GET("cabinet/promo/loyalty-tiers")
+    suspend fun loyaltyTiers(): LoyaltyTiersDto
+
+    // --- Рефералка: приглашённые, начисления, вывод ---
+
+    @GET("cabinet/referral/terms")
+    suspend fun referralTerms(): ReferralTermsDto
+
+    @GET("cabinet/referral/list")
+    suspend fun referralList(
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 50,
+    ): ReferralListDto
+
+    @GET("cabinet/referral/earnings")
+    suspend fun referralEarnings(
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 50,
+    ): ReferralEarningsDto
+
+    @GET("cabinet/referral/withdrawal/balance")
+    suspend fun withdrawalBalance(): WithdrawalBalanceDto
+
+    @POST("cabinet/referral/withdrawal/create")
+    suspend fun createWithdrawal(@Body body: WithdrawalCreateRequest): RawJson
+
+    @GET("cabinet/referral/withdrawal/history")
+    suspend fun withdrawalHistory(): WithdrawalListDto
+
+    @POST("cabinet/referral/withdrawal/{id}/cancel")
+    suspend fun cancelWithdrawal(@Path("id") id: Long): RawJson
 
     // --- Рефералка и промокоды ---
 

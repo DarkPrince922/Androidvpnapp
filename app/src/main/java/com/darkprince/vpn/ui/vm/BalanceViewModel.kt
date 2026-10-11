@@ -33,6 +33,8 @@ data class BalanceUiState(
     val info: String? = null,
 )
 
+private val BALANCE_EVENTS = setOf("balance.topup", "balance.change", "payment.received")
+
 class BalanceViewModel : ViewModel() {
     private val repo = ServiceLocator.balanceRepository
 
@@ -41,6 +43,17 @@ class BalanceViewModel : ViewModel() {
 
     init {
         refresh()
+        // Деньги зачислены — сокет кабинета говорит об этом сразу. Опрос
+        // после оплаты остаётся: он нужен, если сокет не поднялся.
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.CabinetEvents.events.collect { event ->
+                if (event.type in BALANCE_EVENTS) {
+                    watchJob?.cancel()
+                    _state.value = _state.value.copy(pendingPayment = null)
+                    refresh()
+                }
+            }
+        }
     }
 
     fun refresh() {
@@ -127,6 +140,7 @@ class BalanceViewModel : ViewModel() {
         }
         val result = when (pending.kind) {
             "renew" -> subs.renewChecked(pending.periodDays, pending.subscriptionId)
+            "switch" -> subs.switchTariff(pending.subscriptionId ?: 0L, pending.tariffId ?: 0L, pending.periodDays)
             else -> subs.purchaseTariffChecked(pending.tariffId ?: 0L, pending.periodDays)
         }
         when (result) {

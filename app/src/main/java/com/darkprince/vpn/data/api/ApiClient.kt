@@ -112,6 +112,13 @@ class ApiClient(private val prefs: AppPrefs) {
         return token
     }
 
+    /** Действующий access-токен для того, что ходит мимо Retrofit (сокеты). */
+    suspend fun accessToken(): String? {
+        val token = prefs.cachedAccessToken ?: return null
+        val expiresAt = prefs.cachedAccessExpiresAt
+        return if (expiresAt > 0 && System.currentTimeMillis() > expiresAt - 30_000) refreshTokens() else token
+    }
+
     private val refreshMutex = Mutex()
     @Volatile private var lastRefreshAt = 0L
 

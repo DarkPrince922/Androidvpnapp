@@ -3,7 +3,11 @@ package com.darkprince.vpn.data.repo
 import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.core.parser.LinkParser
 import com.darkprince.vpn.data.api.ApiClient
+import com.darkprince.vpn.data.api.dto.AutopayRequest
 import com.darkprince.vpn.data.api.dto.DeviceDto
+import com.darkprince.vpn.data.api.dto.RecurrentStatusDto
+import com.darkprince.vpn.data.api.dto.TariffSwitchPreviewDto
+import com.darkprince.vpn.data.api.dto.TariffSwitchRequest
 import com.darkprince.vpn.data.api.dto.DevicesPurchaseRequest
 import com.darkprince.vpn.data.api.dto.RenameDeviceRequest
 import com.darkprince.vpn.data.api.dto.PurchaseTariffRequest
@@ -14,6 +18,7 @@ import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
 import com.darkprince.vpn.data.api.dto.TrafficPurchaseRequest
 import com.darkprince.vpn.data.prefs.AppPrefs
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -397,6 +402,104 @@ class SubscriptionRepository(
         e.userMessage()
     }
 
+    // --- Автопродление ---
+
+    /**
+     * Автопродление подписки: с баланса и через СБП.
+     *
+     * За сколько дней до конца списывать, в списке подписок не приходит —
+     * спрашиваем саму подписку. СБП-автоплатёж бывает выключен в боте
+     * целиком: тогда [AutopayInfo.recurrent] пустой и блок не показываем.
+     */
+    suspend fun autopayInfo(subscriptionId: Long): AutopayInfo = kotlinx.coroutines.coroutineScope {
+        val settings = async { runCatching { api.subscriptionAutopay(subscriptionId) }.getOrNull() }
+        val recurrent = async { recurrentStatus(subscriptionId) }
+        val s = settings.await()
+        AutopayInfo(
+            enabled = s?.enabled,
+            daysBefore = s?.daysBefore ?: 3,
+            recurrent = recurrent.await(),
+        )
+    }
+
+    /** null — СБП-автоплатёж в боте выключен или узнать не удалось. */
+    private suspend fun recurrentStatus(subscriptionId: Long): RecurrentStatusDto? = try {
+        api.recurrentStatus(subscriptionId)
+    } catch (_: Exception) {
+        null
+    }
+
+    suspend fun setAutopay(subscriptionId: Long, enabled: Boolean, daysBefore: Int?): String? = try {
+        api.updateAutopay(AutopayRequest(enabled, daysBefore), subscriptionId)
+        null
+    } catch (e: Exception) {
+        e.cabinetMessage(AUTOPAY_ERRORS)
+    }
+
+    /** Ссылка на страницу банка, где человек подтверждает автоплатёж. */
+    suspend fun enableRecurrent(subscriptionId: Long): Result<String> = try {
+        val url = api.enableRecurrent(subscriptionId).redirectUrl
+        if (url.isNullOrBlank()) Result.failure(IllegalStateException("Касса не вернула ссылку на подтверждение"))
+        else Result.success(url)
+    } catch (e: Exception) {
+        Result.failure(IllegalStateException(e.cabinetMessage(AUTOPAY_ERRORS)))
+    }
+
+    suspend fun cancelRecurrent(subscriptionId: Long): String? = try {
+        api.cancelRecurrent(subscriptionId)
+        null
+    } catch (e: Exception) {
+        e.cabinetMessage(AUTOPAY_ERRORS)
+    }
+
+    // --- Смена тарифа ---
+
+    /** Сколько будет стоить переход: доплата за оставшиеся дни или бесплатно. */
+    suspend fun switchPreview(subscriptionId: Long, tariffId: Long, periodDays: Int): Result<TariffSwitchPreviewDto> = try {
+        Result.success(api.tariffSwitchPreview(TariffSwitchRequest(tariffId, periodDays), subscriptionId))
+    } catch (e: Exception) {
+        Result.failure(IllegalStateException(e.cabinetMessage(SWITCH_ERRORS)))
+    }
+
+    /** Нехватку денег отличаем от прочих ошибок — как при покупке. */
+    suspend fun switchTariff(subscriptionId: Long, tariffId: Long, periodDays: Int): PurchaseResult = try {
+        api.tariffSwitch(TariffSwitchRequest(tariffId, periodDays), subscriptionId)
+        PurchaseResult.Ok
+    } catch (e: retrofit2.HttpException) {
+        if (e.code() == 402) PurchaseResult.NotEnough(e.missingAmountKopeks())
+        else PurchaseResult.Failed(e.cabinetMessage(SWITCH_ERRORS))
+    } catch (e: Exception) {
+        PurchaseResult.Failed(e.userMessage())
+    }
+
+    // --- Перевыпуск ссылки ---
+
+    /**
+     * Новая ссылка подписки вместо старой. Старая перестаёт работать везде,
+     * куда её добавили руками, — поэтому сохранённые серверы этой подписки
+     * больше не годятся и скачиваются заново.
+     */
+    suspend fun revoke(subscriptionId: Long): String? = try {
+        api.revokeSubscription(subscriptionId)
+        prefs.setServersRawFor(subscriptionId, null)
+        null
+    } catch (e: Exception) {
+        val http = e as? retrofit2.HttpException
+        if (http?.code() == 429) {
+            val wait = runCatching { http.response()?.errorBody()?.string() }.getOrNull()?.secondsToWait()
+            val minutes = ((wait ?: 60) + 59) / 60
+            "Ссылку уже сбрасывали недавно. Повторить можно через ${minutesText(minutes)}."
+        } else {
+            e.cabinetMessage(
+                listOf(
+                    "reissue is not available" to "Сброс ссылки отключён в боте.",
+                    "Only active subscriptions" to "Сбросить можно только у действующей подписки.",
+                    "Failed to reissue" to "Панель не смогла выпустить новую ссылку. Попробуйте позже.",
+                )
+            )
+        }
+    }
+
     // --- Устройства ---
 
     /** Сводка по устройствам конкретной подписки (null — текущая). */
@@ -534,6 +637,42 @@ data class DevicesInfo(
 )
 
 data class TrafficPackage(val gb: Int, val priceKopeks: Long)
+
+/** Автопродление подписки. [enabled] null — кабинет не ответил. */
+data class AutopayInfo(
+    val enabled: Boolean?,
+    val daysBefore: Int,
+    val recurrent: RecurrentStatusDto?,
+) {
+    /** СБП-автоплатёж подключён (или ждёт подтверждения в банке). */
+    val recurrentOn: Boolean
+        get() = recurrent != null && recurrent.status.lowercase() !in setOf("none", "cancelled", "canceled", "failed", "expired")
+}
+
+private val AUTOPAY_ERRORS = listOf(
+    "classic subscriptions" to "Автопродление работает только для тарифов. Купите тариф.",
+    "trial subscriptions" to "У пробной подписки автопродления нет.",
+    "Trial subscriptions" to "У пробной подписки автопродления нет.",
+    "daily subscriptions" to "Суточный тариф и так продлевается сам каждый день.",
+    "recurrent disabled" to "Автоплатёж через СБП отключён в боте.",
+    "has no tariff" to "У подписки нет тарифа — автоплатёж не подключить.",
+    "Could not create Platega" to "Касса не смогла оформить автоплатёж. Попробуйте позже.",
+    "No subscription found" to "Подписка не найдена. Обновите экран.",
+)
+
+private val SWITCH_ERRORS = listOf(
+    "subscription_expired" to "Подписка истекла — сменить её нельзя, купите нужный тариф.",
+    "trial_cannot_switch" to "Пробную подписку сменить нельзя — купите тариф.",
+    "free_tariff_cannot_switch" to "С бесплатного тарифа не переходят — купите нужный.",
+    "subscription_not_active" to "Подписка не активна — сменить тариф нельзя.",
+    "Already on this tariff" to "Вы уже на этом тарифе.",
+    "already have an active subscription for the target tariff" to "У вас уже есть подписка на этот тариф.",
+    "promo group" to "Этот тариф вам недоступен.",
+    "Tariff not available" to "Этот тариф вам недоступен.",
+    "not found or inactive" to "Тариф больше не продаётся.",
+    "Tariffs mode is not enabled" to "Смена тарифа отключена в боте.",
+    "No active subscription with tariff" to "У подписки нет тарифа — сменить нельзя.",
+)
 
 private fun JsonObject.intOf(key: String): Int? = this[key]?.jsonPrimitive?.intOrNull
 private fun JsonObject.textOf(key: String): String? =

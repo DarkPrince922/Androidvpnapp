@@ -2,7 +2,10 @@ package com.darkprince.vpn.ui.vm
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.darkprince.vpn.data.api.dto.ActiveDiscountDto
 import com.darkprince.vpn.data.api.dto.SubscriptionListItem
+import com.darkprince.vpn.data.api.dto.TariffSwitchPreviewDto
+import com.darkprince.vpn.data.repo.AutopayInfo
 import com.darkprince.vpn.data.repo.DevicesInfo
 import com.darkprince.vpn.data.repo.PendingPurchase
 import com.darkprince.vpn.data.repo.PeriodPrice
@@ -38,8 +41,13 @@ data class OwnedSubscription(
     val devices: DevicesInfo? = null,
     val renewalOptions: List<PeriodPrice> = emptyList(),
     val trafficPackages: List<TrafficPackage> = emptyList(),
+    /** Автопродление; null — не загружено или подписке не положено. */
+    val autopay: AutopayInfo? = null,
     val loading: Boolean = true,
 ) {
+    /** Автопродление бывает только у купленного периодного тарифа. */
+    val autopayAllowed: Boolean
+        get() = sub.isTrial != true && sub.isDaily != true && sub.tariffId != null
     val id: Long get() = sub.id
     val title: String get() = sub.displayName
 
@@ -84,6 +92,16 @@ data class PlansUiState(
     val info: String? = null,
     /** Денег не хватило — экрану пора увести человека на пополнение. */
     val needTopUp: Boolean = false,
+    /** Страница банка или кассы, которую надо открыть. */
+    val openUrl: String? = null,
+    /** Смена тарифа: что выбрали и сколько это стоит. */
+    val switch: SwitchState? = null,
+    /** Ссылку сбросили — главной пора перекачать серверы. */
+    val revoked: RevokeDone? = null,
+    /** Действующая персональная скидка. */
+    val discount: ActiveDiscountDto? = null,
+    /** Сколько предложений ждут, чтобы их забрали. */
+    val offersWaiting: Int = 0,
 ) {
     private val ownedTariffIds: Set<Long>
         get() = cards.mapNotNull { it.sub.tariffId }.toSet()
@@ -99,6 +117,21 @@ data class PlansUiState(
         get() = tariffs.filter { it.id !in ownedTariffIds }
 }
 
+/** Смена тарифа у подписки [subId]: на какой и во что обойдётся. */
+data class SwitchState(
+    val subId: Long,
+    val fromName: String,
+    /** Куда можно перейти. */
+    val candidates: List<TariffOffer>,
+    val target: TariffOffer? = null,
+    val preview: TariffSwitchPreviewDto? = null,
+    val loading: Boolean = false,
+    val error: String? = null,
+)
+
+/** Ссылку подписки сбросили. [working] — по ней шло подключение. */
+data class RevokeDone(val subId: Long, val working: Boolean)
+
 class PlansViewModel : ViewModel() {
     private val repo = ServiceLocator.subscriptionRepository
 
@@ -107,6 +140,13 @@ class PlansViewModel : ViewModel() {
 
     init {
         refresh()
+        // продление, автоплатёж, докупка — сразу перечитываем карточки
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.CabinetEvents.events.collect { event ->
+                val relevant = event.type.startsWith("subscription.") || event.type.startsWith("autopay.")
+                if (relevant && !_state.value.purchasing) refresh()
+            }
+        }
     }
 
     fun refresh() {
@@ -142,6 +182,8 @@ class PlansViewModel : ViewModel() {
                 "Не удалось загрузить предложения. Проверьте соединение и потяните для обновления."
             } else null
 
+            launch { loadPromo() }
+
             _state.update {
                 it.copy(
                     cards = cards,
@@ -174,19 +216,190 @@ class PlansViewModel : ViewModel() {
         }
         val renewalsDeferred = async { runOrNull { repo.renewalOptions(subId) } ?: emptyList() }
         val trafficDeferred = async { runOrNull { repo.trafficPackages(subId) } ?: emptyList() }
+        val card = _state.value.cards.firstOrNull { it.id == subId }
+        val autopayDeferred = async {
+            if (card?.autopayAllowed == true) runOrNull { repo.autopayInfo(subId) } else null
+        }
 
         val devices = devicesDeferred.await()
         val renewals = renewalsDeferred.await()
         val traffic = trafficDeferred.await()
+        val autopay = autopayDeferred.await()
 
         updateCard(subId) {
             it.copy(
                 devices = devices,
                 renewalOptions = renewals,
                 trafficPackages = traffic,
+                autopay = autopay,
                 loading = false,
             )
         }
+    }
+
+    /** Скидка и предложения — для полосы «для вас скидка» над тарифами. */
+    private suspend fun loadPromo() {
+        val promo = ServiceLocator.promoRepository
+        val discount = runOrNull { promo.activeDiscount() }
+        val offers = runOrNull { promo.offers() }.orEmpty()
+        _state.update { it.copy(discount = discount, offersWaiting = offers.size) }
+    }
+
+    // --- Автопродление ---
+
+    fun setAutopay(subId: Long, enabled: Boolean, daysBefore: Int? = null) {
+        val card = _state.value.cards.firstOrNull { it.id == subId } ?: return
+        val days = daysBefore ?: card.autopay?.daysBefore ?: 3
+        // сразу двигаем переключатель — ответ кабинета либо подтвердит, либо вернёт как было
+        updateCard(subId) { it.copy(autopay = it.autopay?.copy(enabled = enabled, daysBefore = days)) }
+        _state.update { it.copy(error = null, info = null) }
+        viewModelScope.launch {
+            val error = repo.setAutopay(subId, enabled, days)
+            if (error != null) {
+                updateCard(subId) { it.copy(autopay = card.autopay) }
+                _state.update { it.copy(error = error) }
+            } else {
+                _state.update {
+                    it.copy(
+                        info = if (enabled) "Автопродление включено: спишем с баланса за $days ${daysWord(days)} до конца"
+                        else "Автопродление выключено",
+                    )
+                }
+                // включение с баланса отменяет автоплатёж СБП — перечитываем
+                runOrNull { repo.autopayInfo(subId) }?.let { info -> updateCard(subId) { it.copy(autopay = info) } }
+            }
+        }
+    }
+
+    /** Автоплатёж через СБП: подтверждают его на странице банка. */
+    fun enableRecurrent(subId: Long) {
+        _state.update { it.copy(purchasing = true, error = null, info = null) }
+        viewModelScope.launch {
+            repo.enableRecurrent(subId)
+                .onSuccess { url ->
+                    bankPending = subId
+                    _state.update {
+                        it.copy(
+                            purchasing = false,
+                            openUrl = url,
+                            info = "Подтвердите автоплатёж в банке и вернитесь в приложение",
+                        )
+                    }
+                }
+                .onFailure { e -> _state.update { it.copy(purchasing = false, error = e.message) } }
+        }
+    }
+
+    /** Ушли подтверждать автоплатёж в банк: по возвращении перечитать его состояние. */
+    private var bankPending: Long? = null
+
+    fun onResumed() {
+        val subId = bankPending ?: return
+        bankPending = null
+        viewModelScope.launch {
+            runOrNull { repo.autopayInfo(subId) }?.let { info -> updateCard(subId) { it.copy(autopay = info) } }
+        }
+    }
+
+    fun cancelRecurrent(subId: Long) = act("Автоплатёж через СБП отключён") { repo.cancelRecurrent(subId) }
+
+    fun openUrl(url: String, subId: Long? = null) {
+        if (subId != null) bankPending = subId
+        _state.update { it.copy(openUrl = url) }
+    }
+
+    fun consumeOpenUrl() {
+        _state.update { it.copy(openUrl = null) }
+    }
+
+    // --- Смена тарифа ---
+
+    fun startSwitch(subId: Long) {
+        val card = _state.value.cards.firstOrNull { it.id == subId } ?: return
+        val candidates = _state.value.tariffs.filter { it.id != card.sub.tariffId }
+        if (candidates.isEmpty()) {
+            _state.update { it.copy(info = "Других тарифов сейчас нет") }
+            return
+        }
+        _state.update { it.copy(switch = SwitchState(subId, card.title, candidates), error = null, info = null) }
+    }
+
+    fun previewSwitch(target: TariffOffer) {
+        val current = _state.value.switch ?: return
+        _state.update { it.copy(switch = current.copy(target = target, preview = null, loading = true, error = null)) }
+        viewModelScope.launch {
+            val result = repo.switchPreview(current.subId, target.id, switchPeriod(target))
+            _state.update { state ->
+                val now = state.switch?.takeIf { it.subId == current.subId && it.target?.id == target.id }
+                    ?: return@update state
+                state.copy(
+                    switch = now.copy(
+                        preview = result.getOrNull(),
+                        error = result.exceptionOrNull()?.message,
+                        loading = false,
+                    )
+                )
+            }
+        }
+    }
+
+    /** Назад к выбору тарифа из расчёта. */
+    fun backToSwitchList() {
+        _state.update { s -> s.copy(switch = s.switch?.copy(target = null, preview = null, error = null, loading = false)) }
+    }
+
+    fun cancelSwitch() {
+        _state.update { it.copy(switch = null) }
+    }
+
+    fun confirmSwitch() {
+        val switch = _state.value.switch ?: return
+        val target = switch.target ?: return
+        val preview = switch.preview ?: return
+        val period = switchPeriod(target)
+        _state.update { it.copy(switch = null) }
+        buy(
+            pending = PendingPurchase(
+                kind = "switch",
+                subscriptionId = switch.subId,
+                tariffId = target.id,
+                periodDays = period,
+                priceKopeks = preview.upgradeCostKopeks,
+                missingKopeks = preview.missingAmountKopeks.takeIf { it > 0 } ?: preview.upgradeCostKopeks,
+                title = "${switch.fromName} → ${target.name}",
+            ),
+            success = "Тариф сменён на «${target.name}»",
+        ) { repo.switchTariff(switch.subId, target.id, period) }
+    }
+
+    /** Срок для запроса смены: бот требует его, но считает доплату по оставшимся дням. */
+    private fun switchPeriod(target: TariffOffer): Int = target.periods.firstOrNull()?.days ?: 30
+
+    // --- Сброс ссылки ---
+
+    fun revoke(subId: Long) {
+        val working = subId == _state.value.workingSubscriptionId
+        _state.update { it.copy(purchasing = true, error = null, info = null) }
+        viewModelScope.launch {
+            val error = repo.revoke(subId)
+            if (error == null) {
+                _state.update {
+                    it.copy(
+                        purchasing = false,
+                        info = "Ссылка сброшена. Старая больше не работает — в других приложениях " +
+                            "добавьте подписку заново",
+                        revoked = RevokeDone(subId, working),
+                    )
+                }
+                refresh()
+            } else {
+                _state.update { it.copy(purchasing = false, error = error) }
+            }
+        }
+    }
+
+    fun consumeRevoked() {
+        _state.update { it.copy(revoked = null) }
     }
 
     private fun updateCard(subId: Long, block: (OwnedSubscription) -> OwnedSubscription) {
@@ -374,4 +587,10 @@ private fun daysUntilDate(endDate: String): Int? = try {
     java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(zone), end).toInt()
 } catch (_: Exception) {
     null
+}
+
+private fun daysWord(days: Int): String = when {
+    days % 10 == 1 && days % 100 != 11 -> "день"
+    days % 10 in 2..4 && days % 100 !in 12..14 -> "дня"
+    else -> "дней"
 }

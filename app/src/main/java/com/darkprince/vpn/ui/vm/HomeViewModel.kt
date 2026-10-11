@@ -107,6 +107,13 @@ class HomeViewModel : ViewModel() {
     init {
         checkUpdate()
         refresh(forceServers = true)
+        // продлили, докупили, закончилась — срок и трафик на главной
+        // обновляются сразу, без ожидания следующего захода
+        viewModelScope.launch {
+            com.darkprince.vpn.data.api.CabinetEvents.events.collect { event ->
+                if (event.type.startsWith("subscription.") || event.type == "autopay.success") refresh()
+            }
+        }
     }
 
     /**

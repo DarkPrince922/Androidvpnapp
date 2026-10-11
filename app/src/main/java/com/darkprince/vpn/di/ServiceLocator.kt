@@ -32,6 +32,12 @@ object ServiceLocator {
 
     lateinit var adminRepository: AdminRepository
         private set
+    lateinit var giftRepository: com.darkprince.vpn.data.repo.GiftRepository
+        private set
+    lateinit var promoRepository: com.darkprince.vpn.data.repo.PromoRepository
+        private set
+    lateinit var referralRepository: com.darkprince.vpn.data.repo.ReferralRepository
+        private set
     lateinit var appUpdater: AppUpdater
         private set
 
@@ -48,6 +54,9 @@ object ServiceLocator {
         supportRepository = SupportRepository(apiClient, prefs, appContext)
         newsRepository = NewsRepository(apiClient, prefs)
         adminRepository = AdminRepository(apiClient, prefs)
+        giftRepository = com.darkprince.vpn.data.repo.GiftRepository(apiClient)
+        promoRepository = com.darkprince.vpn.data.repo.PromoRepository(apiClient)
+        referralRepository = com.darkprince.vpn.data.repo.ReferralRepository(apiClient)
         com.darkprince.vpn.data.api.ServiceHealth.init(
             ping = { apiClient.api.branding() },
             // Тем же клиентом, что и подписка: при поднятом туннеле он идёт
