@@ -103,11 +103,13 @@ class AppsViewModel : ViewModel() {
     }
 
     fun setMode(mode: SplitMode) {
+        changed = true
         _state.value = _state.value.copy(mode = mode)
         viewModelScope.launch { prefs.setSplitMode(mode.key) }
     }
 
     fun toggle(packageName: String) {
+        changed = true
         val updated = _state.value.selected.toMutableSet().apply {
             if (!add(packageName)) remove(packageName)
         }
@@ -115,11 +117,28 @@ class AppsViewModel : ViewModel() {
         viewModelScope.launch { prefs.setSplitApps(updated) }
     }
 
+    /** Что-то поменяли — при уходе с экрана туннель нужно пересобрать. */
+    private var changed = false
+
+    /**
+     * Список приложений Android применяет только при сборке туннеля. Раньше
+     * изменения при включённом VPN молча ждали следующего подключения, и
+     * отмеченное приложение продолжало идти не туда. Теперь, уходя с
+     * экрана, переподключаемся сами — тем же узлом.
+     */
+    override fun onCleared() {
+        if (changed && com.darkprince.vpn.vpn.VpnStateStore.state.value == com.darkprince.vpn.vpn.VpnState.CONNECTED) {
+            runCatching { com.darkprince.vpn.vpn.XVpnService.startLast(ServiceLocator.appContext) }
+        }
+        super.onCleared()
+    }
+
     fun setQuery(value: String) {
         _state.value = _state.value.copy(query = value)
     }
 
     fun clearSelection() {
+        changed = true
         _state.value = _state.value.copy(selected = emptySet())
         viewModelScope.launch { prefs.setSplitApps(emptySet()) }
     }
