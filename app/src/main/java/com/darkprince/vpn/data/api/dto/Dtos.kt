@@ -178,6 +178,13 @@ data class SubscriptionListItem(
 
     val isActive: Boolean
         get() = status?.lowercase() in setOf("active", "trial", "активна")
+
+    /**
+     * Удалить можно только закончившуюся подписку — и не во время временного
+     * доступа: его бот сначала доводит до конца.
+     */
+    val isDeletable: Boolean
+        get() = status?.lowercase() in setOf("expired", "disabled") && graceUntil == null
 }
 
 @Serializable

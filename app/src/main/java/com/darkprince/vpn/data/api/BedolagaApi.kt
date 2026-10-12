@@ -270,6 +270,10 @@ interface BedolagaApi {
         @Query("subscription_id") subscriptionId: Long? = null,
     ): RawJson
 
+    /** Удалить истёкшую или отключённую подписку. Действующую бот не удаляет. */
+    @DELETE("cabinet/subscriptions/{id}")
+    suspend fun deleteSubscription(@Path("id") subscriptionId: Long): JsonElement
+
     @POST("cabinet/subscription/revoke")
     suspend fun revokeSubscription(
         @Query("subscription_id") subscriptionId: Long? = null,

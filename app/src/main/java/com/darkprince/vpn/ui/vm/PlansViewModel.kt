@@ -463,6 +463,25 @@ class PlansViewModel : ViewModel() {
         }
     }
 
+    fun deleteSubscription(subId: Long) {
+        _state.update { it.copy(purchasing = true, error = null, info = null) }
+        viewModelScope.launch {
+            val error = repo.deleteSubscription(subId)
+            if (error == null) {
+                _state.update {
+                    it.copy(
+                        purchasing = false,
+                        info = "Подписка удалена",
+                        cards = it.cards.filterNot { card -> card.id == subId },
+                    )
+                }
+                refresh()
+            } else {
+                _state.update { it.copy(purchasing = false, error = error) }
+            }
+        }
+    }
+
     fun consumeRevoked() {
         _state.update { it.copy(revoked = null) }
     }

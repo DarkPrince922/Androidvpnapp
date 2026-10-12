@@ -201,6 +201,7 @@ fun PlansScreen(
                     canSwitch = state.tariffs.any { it.id != card.sub.tariffId },
                     onSwitch = { viewModel.startSwitch(card.id) },
                     onRevoke = { viewModel.revoke(card.id) },
+                    onDelete = { viewModel.deleteSubscription(card.id) },
                     onTogglePause = { viewModel.toggleDailyPause(card.id) },
                     onAutopay = { enabled, days -> viewModel.setAutopay(card.id, enabled, days) },
                     onEnableRecurrent = { viewModel.enableRecurrent(card.id) },
@@ -263,6 +264,7 @@ private fun MySubscriptionCard(
     canSwitch: Boolean,
     onSwitch: () -> Unit,
     onRevoke: () -> Unit,
+    onDelete: () -> Unit,
     onTogglePause: () -> Unit,
     onAutopay: (Boolean, Int?) -> Unit,
     onEnableRecurrent: () -> Unit,
@@ -277,6 +279,26 @@ private fun MySubscriptionCard(
     var extrasOpen by rememberSaveable(card.id) { mutableStateOf(false) }
     var autopayOpen by rememberSaveable(card.id) { mutableStateOf(false) }
     var confirmRevoke by remember(card.id) { mutableStateOf(false) }
+    var confirmDelete by remember(card.id) { mutableStateOf(false) }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Удалить подписку?") },
+            text = {
+                Text(
+                    "«${card.sub.displayName}» пропадёт из списка вместе со ссылкой и " +
+                        "устройствами. Вернуть её не получится — только купить новую."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Удалить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Отмена") }
+            },
+        )
+    }
 
     if (confirmRevoke) {
         AlertDialog(
@@ -464,13 +486,16 @@ private fun MySubscriptionCard(
 
             // Редкие действия — маленькими «таблетками» внизу, не мешая продлению
             val switchable = canSwitch && card.sub.isActive && card.sub.isTrial != true && card.sub.tariffId != null
-            if (switchable || card.sub.isActive) {
+            if (switchable || card.sub.isActive || card.sub.isDeletable) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (switchable) SmallAction("Сменить тариф", enabled = !purchasing, onClick = onSwitch)
                     // у подписки без тарифа блока устройств нет, а отключить лишние нужно
                     if (legacy && card.devices != null) SmallAction("Устройства", onClick = onOpenDevices)
                     if (card.sub.isActive) {
                         SmallAction("Сбросить ссылку", enabled = !purchasing, onClick = { confirmRevoke = true })
+                    }
+                    if (card.sub.isDeletable) {
+                        SmallAction("Удалить подписку", enabled = !purchasing, onClick = { confirmDelete = true })
                     }
                 }
             }

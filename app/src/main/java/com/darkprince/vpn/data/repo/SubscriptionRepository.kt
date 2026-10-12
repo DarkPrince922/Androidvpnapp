@@ -576,6 +576,24 @@ class SubscriptionRepository(
         }
     }
 
+    /** Удалить закончившуюся подписку. null — получилось, иначе текст ошибки. */
+    suspend fun deleteSubscription(subscriptionId: Long): String? = try {
+        api.deleteSubscription(subscriptionId)
+        prefs.setServersRawFor(subscriptionId, null)
+        null
+    } catch (e: Exception) {
+        if ((e as? retrofit2.HttpException)?.code() == 409) {
+            "Сейчас по подписке идёт временный доступ — удалить её можно, когда он закончится."
+        } else {
+            e.cabinetMessage(
+                listOf(
+                    "Only expired or disabled" to "Удалить можно только закончившуюся подписку.",
+                    "not found" to "Подписка уже удалена.",
+                )
+            )
+        }
+    }
+
     // --- Устройства ---
 
     /** Сводка по устройствам конкретной подписки (null — текущая). */
