@@ -402,6 +402,40 @@ class SubscriptionRepository(
         return result.sortedBy { it.days }
     }
 
+    /**
+     * Пауза суточного тарифа: на паузе списаний нет и VPN не работает.
+     * Снятие с паузы сразу списывает сутки — на это нужны деньги на балансе.
+     * Успех — новое состояние (true — на паузе).
+     */
+    suspend fun toggleDailyPause(subscriptionId: Long): Result<Boolean> = try {
+        val body = api.toggleDailyPause(subscriptionId)
+        Result.success((body["is_paused"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull == true)
+    } catch (e: retrofit2.HttpException) {
+        val message = if (e.code() == 402) {
+            val detail = runCatching {
+                val raw = e.response()?.errorBody()?.string().orEmpty()
+                kotlinx.serialization.json.Json.parseToJsonElement(raw).jsonObject["detail"]?.jsonObject
+            }.getOrNull()
+            val required = detail?.get("required")?.jsonPrimitive?.longOrNull
+            val balance = detail?.get("balance")?.jsonPrimitive?.longOrNull
+            if (required != null && balance != null && required > balance) {
+                "Чтобы возобновить, на балансе нужно ${formatRubles(required)} — не хватает ${formatRubles(required - balance)}"
+            } else {
+                "Чтобы возобновить, пополните баланс: сутки списываются сразу"
+            }
+        } else {
+            e.cabinetMessage(
+                listOf(
+                    "only available for daily" to "Пауза есть только у суточного тарифа.",
+                    "has no tariff" to "У подписки нет тарифа.",
+                )
+            )
+        }
+        Result.failure(IllegalStateException(message))
+    } catch (e: Exception) {
+        Result.failure(IllegalStateException(e.userMessage()))
+    }
+
     /** То же, что [purchaseTariff], но нехватку денег отличает от прочих ошибок. */
     suspend fun purchaseTariffChecked(tariffId: Long, periodDays: Int): PurchaseResult =
         attemptPurchase { api.purchaseTariff(PurchaseTariffRequest(tariffId, periodDays)) }
@@ -723,3 +757,6 @@ private fun JsonObject.textOf(key: String): String? =
 private fun JsonObject.longOf(key: String): Long? = this[key]?.jsonPrimitive?.longOrNull
 private fun JsonObject.boolOf(key: String): Boolean? =
     (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull
+
+private fun formatRubles(kopeks: Long): String =
+    if (kopeks % 100 == 0L) "${kopeks / 100} ₽" else String.format(java.util.Locale.US, "%.2f ₽", kopeks / 100.0)

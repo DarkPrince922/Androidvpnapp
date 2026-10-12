@@ -201,6 +201,7 @@ fun PlansScreen(
                     canSwitch = state.tariffs.any { it.id != card.sub.tariffId },
                     onSwitch = { viewModel.startSwitch(card.id) },
                     onRevoke = { viewModel.revoke(card.id) },
+                    onTogglePause = { viewModel.toggleDailyPause(card.id) },
                     onAutopay = { enabled, days -> viewModel.setAutopay(card.id, enabled, days) },
                     onEnableRecurrent = { viewModel.enableRecurrent(card.id) },
                     onCancelRecurrent = { viewModel.cancelRecurrent(card.id) },
@@ -262,6 +263,7 @@ private fun MySubscriptionCard(
     canSwitch: Boolean,
     onSwitch: () -> Unit,
     onRevoke: () -> Unit,
+    onTogglePause: () -> Unit,
     onAutopay: (Boolean, Int?) -> Unit,
     onEnableRecurrent: () -> Unit,
     onCancelRecurrent: () -> Unit,
@@ -336,6 +338,22 @@ private fun MySubscriptionCard(
                         "Подписка оформлена до появления тарифов. Продлить её можно, перейдя на тариф ниже.",
                         style = MaterialTheme.typography.bodySmall,
                         color = BrandColors.Warning,
+                    )
+                }
+                // Суточный тариф: на паузе деньги не списываются, но и VPN по нему
+                // не работает. Снятие с паузы сразу списывает сутки.
+                if (card.sub.isDaily == true) {
+                    val paused = card.sub.isDailyPaused
+                    Text(
+                        if (paused) "На паузе: списаний нет, VPN по этой подписке не работает"
+                        else "Оплата списывается раз в сутки. Не нужен VPN — поставьте на паузу",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (paused) BrandColors.Warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SmallAction(
+                        if (paused) "Возобновить" else "Поставить на паузу",
+                        enabled = !purchasing,
+                        onClick = onTogglePause,
                     )
                 }
                 if (showWorkingRow) {
@@ -701,6 +719,7 @@ private fun TermBadge(card: OwnedSubscription) {
     val days = card.daysLeft
     val (text, color) = when {
         card.sub.graceUntil != null -> "Временный доступ" to BrandColors.Warning
+        card.sub.isDailyPaused -> "На паузе" to BrandColors.Warning
         !card.sub.isActive -> (card.sub.status ?: "Не активна") to BrandColors.Danger
         days == null -> "Активна" to BrandColors.Success
         days < 0 -> "Истекла" to BrandColors.Danger

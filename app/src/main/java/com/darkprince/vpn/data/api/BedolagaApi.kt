@@ -531,6 +531,10 @@ interface BedolagaApi {
 
     // ---------- Новости ----------
 
+    /** Пауза суточного тарифа: одна ручка и ставит, и снимает. */
+    @POST("cabinet/subscription/pause")
+    suspend fun toggleDailyPause(@Query("subscription_id") subscriptionId: Long?): RawJson
+
     // --- Напоминания на главной ---
 
     @GET("cabinet/reminders/active")

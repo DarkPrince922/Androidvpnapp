@@ -162,6 +162,8 @@ data class SubscriptionListItem(
     @SerialName("autopay_enabled") val autopayEnabled: Boolean? = null,
     /** Суточный тариф: продлевается сам каждый день, автоплатёж ему не нужен. */
     @SerialName("is_daily") val isDaily: Boolean? = null,
+    /** Суточный тариф поставлен на паузу: списаний нет, VPN не работает. */
+    @SerialName("is_daily_paused") val isDailyPaused: Boolean = false,
     /**
      * Подписка куплена до появления тарифов: продлить её нельзя, только
      * перейти на тариф. Докупки устройств и трафика ей тоже не продаются.

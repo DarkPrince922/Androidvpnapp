@@ -420,6 +420,26 @@ class PlansViewModel : ViewModel() {
     /** Срок для запроса смены: бот требует его, но считает доплату по оставшимся дням. */
     private fun switchPeriod(target: TariffOffer): Int = target.periods.firstOrNull()?.days ?: 30
 
+    // --- Пауза суточного тарифа ---
+
+    fun toggleDailyPause(subId: Long) {
+        _state.update { it.copy(purchasing = true, error = null, info = null) }
+        viewModelScope.launch {
+            repo.toggleDailyPause(subId)
+                .onSuccess { paused ->
+                    _state.update {
+                        it.copy(
+                            purchasing = false,
+                            info = if (paused) "Суточный тариф на паузе: списаний нет, VPN по нему не работает"
+                            else "Суточный тариф возобновлён",
+                        )
+                    }
+                    refresh()
+                }
+                .onFailure { e -> _state.update { it.copy(purchasing = false, error = e.message) } }
+        }
+    }
+
     // --- Сброс ссылки ---
 
     fun revoke(subId: Long) {

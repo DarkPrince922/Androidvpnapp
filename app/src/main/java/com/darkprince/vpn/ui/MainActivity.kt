@@ -961,6 +961,8 @@ private fun cabinetEventText(event: com.darkprince.vpn.data.api.CabinetEvent): S
 private fun reminderRoute(target: String): String? {
     val path = target.lowercase()
     return when {
+        // привязка почты и прочих способов входа
+        "accounts" in path || "profile" in path || "email" in path -> "email-link"
         "balance" in path || "topup" in path -> "balance"
         "referral" in path || "partner" in path -> "referral"
         "gift" in path -> "gifts"

@@ -789,6 +789,14 @@ private fun SubscriptionCard(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
+        if (current?.isDailyPaused == true) {
+            Text(
+                "Суточный тариф на паузе — VPN не работает. Возобновить можно в «Тарифах».",
+                style = MaterialTheme.typography.bodySmall,
+                color = BrandColors.Warning,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
         if (current?.requiresTariffSelection == true) {
             Text(
                 "Подписка оформлена до появления тарифов. Чтобы продлить её, выберите тариф в «Тарифах».",
