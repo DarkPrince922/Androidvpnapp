@@ -180,6 +180,20 @@ class SupportRepository(
         }
     }
 
+    /** Вложение сообщения: номер файла, тип и ссылка со свежим токеном. */
+    data class MediaLink(val fileId: String, val type: String, val url: String)
+
+    /** Все вложения сообщения — у одного сообщения их может быть несколько. */
+    fun mediaLinks(message: SupportMessageDto): List<MediaLink> {
+        val base = prefs.cachedBaseUrl.trimEnd('/')
+        val items = message.mediaItems?.takeIf { it.isNotEmpty() }
+            ?: listOfNotNull(message.mediaFileId?.let { com.darkprince.vpn.data.api.dto.SupportMediaItemDto(message.mediaType ?: "document", it, message.mediaCaption, message.mediaToken) })
+        return items.mapNotNull { item ->
+            val token = item.token ?: message.mediaToken ?: return@mapNotNull null
+            MediaLink(item.fileId, item.type, "$base/cabinet/media/${Uri.encode(item.fileId)}?token=${Uri.encode(token)}")
+        }.distinctBy { it.fileId }
+    }
+
     fun mediaUrl(message: SupportMessageDto): String? {
         val item = message.mediaItems?.firstOrNull()
         val fileId = item?.fileId ?: message.mediaFileId ?: return null

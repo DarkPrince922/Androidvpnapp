@@ -794,6 +794,7 @@ private fun AppRoot(
                             adminViewModel.openPersonById(user)
                             navController.navigate("admin/person")
                         },
+                        onOpenAttachment = activity::openExternal,
                     )
                 }
             }

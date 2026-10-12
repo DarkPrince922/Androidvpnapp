@@ -1,6 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
 import com.darkprince.vpn.ui.theme.BrandColors
+import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.data.api.dto.AdminUserDetailDto
 import com.darkprince.vpn.data.api.dto.AdminTicketUserDto
 import com.darkprince.vpn.data.api.dto.AdminTariffOptionDto
@@ -711,6 +712,7 @@ fun AdminTicketScreen(
     ticketId: Long,
     onBack: () -> Unit,
     onOpenPerson: (AdminTicketUserDto) -> Unit,
+    onOpenAttachment: (String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val ticket = state.ticket
@@ -794,7 +796,7 @@ fun AdminTicketScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(ticket.messages.sortedBy { it.id }, key = { it.id }) { message ->
-                        AdminMessageBubble(message)
+                        AdminMessageBubble(message, onOpenAttachment)
                     }
                 }
 
@@ -864,7 +866,7 @@ fun AdminTicketScreen(
  * читал бы собственные слова как чужие.
  */
 @Composable
-private fun AdminMessageBubble(message: SupportMessageDto) {
+private fun AdminMessageBubble(message: SupportMessageDto, onOpenAttachment: (String) -> Unit) {
     val mine = message.isFromAdmin
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -896,14 +898,26 @@ private fun AdminMessageBubble(message: SupportMessageDto) {
                     )
                     Spacer(Modifier.height(2.dp))
                 }
-                Text(
-                    message.messageText.ifBlank { "(вложение)" },
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                if (message.hasMedia) {
-                    Spacer(Modifier.height(4.dp))
+                val media = remember(message) { ServiceLocator.supportRepository.mediaLinks(message) }
+                if (message.messageText.isNotBlank() || media.isEmpty()) {
                     Text(
-                        "Есть вложение — откройте в веб-кабинете",
+                        message.messageText.ifBlank { "(вложение)" },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                media.forEach { item ->
+                    Spacer(Modifier.height(6.dp))
+                    if (item.type == "photo") {
+                        AttachmentImage(item.fileId, item.url, onOpenAttachment)
+                    } else {
+                        OutlinedButton(onClick = { onOpenAttachment(item.url) }) {
+                            Text(if (item.type == "video") "Открыть видео" else "Открыть вложение")
+                        }
+                    }
+                }
+                if (message.hasMedia && media.isEmpty()) {
+                    Text(
+                        "Вложение не загрузилось — обновите обращение",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
