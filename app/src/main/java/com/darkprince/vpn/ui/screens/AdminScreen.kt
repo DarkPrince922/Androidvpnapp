@@ -945,7 +945,8 @@ fun AdminPersonScreen(
 
     var amount by remember(person.id) { mutableStateOf("") }
     var message by remember(person.id) { mutableStateOf("") }
-    var dropping by remember(person.id) { mutableStateOf<String?>(null) }
+    // какое устройство и из какой подписки удаляем
+    var dropping by remember(person.id) { mutableStateOf<Pair<String, Long?>?>(null) }
     var confirm by remember(person.id) { mutableStateOf<PendingAdminAction?>(null) }
 
     Column(
@@ -1112,18 +1113,22 @@ fun AdminPersonScreen(
                 }
             }
 
-            item {
-                SummaryCard(
-                    if (state.deviceLimit > 0) {
-                        "Устройства · ${state.devices.size} из ${state.deviceLimit}"
-                    } else {
-                        "Устройства"
-                    },
-                ) {
+            // устройства — отдельной карточкой на каждую подписку: у каждой свой лимит
+            val manyGroups = state.deviceGroups.size > 1
+            if (state.personLoading && state.deviceGroups.isEmpty()) {
+                item { SummaryCard("Устройства") { AdminNotice("Загружаю…") } }
+            }
+            items(state.deviceGroups, key = { "dev-${it.subscriptionId}" }) { group ->
+                val title = buildString {
+                    append("Устройства")
+                    if (manyGroups) append(" · ${group.title?.takeIf { it.isNotBlank() } ?: "подписка #${group.subscriptionId}"}")
+                    if (group.limit > 0) append(" · ${group.devices.size} из ${group.limit}")
+                }
+                SummaryCard(title) {
                     when {
-                        state.personLoading -> AdminNotice("Загружаю…")
-                        state.devices.isEmpty() -> AdminNotice("Ни одного подключения")
-                        else -> state.devices.forEach { device ->
+                        group.failed -> AdminNotice("Не удалось загрузить")
+                        group.devices.isEmpty() -> AdminNotice("Ни одного подключения")
+                        else -> group.devices.forEach { device ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1142,9 +1147,9 @@ fun AdminPersonScreen(
                                 }
                                 if (state.canDropDevice) {
                                     TextButton(
-                                        onClick = { dropping = device.hwid },
+                                        onClick = { dropping = device.hwid to group.subscriptionId },
                                         enabled = !state.sending,
-                                    ) { Text("Отключить", fontSize = 12.sp) }
+                                    ) { Text("Удалить", fontSize = 12.sp) }
                                 }
                             }
                         }
@@ -1216,23 +1221,25 @@ fun AdminPersonScreen(
         )
     }
 
-    dropping?.let { hwid ->
-        val device = state.devices.firstOrNull { it.hwid == hwid }
+    dropping?.let { (hwid, subscriptionId) ->
+        val device = state.deviceGroups
+            .firstOrNull { it.subscriptionId == subscriptionId }
+            ?.devices?.firstOrNull { it.hwid == hwid }
         AlertDialog(
             onDismissRequest = { dropping = null },
-            title = { Text("Отключить устройство") },
+            title = { Text("Удалить устройство") },
             text = {
                 Text(
-                    "«${device?.displayName ?: hwid}» перестанет подключаться, место в " +
-                        "лимите освободится сразу. Заново подключиться человеку придётся " +
-                        "руками на самом устройстве.",
+                    "«${device?.displayName ?: hwid}» уйдёт из списка, место в лимите " +
+                        "освободится сразу. Это не блокировка: при следующем обновлении " +
+                        "подписки устройство вернётся, если место свободно.",
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.removeDevice(hwid)
+                    viewModel.removeDevice(hwid, subscriptionId)
                     dropping = null
-                }) { Text("Отключить") }
+                }) { Text("Удалить") }
             },
             dismissButton = {
                 TextButton(onClick = { dropping = null }) { Text("Отмена") }

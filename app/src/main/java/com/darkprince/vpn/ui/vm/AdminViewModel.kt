@@ -3,7 +3,7 @@ package com.darkprince.vpn.ui.vm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.data.api.dto.AdminDashboardDto
-import com.darkprince.vpn.data.api.dto.AdminDeviceDto
+import com.darkprince.vpn.data.api.dto.AdminDeviceGroup
 import com.darkprince.vpn.data.api.dto.AdminPermissionsDto
 import com.darkprince.vpn.data.api.dto.AdminSubscriptionAction
 import com.darkprince.vpn.data.api.dto.AdminTariffOptionDto
@@ -122,8 +122,8 @@ data class AdminUiState(
     val info: String? = null,
     // карточка человека
     val person: AdminUserDto? = null,
-    val devices: List<AdminDeviceDto> = emptyList(),
-    val deviceLimit: Int = 0,
+    /** Устройства по подпискам: у каждой подписки свой список и свой лимит. */
+    val deviceGroups: List<AdminDeviceGroup> = emptyList(),
     val transactions: List<AdminTransactionDto> = emptyList(),
     val personLoading: Boolean = false,
     /** Полная карточка: подписки, почта, даты. Приходит следом за [person]. */
@@ -544,7 +544,7 @@ class AdminViewModel : ViewModel() {
                 person = person,
                 personDetail = null,
                 tariffs = emptyList(),
-                devices = emptyList(),
+                deviceGroups = emptyList(),
                 transactions = emptyList(),
                 personLoading = true,
                 error = null,
@@ -553,7 +553,8 @@ class AdminViewModel : ViewModel() {
         }
         viewModelScope.launch {
             val detail = async { runCatching { repository.user(person.id) }.getOrNull() }
-            val devices = async { runCatching { repository.devices(person.id) }.getOrNull() }
+            // устройства спрашиваем по каждой подписке — номера подписок приходят с карточкой
+            val devices = async { runCatching { repository.deviceGroups(person.id, detail.await()) }.getOrNull() }
             val transactions = async { runCatching { repository.transactions(person.id) }.getOrNull() }
             val tariffs = async {
                 if (_state.value.canExtend) runCatching { repository.availableTariffs(person.id) }.getOrNull()
@@ -566,8 +567,7 @@ class AdminViewModel : ViewModel() {
                 it.copy(
                     person = loaded?.let { d -> mergePerson(current, d) } ?: current,
                     personDetail = loaded,
-                    devices = deviceList?.devices.orEmpty(),
-                    deviceLimit = deviceList?.deviceLimit ?: person.deviceLimit,
+                    deviceGroups = deviceList.orEmpty(),
                     transactions = transactions.await().orEmpty(),
                     tariffs = tariffs.await().orEmpty(),
                     personLoading = false,
@@ -612,14 +612,13 @@ class AdminViewModel : ViewModel() {
     /** Перечитать карточку после правки, не сбрасывая экран. */
     private suspend fun reloadPerson(userId: Long) {
         val detail = runCatching { repository.user(userId) }.getOrNull() ?: return
-        val devices = runCatching { repository.devices(userId) }.getOrNull()
+        val devices = runCatching { repository.deviceGroups(userId, detail) }.getOrNull()
         _state.update {
             val current = it.person?.takeIf { p -> p.id == userId } ?: return@update it
             it.copy(
                 person = mergePerson(current, detail),
                 personDetail = detail,
-                devices = devices?.devices ?: it.devices,
-                deviceLimit = devices?.deviceLimit ?: it.deviceLimit,
+                deviceGroups = devices ?: it.deviceGroups,
             )
         }
     }
@@ -668,26 +667,28 @@ class AdminViewModel : ViewModel() {
                 person = null,
                 personDetail = null,
                 tariffs = emptyList(),
-                devices = emptyList(),
+                deviceGroups = emptyList(),
                 transactions = emptyList(),
                 info = null,
             )
         }
     }
 
-    fun removeDevice(hwid: String) {
+    fun removeDevice(hwid: String, subscriptionId: Long?) {
         val person = _state.value.person ?: return
         viewModelScope.launch {
             _state.update { it.copy(sending = true, error = null) }
             try {
-                repository.removeDevice(person.id, hwid)
-                val devices = repository.devices(person.id)
+                repository.removeDevice(person.id, hwid, subscriptionId)
+                val devices = repository.devices(person.id, subscriptionId)
                 _state.update {
                     it.copy(
                         sending = false,
-                        devices = devices.devices,
-                        deviceLimit = devices.deviceLimit,
-                        info = "Устройство отключено",
+                        deviceGroups = it.deviceGroups.map { group ->
+                            if (group.subscriptionId != subscriptionId) group
+                            else group.copy(devices = devices.devices, failed = false)
+                        },
+                        info = "Устройство удалено",
                     )
                 }
             } catch (error: Exception) {

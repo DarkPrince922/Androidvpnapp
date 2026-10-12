@@ -319,6 +319,18 @@ data class AdminDeviceDto(
             ?: hwid.take(8)
 }
 
+/**
+ * Устройства одной подписки человека — для карточки в админке.
+ * [subscriptionId] пустой, когда подписок нет и спрашивали без неё.
+ */
+data class AdminDeviceGroup(
+    val subscriptionId: Long?,
+    val title: String?,
+    val devices: List<AdminDeviceDto>,
+    val limit: Int,
+    val failed: Boolean = false,
+)
+
 @Serializable
 data class AdminDevicesDto(
     val devices: List<AdminDeviceDto> = emptyList(),

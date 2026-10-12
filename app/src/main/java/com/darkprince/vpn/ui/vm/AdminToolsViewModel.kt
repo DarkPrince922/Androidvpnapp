@@ -131,9 +131,25 @@ class AdminToolsViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Устройства человека по всем его подпискам: у каждой подписки свой
+     * список в панели, и запрос без номера подписки видит только один.
+     */
+    private suspend fun allHwids(userId: Long): Set<String> = coroutineScope {
+        val subs = api.adminUser(userId).allSubscriptions
+        val lists = if (subs.isEmpty()) {
+            listOf(api.adminUserDevices(userId).devices)
+        } else {
+            subs.map { sub ->
+                async { runCatching { api.adminUserDevices(userId, sub.id).devices }.getOrNull().orEmpty() }
+            }.awaitAll()
+        }
+        lists.flatten().map { it.hwid }.filter { it.isNotBlank() }.toSet()
+    }
+
     private suspend fun checkWithdrawal(item: AdminWithdrawalDto): WithdrawalCheck = coroutineScope {
         val friendsCall = async { runCatching { api.adminUserReferrals(item.userId) } }
-        val ownDevicesCall = async { runCatching { api.adminUserDevices(item.userId).devices } }
+        val ownDevicesCall = async { runCatching { allHwids(item.userId) } }
         val othersCall = async { runCatching { api.adminWithdrawals(status = null, limit = 100).items } }
 
         val friendsList = friendsCall.await().getOrElse { e ->
@@ -150,14 +166,14 @@ class AdminToolsViewModel : ViewModel() {
         val warnings = mutableListOf<CheckWarning>()
 
         // общие устройства: «друг» сидит с того же телефона, что и пригласивший
-        val ownHwids = ownDevicesCall.await().getOrNull().orEmpty().map { it.hwid }.filter { it.isNotBlank() }.toSet()
+        val ownHwids = ownDevicesCall.await().getOrNull().orEmpty()
         val checked = friends.take(DEVICE_CHECK_LIMIT)
         if (ownHwids.isNotEmpty() && checked.isNotEmpty()) {
             val shared = checked.chunked(6).flatMap { chunk ->
                 chunk.map { friend ->
                     async {
-                        val hwids = runCatching { api.adminUserDevices(friend.id).devices }.getOrNull().orEmpty()
-                        friend.takeIf { hwids.any { it.hwid in ownHwids } }
+                        val hwids = runCatching { allHwids(friend.id) }.getOrNull().orEmpty()
+                        friend.takeIf { hwids.any { it in ownHwids } }
                     }
                 }.awaitAll()
             }.filterNotNull()

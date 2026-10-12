@@ -7,6 +7,7 @@ import com.darkprince.vpn.data.api.dto.AdminTariffOptionDto
 import com.darkprince.vpn.data.api.dto.AdminUserDetailDto
 import com.darkprince.vpn.data.api.dto.AdminBalanceResponse
 import com.darkprince.vpn.data.api.dto.AdminDashboardDto
+import com.darkprince.vpn.data.api.dto.AdminDeviceGroup
 import com.darkprince.vpn.data.api.dto.AdminDevicesDto
 import com.darkprince.vpn.data.api.dto.AdminExtendRequest
 import com.darkprince.vpn.data.api.dto.AdminMessageRequest
@@ -21,6 +22,9 @@ import com.darkprince.vpn.data.api.dto.AdminUsersListDto
 import com.darkprince.vpn.data.api.dto.AdminTicketNotificationDto
 import com.darkprince.vpn.data.api.dto.AdminTicketStatsDto
 import com.darkprince.vpn.data.prefs.AppPrefs
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.json.JSONObject
 import retrofit2.HttpException
 import java.io.IOException
@@ -127,10 +131,35 @@ class AdminRepository(
         if (blocked) api.adminBlockUser(userId, "Из приложения") else api.adminUnblockUser(userId)
     }
 
-    suspend fun devices(userId: Long): AdminDevicesDto = api.adminUserDevices(userId)
+    suspend fun devices(userId: Long, subscriptionId: Long? = null): AdminDevicesDto =
+        api.adminUserDevices(userId, subscriptionId)
 
-    suspend fun removeDevice(userId: Long, hwid: String) {
-        api.adminDeleteDevice(userId, hwid)
+    /**
+     * Устройства по каждой подписке человека. У каждой подписки свой
+     * пользователь в панели и свой список, общий запрос видит только один.
+     */
+    suspend fun deviceGroups(userId: Long, detail: AdminUserDetailDto?): List<AdminDeviceGroup> = coroutineScope {
+        val subs = detail?.allSubscriptions.orEmpty()
+        if (subs.isEmpty()) {
+            val all = devices(userId)
+            return@coroutineScope listOf(AdminDeviceGroup(null, null, all.devices, all.deviceLimit))
+        }
+        subs.map { sub ->
+            async {
+                val list = runCatching { devices(userId, sub.id) }.getOrNull()
+                AdminDeviceGroup(
+                    subscriptionId = sub.id,
+                    title = sub.tariffName,
+                    devices = list?.devices.orEmpty(),
+                    limit = list?.deviceLimit?.takeIf { it > 0 } ?: sub.deviceLimit,
+                    failed = list == null,
+                )
+            }
+        }.awaitAll()
+    }
+
+    suspend fun removeDevice(userId: Long, hwid: String, subscriptionId: Long? = null) {
+        api.adminDeleteDevice(userId, hwid, subscriptionId)
     }
 
     suspend fun transactions(userId: Long): List<AdminTransactionDto> =

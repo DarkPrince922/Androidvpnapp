@@ -432,13 +432,21 @@ interface BedolagaApi {
         @Query("limit") limit: Int = 200,
     ): AdminUsersListDto
 
+    /**
+     * Устройства одной подписки. Без [subscriptionId] бот отдаёт устройства
+     * «основного» аккаунта человека — при нескольких подписках это не те.
+     */
     @GET("cabinet/admin/users/{userId}/devices")
-    suspend fun adminUserDevices(@Path("userId") userId: Long): AdminDevicesDto
+    suspend fun adminUserDevices(
+        @Path("userId") userId: Long,
+        @Query("subscription_id") subscriptionId: Long? = null,
+    ): AdminDevicesDto
 
     @DELETE("cabinet/admin/users/{userId}/devices/{hwid}")
     suspend fun adminDeleteDevice(
         @Path("userId") userId: Long,
         @Path("hwid") hwid: String,
+        @Query("subscription_id") subscriptionId: Long? = null,
     ): JsonElement
 
     @GET("cabinet/admin/users/{userId}/transactions")
