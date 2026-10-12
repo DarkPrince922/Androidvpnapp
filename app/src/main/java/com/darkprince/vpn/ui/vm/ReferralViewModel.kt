@@ -24,6 +24,8 @@ data class ReferralUiState(
     val earnings: ReferralEarningsDto? = null,
     val withdrawal: WithdrawalBalanceDto? = null,
     val withdrawals: List<WithdrawalDto> = emptyList(),
+    /** Ссылку сразу в бота показываем только тем, у кого привязан Telegram. */
+    val hasTelegram: Boolean = false,
     val busy: Boolean = false,
     /** Заявка ушла — форму можно закрыть. */
     val requestSent: Boolean = false,
@@ -53,6 +55,7 @@ class ReferralViewModel : ViewModel() {
             val earnings = async { repo.earnings() }
             val withdrawal = async { repo.withdrawal() }
             val withdrawals = async { repo.withdrawals() }
+            val me = async { ServiceLocator.authRepository.me() }
             val infoResult = info.await()
             _state.update {
                 it.copy(
@@ -63,6 +66,7 @@ class ReferralViewModel : ViewModel() {
                     earnings = earnings.await(),
                     withdrawal = withdrawal.await(),
                     withdrawals = withdrawals.await(),
+                    hasTelegram = me.await()?.telegramId != null || it.hasTelegram,
                     error = if (infoResult.isFailure && it.info == null) {
                         (infoResult.exceptionOrNull() as? Exception)?.userMessage()
                     } else null,

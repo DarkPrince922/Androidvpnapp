@@ -108,9 +108,25 @@ fun ReferralScreen(viewModel: ReferralViewModel, onShare: (String) -> Unit) {
                             onClick = { clipboard.setText(AnnotatedString(link)) },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("Скопировать") }
+                        info.botReferralLink?.takeIf { state.hasTelegram && it != link }?.let { botLink ->
+                            Text(
+                                "Ссылка сразу в бота — для друзей, которые пользуются Telegram:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                botLink,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.clickable { clipboard.setText(AnnotatedString(botLink)) },
+                            )
+                            OutlinedButton(
+                                onClick = { clipboard.setText(AnnotatedString(botLink)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Скопировать ссылку в бота") }
+                        }
                         info.referralCode?.let {
                             Text(
-                                "Код для регистрации по почте: $it",
+                                "Код приглашения: $it — если друг регистрируется без ссылки",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

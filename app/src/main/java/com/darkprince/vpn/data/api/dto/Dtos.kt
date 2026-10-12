@@ -370,7 +370,14 @@ data class ReferralInfoResponse(
     @SerialName("available_balance_kopeks") val availableBalanceKopeks: Long? = null,
     @SerialName("commission_percent") val commissionPercent: Double? = null,
 ) {
-    val shareLink: String? get() = botReferralLink ?: referralLink
+    /**
+     * Делимся ссылкой на сайт: там друг выберет Telegram или почту, и приглашение
+     * засчитается в обоих случаях. Ссылка из бота ведёт только в Telegram.
+     */
+    val shareLink: String?
+        get() = referralCode?.takeIf { it.isNotBlank() }
+            ?.let { "https://dprince.online/invite?ref=" + java.net.URLEncoder.encode(it, "UTF-8") }
+            ?: botReferralLink ?: referralLink
 }
 
 @Serializable
