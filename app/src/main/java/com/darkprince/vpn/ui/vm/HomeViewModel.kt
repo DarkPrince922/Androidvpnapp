@@ -273,6 +273,8 @@ class HomeViewModel : ViewModel() {
                 selectedSubscriptionId = selectedId,
             )
 
+            autoPing(servers)
+
             // остальные подписки догружаем фоном, чтобы переключение было
             // мгновенным и работало без сети
             if (subs.size > 1) {
@@ -378,9 +380,23 @@ class HomeViewModel : ViewModel() {
         _state.value.servers.getOrNull(_state.value.selectedServer)
 
     /**
-     * Пинг до каждого сервера напрямую, мимо VPN — см. [ServerPing]. До шести
-     * серверов одновременно: замер лёгкий, одно соединение на сервер.
+     * Пинг до каждого сервера напрямую, мимо VPN — см. [ServerPing]. По четыре
+     * сервера одновременно.
      */
+    /**
+     * Пинг без нажатия — как только список серверов оказался на экране.
+     *
+     * Раньше числа появлялись только по кнопке, и человек выбирал сервер
+     * вслепую. Меряем, только если хотя бы у одного сервера числа ещё нет:
+     * экран обновляется часто, и мерить каждый раз заново незачем.
+     */
+    private fun autoPing(servers: List<ProxyProfile>) {
+        if (servers.isEmpty()) return
+        val known = _state.value.pings
+        if (servers.all { it.key in known }) return
+        pingAll()
+    }
+
     fun pingAll() {
         if (_state.value.pinging) return
         val servers = _state.value.servers
@@ -388,7 +404,7 @@ class HomeViewModel : ViewModel() {
         _state.value = _state.value.copy(pinging = true, pings = emptyMap())
         viewModelScope.launch(Dispatchers.IO) {
             val results = ConcurrentHashMap<String, Long>()
-            val semaphore = Semaphore(6)
+            val semaphore = Semaphore(PING_PARALLEL)
             coroutineScope {
                 servers.forEach { profile ->
                     launch {
@@ -469,5 +485,10 @@ class HomeViewModel : ViewModel() {
         val found = _update.value ?: return
         _update.value = null
         viewModelScope.launch { prefs.setHiddenUpdateCode(found.versionCode) }
+    }
+
+    private companion object {
+        /** Сколько серверов меряем одновременно. */
+        const val PING_PARALLEL = 4
     }
 }

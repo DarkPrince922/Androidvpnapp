@@ -445,7 +445,9 @@ private fun AppRoot(
         containerColor = Color.Transparent,
         bottomBar = {
             if (showBottomBar) {
-                // плавающая панель: скруглённый блок с «таблеткой» под активным
+                // Плавающая панель: скруглённый блок, активный раздел —
+                // «жетон», приподнятый над ней. Фон задан формой, а не обрезкой:
+                // обрезка срезала бы жетону верх.
                 androidx.compose.foundation.layout.Row(
                     modifier = Modifier
                         // системные кнопки навигации рисуются поверх приложения,
@@ -453,8 +455,7 @@ private fun AppRoot(
                         .navigationBarsPadding()
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(LocalPalette.current.panel.copy(alpha = 0.92f))
+                        .background(LocalPalette.current.panel.copy(alpha = 0.95f), RoundedCornerShape(26.dp))
                         .border(
                             1.dp,
                             MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),

@@ -2,6 +2,16 @@ package com.darkprince.vpn.ui.theme
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -388,7 +398,16 @@ fun CircleActionButton(
     }
 }
 
-/** Пункт плавающей нижней навигации: у активного — «таблетка» под ним. */
+/**
+ * Пункт плавающей нижней навигации.
+ *
+ * Активный раздел — «жетон»: круг в цвет акцента, приподнятый над панелью,
+ * со значком внутри; подпись под ним того же цвета. Вокруг круга кольцо в
+ * цвет фона экрана — оно отделяет жетон от панели, будто в ней вырез.
+ *
+ * Жетон рисуется за пределами своей ячейки и самой панели. Поэтому ни у
+ * ячейки, ни у панели нет обрезки по форме: она срезала бы его верх.
+ */
 @Composable
 fun NavPillItem(
     selected: Boolean,
@@ -397,35 +416,81 @@ fun NavPillItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // активный пункт — сплошная «таблетка» акцентного цвета, как в макете
-    val accent = MaterialTheme.colorScheme.primary
-    val background by animateColorAsState(
-        targetValue = if (selected) accent else Color.Transparent,
-        animationSpec = tween(220),
-        label = "navBackground",
+    val scheme = MaterialTheme.colorScheme
+    val accent = scheme.primary
+    val cutout = LocalPalette.current.background
+
+    val lift by animateDpAsState(
+        targetValue = if (selected) (-17).dp else 0.dp,
+        animationSpec = tween(260),
+        label = "navLift",
     )
-    val contentColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+    val token by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = tween(260),
+        label = "navToken",
+    )
+    val iconColor by animateColorAsState(
+        targetValue = if (selected) scheme.onPrimary else scheme.onSurfaceVariant,
         animationSpec = tween(220),
-        label = "navContent",
+        label = "navIcon",
+    )
+    val labelColor by animateColorAsState(
+        targetValue = if (selected) accent else scheme.onSurfaceVariant,
+        animationSpec = tween(220),
+        label = "navLabel",
     )
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(background)
-            .clickable(onClick = onClick)
+            // без волны нажатия: обрезать её по форме здесь нечем, а
+            // прямоугольная вспышка во всю ячейку рядом с круглым жетоном
+            // выглядела бы грубо — нажатие и так видно по переезду жетона
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
             .padding(vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(22.dp))
+        // Место под значок всегда 22 dp: жетон больше, но в раскладке не
+        // участвует, иначе панель подрастала бы под активным разделом.
+        Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .requiredSize(46.dp)
+                    .offset(y = lift)
+                    .graphicsLayer {
+                        alpha = token
+                        scaleX = 0.6f + 0.4f * token
+                        scaleY = 0.6f + 0.4f * token
+                    }
+                    .background(cutout, CircleShape)
+                    .padding(4.dp)
+                    .background(
+                        Brush.radialGradient(
+                            listOf(lerp(accent, Color.White, 0.40f), accent, lerp(accent, Color.Black, 0.28f)),
+                        ),
+                        CircleShape,
+                    )
+            )
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = iconColor,
+                modifier = Modifier
+                    .size(22.dp)
+                    .offset(y = lift),
+            )
+        }
         Spacer(Modifier.height(2.dp))
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = contentColor,
+            color = labelColor,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
         )
     }
