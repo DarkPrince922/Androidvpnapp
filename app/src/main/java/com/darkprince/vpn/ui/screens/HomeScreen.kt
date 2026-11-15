@@ -85,6 +85,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.ui.theme.Appear
 import com.darkprince.vpn.ui.theme.DisplayFont
@@ -297,7 +298,6 @@ fun HomeScreen(
                 SubscriptionCard(
                     state = state,
                     onRefresh = { viewModel.refresh(forceServers = true, notify = true) },
-                    onPing = { viewModel.pingAll() },
                     onSelectSubscription = { viewModel.selectSubscription(it) },
                     // пока VPN поднят, подписку не меняем: туннель идёт по
                     // серверу текущей, и смена на ходу его рвала
@@ -624,69 +624,6 @@ private fun HomeSectionHeader(
 }
 
 /**
- * Оставшиеся дни подписки кольцом.
- *
- * Кольцо заполнено по доле от тридцати дней: длину оплаченного периода
- * кабинет не присылает, а месяц — самый частый срок. Больше месяца — кольцо
- * полное. Истекла — пустое и красное.
- */
-@Composable
-private fun DaysRing(daysLeft: Int?, modifier: Modifier = Modifier) {
-    val scheme = MaterialTheme.colorScheme
-    val expired = daysLeft != null && daysLeft <= 0
-    val tint = if (expired) scheme.error else scheme.primary
-    val track = scheme.outline.copy(alpha = 0.5f)
-    val share = if (daysLeft == null || expired) 0f else (daysLeft / 30f).coerceIn(0.04f, 1f)
-
-    Box(modifier = modifier.size(60.dp), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val stroke = 5.dp.toPx()
-            val arcTopLeft = Offset(stroke / 2f, stroke / 2f)
-            val arcSize = Size(size.width - stroke, size.height - stroke)
-            drawArc(
-                color = track,
-                startAngle = 0f,
-                sweepAngle = 360f,
-                useCenter = false,
-                topLeft = arcTopLeft,
-                size = arcSize,
-                style = Stroke(width = stroke),
-            )
-            if (share > 0f) {
-                drawArc(
-                    color = tint,
-                    startAngle = -90f,
-                    sweepAngle = 360f * share,
-                    useCenter = false,
-                    topLeft = arcTopLeft,
-                    size = arcSize,
-                    style = Stroke(width = stroke, cap = StrokeCap.Round),
-                )
-            }
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                when {
-                    daysLeft == null -> "—"
-                    expired -> "0"
-                    daysLeft > 999 -> "999+"
-                    else -> daysLeft.toString()
-                },
-                style = MaterialTheme.typography.titleMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
-                color = tint,
-                maxLines = 1,
-            )
-            Text(
-                "дн.",
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-/**
  * Кнопка подключения.
  *
  * Тёмный «стеклянный» диск в кольце. Выключено — кольцо серое. Подключено —
@@ -843,14 +780,13 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modif
 }
 
 /**
- * Карточка подписки: название с переключателем тарифов, срок и трафик
- * полосой, а под ними — выбранный сервер.
+ * Карточка подписки — золотая «карта тарифа»: название и дата окончания,
+ * оставшиеся дни крупно, трафик, а под ними — выбранный сервер.
  */
 @Composable
 private fun SubscriptionCard(
     state: com.darkprince.vpn.ui.vm.HomeUiState,
     onRefresh: () -> Unit,
-    onPing: () -> Unit,
     onSelectSubscription: (Long) -> Unit,
     locked: Boolean,
 ) {
@@ -896,211 +832,306 @@ private fun SubscriptionCard(
         }
     }
 
-    GroupCard {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    val scheme = MaterialTheme.colorScheme
+    val gold = scheme.primary
+    val unlimited = limitGb == null || limitGb <= 0
+    val untilText = untilLabel(current?.endDate, userInfo?.expireUnix)
+    val shape = RoundedCornerShape(24.dp)
+
+    // Золотая «карта тарифа»: градиент от угла, тонкие дуги за правым верхним
+    // углом. Дуги рисуются под содержимым.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    listOf(gold.copy(alpha = 0.22f), gold.copy(alpha = 0.05f), scheme.surface),
+                    start = Offset.Zero,
+                    end = Offset.Infinite,
+                )
+            )
+            .border(1.dp, gold.copy(alpha = 0.38f), shape)
+            .drawBehind {
+                val center = Offset(size.width + 6.dp.toPx(), -6.dp.toPx())
+                listOf(95.dp to 0.18f, 117.dp to 0.06f, 139.dp to 0.035f).forEach { (radius, alpha) ->
+                    drawCircle(gold.copy(alpha = alpha), radius = radius.toPx(), center = center, style = Stroke(1.dp.toPx()))
+                }
+            },
+    ) {
+        Column(Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .then(
-                        if (state.subscriptions.size > 1) {
-                            Modifier.clickable { if (locked) lockHint = true else menuOpen = true }
-                        } else Modifier
-                    )
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, end = 12.dp, top = 16.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                if (state.subscriptions.size > 1) {
-                    Icon(
-                        if (locked) Icons.Default.Lock else Icons.Default.ExpandMore,
-                        contentDescription = if (locked) "Подписку можно сменить после отключения VPN"
-                            else "Сменить подписку",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                }
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-
-            CircleActionButton(Icons.Default.Refresh, "Обновить", onRefresh)
-            Spacer(Modifier.width(8.dp))
-            CircleActionButton(Icons.Default.Speed, "Проверить пинг", onPing)
-        }
-
-        AnimatedVisibility(visible = lockHint) {
-            Text(
-                "Отключите VPN, чтобы сменить подписку",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
-            )
-        }
-
-        DropdownMenu(expanded = menuOpen && !locked, onDismissRequest = { menuOpen = false }) {
-            state.subscriptions.forEach { item ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(item.displayName)
-                            val details = listOfNotNull(
-                                item.endDate?.take(10),
-                                if (item.isActive) null else "неактивна",
-                            ).joinToString(" · ")
-                            if (details.isNotBlank()) {
-                                Text(details, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    },
-                    onClick = {
-                        menuOpen = false
-                        onSelectSubscription(item.id)
-                    },
-                )
-            }
-        }
-
-        // срок — кольцом слева, трафик — полосой и строкой справа
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            DaysRing(daysLeft)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                // «Осталось 0 дн.» читается как «ещё работает сегодня», хотя подписка
-                // уже кончилась — поэтому у истёкшей отдельная надпись и цвет
-                val expired = daysLeft != null && daysLeft <= 0
-                Text(
-                    when {
-                        daysLeft == null -> "Срок неизвестен"
-                        expired -> "Истекла"
-                        else -> "Осталось $daysLeft дн."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (expired) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(7.dp))
-                LinearProgressIndicator(
-                    progress = {
-                        val used = usedGb ?: 0.0
-                        val limit = limitGb ?: 0.0
-                        if (limit > 0) (used / limit).coerceIn(0.0, 1.0).toFloat() else 0.06f
-                    },
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                    color = accent,
-                    trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .then(
+                            if (state.subscriptions.size > 1) {
+                                Modifier.clickable { if (locked) lockHint = true else menuOpen = true }
+                            } else Modifier
+                        )
+                        .padding(vertical = 2.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "ТАРИФ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = gold,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 1.6.sp,
+                        )
+                        // Подписок несколько — название нажимается. Замок: пока
+                        // VPN поднят, подписку менять нельзя.
+                        if (state.subscriptions.size > 1) {
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                if (locked) Icons.Default.Lock else Icons.Default.ExpandMore,
+                                contentDescription = if (locked) "Подписку можно сменить после отключения VPN"
+                                    else "Сменить подписку",
+                                tint = gold.copy(alpha = 0.85f),
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontFamily = DisplayFont,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    untilText?.let {
+                        Text(
+                            "до $it",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                CircleActionButton(Icons.Default.Refresh, "Обновить", onRefresh)
+            }
+
+            AnimatedVisibility(visible = lockHint) {
+                Text(
+                    "Отключите VPN, чтобы сменить подписку",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = gold,
+                    modifier = Modifier.padding(start = 18.dp, end = 16.dp, top = 6.dp),
                 )
-                Spacer(Modifier.height(6.dp))
+            }
+
+            DropdownMenu(expanded = menuOpen && !locked, onDismissRequest = { menuOpen = false }) {
+                state.subscriptions.forEach { item ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(item.displayName)
+                                val details = listOfNotNull(
+                                    item.endDate?.take(10),
+                                    if (item.isActive) null else "неактивна",
+                                ).joinToString(" · ")
+                                if (details.isNotBlank()) {
+                                    Text(details, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onSelectSubscription(item.id)
+                        },
+                    )
+                }
+            }
+
+            // Срок крупно. «Осталось 0 дн.» читается как «ещё работает сегодня»,
+            // хотя подписка уже кончилась, — поэтому у истёкшей отдельная
+            // надпись и цвет.
+            Row(
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 14.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                when {
+                    daysLeft == null -> Text(
+                        "Срок неизвестен",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    daysLeft <= 0 -> Text(
+                        "Истекла",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontFamily = DisplayFont,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = scheme.error,
+                    )
+                    else -> {
+                        Text(
+                            daysLeft.toString(),
+                            style = MaterialTheme.typography.displaySmall.copy(
+                                fontFamily = DisplayFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 44.sp,
+                                lineHeight = 46.sp,
+                            ),
+                            color = lerp(gold, Color.White, 0.18f),
+                            maxLines = 1,
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            daysLeftWord(daysLeft),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
+                }
+            }
+
+            // Трафик. Безлимит — пунктир вместо полосы: заполнять нечего, а
+            // маленький «прогресс» у безлимита только вводил в заблуждение.
+            Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        "Трафик",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        buildString {
-                            append(String.format(Locale.getDefault(), "%.1f ГБ", usedGb ?: 0.0))
-                            append(" / ")
-                            // ноль в лимите означает безлимит, а не «нисколько»
-                            append(
-                                limitGb?.takeIf { it > 0 }
-                                    ?.let { String.format(Locale.getDefault(), "%.0f", it) }
-                                    ?: "∞"
+                    Text("Трафик", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            String.format(Locale.getDefault(), "%.1f ГБ", usedGb ?: 0.0),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurface,
+                        )
+                        if (unlimited) {
+                            Text(" · ", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                            Text("∞", style = MaterialTheme.typography.bodyMedium, color = gold)
+                        } else {
+                            Text(
+                                String.format(Locale.getDefault(), " / %.0f ГБ", limitGb),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
                             )
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                if (unlimited) {
+                    Canvas(Modifier.fillMaxWidth().height(6.dp)) {
+                        drawLine(
+                            color = gold.copy(alpha = 0.5f),
+                            start = Offset(0f, size.height / 2f),
+                            end = Offset(size.width, size.height / 2f),
+                            strokeWidth = 4.dp.toPx(),
+                            cap = StrokeCap.Round,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx())),
+                        )
+                    }
+                } else {
+                    LinearProgressIndicator(
+                        progress = { ((usedGb ?: 0.0) / (limitGb ?: 1.0)).coerceIn(0.0, 1.0).toFloat() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = gold,
+                        trackColor = scheme.outline.copy(alpha = 0.5f),
                     )
                 }
             }
-        }
 
-        current?.graceUntil?.let { until ->
-            Text(
-                "Временный доступ до ${cabinetDate(until)} — продлите подписку, чтобы VPN не отключился",
-                style = MaterialTheme.typography.bodySmall,
-                color = BrandColors.Warning,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        if (current?.isDailyPaused == true) {
-            Text(
-                "Суточный тариф на паузе — VPN не работает. Возобновить можно в «Тарифах».",
-                style = MaterialTheme.typography.bodySmall,
-                color = BrandColors.Warning,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        if (current?.requiresTariffSelection == true) {
-            Text(
-                "Подписка оформлена до появления тарифов. Чтобы продлить её, выберите тариф в «Тарифах».",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
+            current?.graceUntil?.let { until ->
+                Text(
+                    "Временный доступ до ${cabinetDate(until)} — продлите подписку, чтобы VPN не отключился",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BrandColors.Warning,
+                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 10.dp),
+                )
+            }
+            if (current?.isDailyPaused == true) {
+                Text(
+                    "Суточный тариф на паузе — VPN не работает. Возобновить можно в «Тарифах».",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BrandColors.Warning,
+                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 10.dp),
+                )
+            }
+            if (current?.requiresTariffSelection == true) {
+                Text(
+                    "Подписка оформлена до появления тарифов. Чтобы продлить её, выберите тариф в «Тарифах».",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 10.dp),
+                )
+            }
 
-        Spacer(Modifier.height(10.dp))
-
-        // Текущий сервер — просто напоминание, куда подключаемся. Выбирают
-        // теперь в списке ниже на этом же экране, поэтому строка не нажимается.
-        val selected = state.servers.getOrNull(state.selectedServer)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            EmojiTile(emoji = selected?.name?.let(::leadingEmoji) ?: "🌐", tint = accent)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+            // Куда подключаемся: только флаг и название. Выбирают сервер в
+            // списке ниже, метки транспорта и подпись узла — там же.
+            val selected = state.servers.getOrNull(state.selectedServer)
+            Box(
+                Modifier
+                    .padding(start = 18.dp, end = 18.dp, top = 14.dp)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(gold.copy(alpha = 0.2f))
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 15.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(selected?.name?.let(::leadingEmoji) ?: "🌐", fontSize = 18.sp)
+                Spacer(Modifier.width(10.dp))
                 AnimatedContent(
                     targetState = selected?.name?.let(::nameWithoutEmoji) ?: "Нет доступных серверов",
                     transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(150)) },
                     label = "server",
                 ) { name ->
-                    Text(name, style = MaterialTheme.typography.titleSmall)
-                }
-                selected?.let {
-                    // подпись узла из панели: там её пишут для людей — «1 Гбит»,
-                    // «для игр», — и это полезнее, чем набор меток транспорта
-                    it.serverDescription?.let { note ->
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            note,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        it.transportParts.forEach { part -> TransportBadge(part) }
-                    }
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
     }
+}
+
+/** «день остался», «дня осталось», «дней осталось». */
+private fun daysLeftWord(days: Int): String {
+    val last2 = days % 100
+    val last = days % 10
+    return when {
+        last2 in 11..14 -> "дней осталось"
+        last == 1 -> "день остался"
+        last in 2..4 -> "дня осталось"
+        else -> "дней осталось"
+    }
+}
+
+/** Дата окончания словами: «20 августа 2028». null — даты нет. */
+private fun untilLabel(raw: String?, expireUnix: Long?): String? {
+    val instant = runCatching {
+        when {
+            raw != null -> runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+                .getOrElse { java.time.LocalDateTime.parse(raw).toInstant(java.time.ZoneOffset.UTC) }
+            expireUnix != null && expireUnix > 0 -> java.time.Instant.ofEpochSecond(expireUnix)
+            else -> null
+        }
+    }.getOrNull() ?: return null
+    return java.time.format.DateTimeFormatter
+        .ofPattern("d MMMM yyyy", Locale.forLanguageTag("ru"))
+        .format(instant.atZone(java.time.ZoneId.systemDefault()))
 }
 
 /**
