@@ -73,8 +73,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -101,10 +103,10 @@ import com.darkprince.vpn.ui.theme.nameWithoutEmoji
 import com.darkprince.vpn.ui.vm.HomeViewModel
 import com.darkprince.vpn.ui.vm.Notice
 import com.darkprince.vpn.vpn.VpnState
+import android.os.SystemClock
+import com.darkprince.vpn.vpn.VpnStateStore
 import kotlinx.coroutines.delay
 import java.util.Locale
-import kotlin.math.cos
-import kotlin.math.sin
 
 fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes Б"
@@ -121,6 +123,8 @@ fun HomeScreen(
     onConnectClick: () -> Unit,
     onDisconnectClick: () -> Unit,
     onReminderButton: (com.darkprince.vpn.data.api.dto.ReminderButtonDto) -> Unit = {},
+    /** Открыть «Тарифы»; null — раздела нет (гостевой доступ), ссылку не показываем. */
+    onOpenPlans: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val vpnState by viewModel.vpnState.collectAsStateWithLifecycle()
@@ -227,28 +231,21 @@ fun HomeScreen(
                     },
                     style = MaterialTheme.typography.headlineMedium,
                     color = when (current) {
-                        VpnState.CONNECTED -> MaterialTheme.colorScheme.onBackground
+                        // «Защищено» — цветом акцента, чуть высветленным
+                        VpnState.CONNECTED -> lerp(MaterialTheme.colorScheme.primary, Color.White, 0.18f)
                         VpnState.ERROR -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
                 Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // зелёная точка «на связи» — только когда туннель поднят
-                    if (current == VpnState.CONNECTED) {
-                        Box(
-                            Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(BrandColors.Success)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                    }
+                if (current == VpnState.CONNECTED) {
+                    ConnectedPill(serverName)
+                } else {
                     Text(
                         when (current) {
-                            VpnState.CONNECTED, VpnState.CONNECTING -> serverName ?: ""
+                            VpnState.CONNECTING -> serverName ?: ""
                             VpnState.ERROR -> vpnError ?: "Не удалось подключиться"
-                            VpnState.DISCONNECTED -> "Нажмите, чтобы подключиться"
+                            else -> "Нажмите, чтобы подключиться"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -264,10 +261,10 @@ fun HomeScreen(
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically(),
         ) {
-            StatsCard(
+            TrafficCapsule(
                 received = formatBytes(stats.downlinkBytes),
                 sent = formatBytes(stats.uplinkBytes),
-                modifier = Modifier.padding(top = 16.dp),
+                modifier = Modifier.padding(top = 14.dp),
             )
         }
 
@@ -295,7 +292,7 @@ fun HomeScreen(
 
       item {
         Column(Modifier.fillMaxWidth()) {
-            SectionHeader("Текущая подписка")
+            HomeSectionHeader("Подписка", action = "Продлить ›", onAction = onOpenPlans)
             Appear {
                 SubscriptionCard(
                     state = state,
@@ -357,9 +354,12 @@ fun HomeScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SectionHeader(
-                if (state.servers.isEmpty()) "Серверы"
-                else "Серверы · ${state.servers.size}"
+            Text(
+                if (state.servers.isEmpty()) "Серверы" else "Серверы · ${state.servers.size}",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(start = 4.dp),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (state.pinging) {
@@ -369,9 +369,15 @@ fun HomeScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                 } else {
-                    IconButton(onClick = { viewModel.pingAll() }) {
-                        Icon(Icons.Default.Speed, contentDescription = "Проверить пинг")
-                    }
+                    Text(
+                        "Проверить пинг",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { viewModel.pingAll() }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
                 }
                 IconButton(onClick = { viewModel.refresh(forceServers = true, notify = true) }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Обновить список")
@@ -484,66 +490,197 @@ private fun UpdateDialog(
 }
 
 /**
- * «Получено» и «Отправлено» одной карточкой с разделителем и стрелками.
+ * Плашка под словом «Защищено»: зелёная точка, сервер и время подключения.
  *
- * Две отдельные плитки занимали столько же места, сколько кнопка, и спорили
- * с ней за внимание. Одна карточка читается как единая сводка, а стрелка
- * вниз и вверх различает числа быстрее подписи.
+ * Время тикает здесь, а не в модели экрана: раз в секунду меняется одна
+ * строка, и перерисовывать ради неё весь экран незачем.
  */
 @Composable
-private fun StatsCard(received: String, sent: String, modifier: Modifier = Modifier) {
-    val scheme = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(20.dp)
+private fun ConnectedPill(serverName: String?, modifier: Modifier = Modifier) {
+    val since by VpnStateStore.connectedSince.collectAsStateWithLifecycle()
+    var now by remember { mutableStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(since) {
+        while (since != null) {
+            now = SystemClock.elapsedRealtime()
+            delay(1000)
+        }
+    }
+    val elapsed = since?.let { started -> ((now - started) / 1000).coerceAtLeast(0) }
+    val label = listOfNotNull(
+        serverName?.takeIf { it.isNotBlank() },
+        elapsed?.let { formatDuration(it) },
+    ).joinToString(" · ")
+
+    val green = BrandColors.Success
+    val shape = RoundedCornerShape(50)
     Row(
         modifier = modifier
-            .fillMaxWidth()
+            .clip(shape)
+            .background(green.copy(alpha = 0.10f))
+            .border(1.dp, green.copy(alpha = 0.30f), shape)
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(green)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = lerp(green, MaterialTheme.colorScheme.onBackground, 0.45f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** Секунды как «00:42:17». */
+private fun formatDuration(seconds: Long): String =
+    String.format(Locale.US, "%02d:%02d:%02d", seconds / 3600, seconds % 3600 / 60, seconds % 60)
+
+/**
+ * «Получено» и «Отправлено» одной строкой-капсулой.
+ *
+ * Две плитки занимали столько же места, сколько кнопка, и спорили с ней за
+ * внимание. Стрелка вниз и вверх различает числа быстрее подписи.
+ */
+@Composable
+private fun TrafficCapsule(received: String, sent: String, modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = modifier
             .height(IntrinsicSize.Min)
             .clip(shape)
             .background(scheme.surface)
-            .border(1.dp, scheme.outline.copy(alpha = 0.5f), shape),
+            .border(1.dp, scheme.outline.copy(alpha = 0.5f), shape)
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StatCell("Получено", received, Icons.Default.ArrowDownward, BrandColors.Success, Modifier.weight(1f))
+        TrafficValue(Icons.Default.ArrowDownward, BrandColors.Success, received)
         Box(
             Modifier
+                .padding(vertical = 8.dp)
                 .width(1.dp)
                 .fillMaxHeight()
                 .background(scheme.outline.copy(alpha = 0.5f))
         )
-        StatCell("Отправлено", sent, Icons.Default.ArrowUpward, scheme.secondary, Modifier.weight(1f))
+        TrafficValue(Icons.Default.ArrowUpward, scheme.secondary, sent)
     }
 }
 
-/** Половина сводки: стрелка на цветной подложке, подпись и число. */
 @Composable
-private fun StatCell(
-    label: String,
-    value: String,
-    icon: ImageVector,
-    tint: Color,
-    modifier: Modifier = Modifier,
-) {
+private fun TrafficValue(icon: ImageVector, tint: Color, value: String) {
     Row(
-        modifier = modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(tint.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        }
-        Spacer(Modifier.width(10.dp))
-        Column {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            value,
+            style = MaterialTheme.typography.titleSmall.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Medium),
+            maxLines = 1,
+        )
+    }
+}
+
+/** Заголовок раздела главного экрана: название слева, действие справа. */
+@Composable
+private fun HomeSectionHeader(
+    title: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        if (action != null && onAction != null) {
             Text(
-                value,
-                style = MaterialTheme.typography.titleMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Medium),
+                action,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onAction)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Оставшиеся дни подписки кольцом.
+ *
+ * Кольцо заполнено по доле от тридцати дней: длину оплаченного периода
+ * кабинет не присылает, а месяц — самый частый срок. Больше месяца — кольцо
+ * полное. Истекла — пустое и красное.
+ */
+@Composable
+private fun DaysRing(daysLeft: Int?, modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val expired = daysLeft != null && daysLeft <= 0
+    val tint = if (expired) scheme.error else scheme.primary
+    val track = scheme.outline.copy(alpha = 0.5f)
+    val share = if (daysLeft == null || expired) 0f else (daysLeft / 30f).coerceIn(0.04f, 1f)
+
+    Box(modifier = modifier.size(60.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 5.dp.toPx()
+            val arcTopLeft = Offset(stroke / 2f, stroke / 2f)
+            val arcSize = Size(size.width - stroke, size.height - stroke)
+            drawArc(
+                color = track,
+                startAngle = 0f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = arcTopLeft,
+                size = arcSize,
+                style = Stroke(width = stroke),
+            )
+            if (share > 0f) {
+                drawArc(
+                    color = tint,
+                    startAngle = -90f,
+                    sweepAngle = 360f * share,
+                    useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round),
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                when {
+                    daysLeft == null -> "—"
+                    expired -> "0"
+                    daysLeft > 999 -> "999+"
+                    else -> daysLeft.toString()
+                },
+                style = MaterialTheme.typography.titleMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+                color = tint,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "дн.",
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
             )
         }
     }
@@ -552,10 +689,10 @@ private fun StatCell(
 /**
  * Кнопка подключения.
  *
- * Выключено — тёмный «стеклянный» круг с ободком из насечек, как у часов.
- * Подключено — круг наливается акцентом, как светящийся шар, насечки
- * загораются тем же цветом и медленно идут по кругу, а от кнопки расходятся
- * кольца. Переход плавный: заливка проявляется, а не вспыхивает.
+ * Тёмный «стеклянный» диск в кольце. Выключено — кольцо серое. Подключено —
+ * кольцо наливается акцентом, светится и медленно вращается, значок на диске
+ * загорается тем же цветом, от кнопки расходятся волны. Идёт подключение —
+ * кольцо синее. Переход плавный: цвет проявляется, а не вспыхивает.
  */
 @Composable
 private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -581,11 +718,11 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modif
         animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
         label = "ring",
     )
-    // полный оборот ободка за минуту: движение есть, но в глаза не лезет
+    // оборот кольца: блик на нём плывёт, но в глаза не лезет
     val bezel by pulse.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(60_000, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(12_000, easing = LinearEasing)),
         label = "bezel",
     )
     val scale by pulse.animateFloat(
@@ -598,7 +735,13 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modif
         label = "scale",
     )
     val panel = LocalPalette.current.panel
-    val hairline = scheme.onSurface.copy(alpha = 0.08f)
+    val hairline = scheme.onSurface.copy(alpha = 0.10f)
+
+    // Кольцо — градиент по кругу: светлая сторона, тёмная сторона. Цвета идут
+    // от серого (выключено) или цвета состояния к акценту по мере наливания.
+    val ringHi = lerp(accent.copy(alpha = 0.55f), lerp(gold, Color.White, 0.40f), fill)
+    val ringMid = lerp(accent.copy(alpha = 0.28f), gold, fill)
+    val ringLo = lerp(accent.copy(alpha = 0.12f), lerp(gold, Color.Black, 0.50f), fill)
 
     Box(
         modifier = modifier.size(268.dp),
@@ -609,63 +752,79 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modif
             if (fill > 0f) {
                 drawCircle(
                     Brush.radialGradient(
-                        listOf(gold.copy(alpha = 0.42f * fill), Color.Transparent),
+                        listOf(gold.copy(alpha = 0.34f * fill), Color.Transparent),
                         center = center,
                         radius = radius,
                     ),
                     radius = radius,
                 )
             }
-            drawCircle(hairline, radius = radius * 0.86f, style = Stroke(1.dp.toPx()))
-            // Ободок с насечками: шестьдесят коротких штрихов вокруг кнопки.
-            val tickOuter = radius * 0.80f
-            val tickInner = tickOuter - 6.dp.toPx()
-            val tickColor = accent.copy(alpha = 0.4f + 0.5f * fill)
-            val tickWidth = 1.5.dp.toPx()
+            // внешний пунктир — граница сцены
+            drawCircle(
+                hairline,
+                radius = radius * 0.94f,
+                style = Stroke(
+                    width = 1.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 6.dp.toPx())),
+                ),
+            )
+
+            val ringRadius = radius * 0.74f
+            val ringWidth = 9.dp.toPx()
+            // свечение кольца: два широких прозрачных штриха под ним
+            if (fill > 0f) {
+                drawCircle(gold.copy(alpha = 0.08f * fill), radius = ringRadius, style = Stroke(ringWidth * 3.2f))
+                drawCircle(gold.copy(alpha = 0.14f * fill), radius = ringRadius, style = Stroke(ringWidth * 1.9f))
+            }
             rotate(degrees = if (connected) bezel else 0f) {
-                for (tick in 0 until 60) {
-                    val angle = Math.toRadians(tick * 6.0)
-                    val dx = cos(angle).toFloat()
-                    val dy = sin(angle).toFloat()
-                    drawLine(
-                        color = tickColor,
-                        start = Offset(center.x + tickInner * dx, center.y + tickInner * dy),
-                        end = Offset(center.x + tickOuter * dx, center.y + tickOuter * dy),
-                        strokeWidth = tickWidth,
-                        cap = StrokeCap.Round,
-                    )
-                }
+                drawCircle(
+                    brush = Brush.sweepGradient(
+                        listOf(ringHi, ringMid, ringLo, ringMid, ringHi),
+                        center = center,
+                    ),
+                    radius = ringRadius,
+                    style = Stroke(ringWidth),
+                )
             }
             if (connected) {
                 listOf(ringProgress, (ringProgress + 0.5f) % 1f).forEach { progress ->
                     drawCircle(
-                        color = accent.copy(alpha = (1f - progress) * 0.45f),
-                        radius = radius * (0.66f + 0.34f * progress),
-                        style = Stroke(width = 2.dp.toPx()),
+                        color = accent.copy(alpha = (1f - progress) * 0.35f),
+                        radius = radius * (0.78f + 0.22f * progress),
+                        style = Stroke(width = 1.5.dp.toPx()),
                     )
                 }
             }
         }
 
+        val discHi = lerp(panel, Color.White, 0.10f)
+        val discLo = lerp(panel, Color.Black, 0.45f)
         Box(
             modifier = Modifier
-                .size(176.dp)
+                .size(164.dp)
                 .scale(scale)
                 .clip(CircleShape)
-                .background(panel.copy(alpha = 0.85f))
                 .drawBehind {
+                    // стекло: свет сверху, тень снизу
+                    drawCircle(
+                        Brush.radialGradient(
+                            listOf(discHi, discLo),
+                            center = Offset(size.width * 0.5f, size.height * 0.22f),
+                            radius = size.width * 0.75f,
+                        ),
+                    )
+                    // подключено — диск подсвечен акцентом от краёв
                     if (fill > 0f) {
                         drawCircle(
                             Brush.radialGradient(
-                                listOf(lerp(gold, Color.White, 0.45f), gold, lerp(gold, Color.Black, 0.35f)),
-                                center = Offset(size.width * 0.35f, size.height * 0.3f),
-                                radius = size.width * 0.8f,
+                                listOf(Color.Transparent, gold.copy(alpha = 0.26f * fill)),
+                                center = center,
+                                radius = size.width / 2f,
                             ),
-                            alpha = fill,
                         )
                     }
                 }
-                .border(1.dp, scheme.outline.copy(alpha = 0.6f * (1f - fill)), CircleShape)
+                .border(1.dp, lerp(scheme.onSurface.copy(alpha = 0.10f), gold.copy(alpha = 0.40f), fill), CircleShape)
                 .clickable(enabled = vpnState != VpnState.CONNECTING, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
@@ -675,8 +834,8 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modif
                 Icon(
                     Icons.Default.PowerSettingsNew,
                     contentDescription = if (connected) "Отключить VPN" else "Подключить VPN",
-                    modifier = Modifier.size(72.dp),
-                    tint = lerp(accent, scheme.onPrimary, fill),
+                    modifier = Modifier.size(64.dp),
+                    tint = lerp(accent, lerp(gold, Color.White, 0.25f), fill),
                 )
             }
         }
@@ -810,55 +969,69 @@ private fun SubscriptionCard(
             }
         }
 
-        // срок и трафик одной строкой, как в референсе
+        // срок — кольцом слева, трафик — полосой и строкой справа
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // «Осталось 0 дн.» читается как «ещё работает сегодня», хотя подписка
-            // уже кончилась — поэтому у истёкшей отдельная надпись и цвет
-            val expired = daysLeft != null && daysLeft <= 0
-            Text(
-                when {
-                    daysLeft == null -> "Срок неизвестен"
-                    expired -> "Истекла"
-                    else -> "Осталось $daysLeft дн."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = if (expired) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.width(10.dp))
-            LinearProgressIndicator(
-                progress = {
-                    val used = usedGb ?: 0.0
-                    val limit = limitGb ?: 0.0
-                    if (limit > 0) (used / limit).coerceIn(0.0, 1.0).toFloat() else 0.06f
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = accent,
-                trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                buildString {
-                    append(String.format(Locale.getDefault(), "%.1f ГБ", usedGb ?: 0.0))
-                    append(" / ")
-                    // ноль в лимите означает безлимит, а не «нисколько»
-                    append(
-                        limitGb?.takeIf { it > 0 }
-                            ?.let { String.format(Locale.getDefault(), "%.0f", it) }
-                            ?: "∞"
+            DaysRing(daysLeft)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                // «Осталось 0 дн.» читается как «ещё работает сегодня», хотя подписка
+                // уже кончилась — поэтому у истёкшей отдельная надпись и цвет
+                val expired = daysLeft != null && daysLeft <= 0
+                Text(
+                    when {
+                        daysLeft == null -> "Срок неизвестен"
+                        expired -> "Истекла"
+                        else -> "Осталось $daysLeft дн."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (expired) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(7.dp))
+                LinearProgressIndicator(
+                    progress = {
+                        val used = usedGb ?: 0.0
+                        val limit = limitGb ?: 0.0
+                        if (limit > 0) (used / limit).coerceIn(0.0, 1.0).toFloat() else 0.06f
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = accent,
+                    trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "Трафик",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                    Text(
+                        buildString {
+                            append(String.format(Locale.getDefault(), "%.1f ГБ", usedGb ?: 0.0))
+                            append(" / ")
+                            // ноль в лимите означает безлимит, а не «нисколько»
+                            append(
+                                limitGb?.takeIf { it > 0 }
+                                    ?.let { String.format(Locale.getDefault(), "%.0f", it) }
+                                    ?: "∞"
+                            )
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
         }
 
         current?.graceUntil?.let { until ->

@@ -585,6 +585,16 @@ private fun AppRoot(
                         }
                     },
                     onDisconnectClick = { XVpnService.stop(activity) },
+                    // у гостя раздела «Тарифы» нет — ссылку не показываем
+                    onOpenPlans = if (authState.guestMode) null else {
+                        {
+                            navController.navigate("plans") {
+                                popUpTo("home") { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
                     onReminderButton = { button ->
                         if (button.kind == "cabinet") {
                             val route = reminderRoute(button.target)

@@ -25,8 +25,9 @@ import kotlin.math.sin
  * дополнительных слоёв композиции и почти не нагружает отрисовку.
  *
  * Раньше по экрану плыли два пятна — золотое и синее. Золото, размазанное по
- * тёмно-синему фону, давало бурую муть по краям. Теперь фон только холодный,
- * а золото осталось там, где оно что-то значит: за кнопкой подключения.
+ * тёмно-синему фону, давало бурую муть по краям. Теперь фон почти чёрный,
+ * холодный свет едва заметен, а золото осталось там, где оно что-то значит:
+ * в кольце кнопки подключения и её отсвете.
  */
 @Composable
 fun AnimatedBackground(
@@ -69,7 +70,7 @@ fun AnimatedBackground(
                 val top = Offset(x = w * (0.5f + 0.08f * cos(phase)), y = -h * 0.04f)
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(palette.glowB.copy(alpha = palette.glowAlpha * 1.25f), Color.Transparent),
+                        colors = listOf(palette.glowB.copy(alpha = palette.glowAlpha * 0.8f), Color.Transparent),
                         center = top,
                         radius = topRadius,
                     ),
@@ -82,7 +83,7 @@ fun AnimatedBackground(
                 val side = Offset(x = w * 1.02f, y = h * (0.62f + 0.05f * sin(phase)))
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(palette.glowB.copy(alpha = palette.glowAlpha * 0.65f), Color.Transparent),
+                        colors = listOf(palette.glowB.copy(alpha = palette.glowAlpha * 0.4f), Color.Transparent),
                         center = side,
                         radius = sideRadius,
                     ),

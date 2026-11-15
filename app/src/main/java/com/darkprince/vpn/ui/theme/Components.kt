@@ -46,31 +46,16 @@ import androidx.compose.ui.unit.sp
  * строки настроек, плитки-иконки и чипы.
  */
 
-/**
- * Подпись над группой: капсом, с разрядкой, приглушённым цветом. Перед ней —
- * короткая чёрточка в цвет акцента, как в компьютерной версии.
- */
+/** Подпись над группой: обычным словом, полужирно. */
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier) {
-    Row(
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onBackground,
         modifier = modifier.padding(start = 4.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .width(10.dp)
-                .height(2.dp)
-                .clip(RoundedCornerShape(1.dp))
-                .background(MaterialTheme.colorScheme.primary)
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = text.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            letterSpacing = 1.4.sp,
-        )
-    }
+    )
 }
 
 /** Карточка-группа: внутри идут строки, разделённые тонкой линией. */
@@ -242,38 +227,52 @@ fun PingChip(millis: Long, modifier: Modifier = Modifier) {
         else -> 1
     }
 
+    // Без подложки: число крупно, шрифтом заголовков, рядом шкала. Цвет
+    // качества несёт шкала, а число остаётся спокойным — в длинном списке
+    // цветные плашки у каждой строки рябили.
     Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(tint.copy(alpha = 0.12f))
-            .padding(horizontal = 7.dp, vertical = 4.dp)
-            // ширина под «1000 мс»: без неё строки списка дёргались бы,
-            // когда у соседних серверов разное число цифр
-            .widthIn(min = 58.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        // ширина под «1000 мс»: без неё строки списка дёргались бы,
+        // когда у соседних серверов разное число цифр
+        modifier = modifier.widthIn(min = 58.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            listOf(4.dp, 6.5.dp, 9.dp).forEachIndexed { index, barHeight ->
+            listOf(5.dp, 9.dp, 13.dp).forEachIndexed { index, barHeight ->
                 Box(
                     Modifier
-                        .width(2.5.dp)
+                        .width(3.dp)
                         .height(barHeight)
                         .clip(RoundedCornerShape(2.dp))
                         .background(if (index < bars) tint else tint.copy(alpha = 0.25f)),
                 )
             }
         }
-        Text(
-            text = if (unreachable) "нет" else "$millis мс",
-            style = MaterialTheme.typography.labelSmall,
-            color = tint,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-        )
+        if (unreachable) {
+            Text(
+                text = "нет",
+                style = MaterialTheme.typography.labelMedium,
+                color = tint,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+        } else {
+            Text(
+                text = millis.toString(),
+                style = MaterialTheme.typography.titleSmall.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+            Text(
+                text = "мс",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
 
