@@ -46,16 +46,31 @@ import androidx.compose.ui.unit.sp
  * строки настроек, плитки-иконки и чипы.
  */
 
-/** Подпись над группой: капсом, с разрядкой, приглушённым цветом. */
+/**
+ * Подпись над группой: капсом, с разрядкой, приглушённым цветом. Перед ней —
+ * короткая чёрточка в цвет акцента, как в компьютерной версии.
+ */
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        letterSpacing = 1.4.sp,
+    Row(
         modifier = modifier.padding(start = 4.dp, bottom = 8.dp),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .width(10.dp)
+                .height(2.dp)
+                .clip(RoundedCornerShape(1.dp))
+                .background(MaterialTheme.colorScheme.primary)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = text.uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 1.4.sp,
+        )
+    }
 }
 
 /** Карточка-группа: внутри идут строки, разделённые тонкой линией. */

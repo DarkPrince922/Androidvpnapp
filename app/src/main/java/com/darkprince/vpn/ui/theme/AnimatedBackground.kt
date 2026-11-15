@@ -20,9 +20,13 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Живой фон приложения: два мягких световых пятна в цветах текущей темы
- * медленно плывут по экрану. Рисуется на Canvas, поэтому не создаёт
+ * Живой фон приложения: холодное сияние сверху и второе, слабее, у правого
+ * края. Оба чуть дышат и покачиваются. Рисуется на Canvas, поэтому не создаёт
  * дополнительных слоёв композиции и почти не нагружает отрисовку.
+ *
+ * Раньше по экрану плыли два пятна — золотое и синее. Золото, размазанное по
+ * тёмно-синему фону, давало бурую муть по краям. Теперь фон только холодный,
+ * а золото осталось там, где оно что-то значит: за кнопкой подключения.
  */
 @Composable
 fun AnimatedBackground(
@@ -60,43 +64,30 @@ fun AnimatedBackground(
 
                 val w = size.width
                 val h = size.height
-                val radius = maxOf(w, h) * 0.55f * breath
-
-                // первое пятно — движется по широкой дуге сверху
+                // верхнее сияние — широкое, центр чуть выше края экрана
+                val topRadius = maxOf(w, h) * 0.62f * breath
+                val top = Offset(x = w * (0.5f + 0.08f * cos(phase)), y = -h * 0.04f)
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(palette.glowA.copy(alpha = palette.glowAlpha), Color.Transparent),
-                        center = Offset(
-                            x = w * (0.5f + 0.28f * cos(phase)),
-                            y = h * (0.22f + 0.10f * sin(phase)),
-                        ),
-                        radius = radius,
+                        colors = listOf(palette.glowB.copy(alpha = palette.glowAlpha * 1.25f), Color.Transparent),
+                        center = top,
+                        radius = topRadius,
                     ),
-                    radius = radius,
-                    center = Offset(
-                        x = w * (0.5f + 0.28f * cos(phase)),
-                        y = h * (0.22f + 0.10f * sin(phase)),
-                    ),
+                    radius = topRadius,
+                    center = top,
                 )
 
-                // второе — в противофазе, ближе к низу
+                // боковое — слабее, у правого края ниже середины
+                val sideRadius = maxOf(w, h) * 0.42f
+                val side = Offset(x = w * 1.02f, y = h * (0.62f + 0.05f * sin(phase)))
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(
-                            palette.glowB.copy(alpha = palette.glowAlpha * 0.9f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(
-                            x = w * (0.5f - 0.32f * cos(phase * 0.7f)),
-                            y = h * (0.78f + 0.09f * sin(phase * 0.9f)),
-                        ),
-                        radius = radius,
+                        colors = listOf(palette.glowB.copy(alpha = palette.glowAlpha * 0.65f), Color.Transparent),
+                        center = side,
+                        radius = sideRadius,
                     ),
-                    radius = radius,
-                    center = Offset(
-                        x = w * (0.5f - 0.32f * cos(phase * 0.7f)),
-                        y = h * (0.78f + 0.09f * sin(phase * 0.9f)),
-                    ),
+                    radius = sideRadius,
+                    center = side,
                 )
             },
         content = content,

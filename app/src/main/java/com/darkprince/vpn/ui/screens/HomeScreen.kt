@@ -25,8 +25,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +42,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -72,9 +75,11 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -98,6 +103,8 @@ import com.darkprince.vpn.ui.vm.Notice
 import com.darkprince.vpn.vpn.VpnState
 import kotlinx.coroutines.delay
 import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.sin
 
 fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes Б"
@@ -226,17 +233,29 @@ fun HomeScreen(
                     },
                 )
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    when (current) {
-                        VpnState.CONNECTED, VpnState.CONNECTING -> serverName ?: ""
-                        VpnState.ERROR -> vpnError ?: "Не удалось подключиться"
-                        VpnState.DISCONNECTED -> "Нажмите, чтобы подключиться"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // зелёная точка «на связи» — только когда туннель поднят
+                    if (current == VpnState.CONNECTED) {
+                        Box(
+                            Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(BrandColors.Success)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        when (current) {
+                            VpnState.CONNECTED, VpnState.CONNECTING -> serverName ?: ""
+                            VpnState.ERROR -> vpnError ?: "Не удалось подключиться"
+                            VpnState.DISCONNECTED -> "Нажмите, чтобы подключиться"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
 
@@ -245,13 +264,11 @@ fun HomeScreen(
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically(),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            ) {
-                StatTile("Получено", formatBytes(stats.downlinkBytes), Modifier.weight(1f))
-                StatTile("Отправлено", formatBytes(stats.uplinkBytes), Modifier.weight(1f))
-            }
+            StatsCard(
+                received = formatBytes(stats.downlinkBytes),
+                sent = formatBytes(stats.uplinkBytes),
+                modifier = Modifier.padding(top = 16.dp),
+            )
         }
 
         Spacer(Modifier.height(18.dp))
@@ -467,33 +484,78 @@ private fun UpdateDialog(
 }
 
 /**
- * Плитка с числом: подпись мелко, значение — крупным шрифтом заголовков.
+ * «Получено» и «Отправлено» одной карточкой с разделителем и стрелками.
+ *
+ * Две отдельные плитки занимали столько же места, сколько кнопка, и спорили
+ * с ней за внимание. Одна карточка читается как единая сводка, а стрелка
+ * вниз и вверх различает числа быстрее подписи.
  */
 @Composable
-private fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
+private fun StatsCard(received: String, sent: String, modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(20.dp)
+    Row(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .clip(shape)
+            .background(scheme.surface)
+            .border(1.dp, scheme.outline.copy(alpha = 0.5f), shape),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            value,
-            style = MaterialTheme.typography.titleLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Medium),
-            maxLines = 1,
+        StatCell("Получено", received, Icons.Default.ArrowDownward, BrandColors.Success, Modifier.weight(1f))
+        Box(
+            Modifier
+                .width(1.dp)
+                .fillMaxHeight()
+                .background(scheme.outline.copy(alpha = 0.5f))
         )
+        StatCell("Отправлено", sent, Icons.Default.ArrowUpward, scheme.secondary, Modifier.weight(1f))
+    }
+}
+
+/** Половина сводки: стрелка на цветной подложке, подпись и число. */
+@Composable
+private fun StatCell(
+    label: String,
+    value: String,
+    icon: ImageVector,
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(tint.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Medium),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
 /**
  * Кнопка подключения.
  *
- * Выключено — тёмный «стеклянный» круг с пунктирным кольцом. Подключено —
- * круг наливается акцентом, как светящийся шар, а от него расходятся кольца.
- * Переход плавный: заливка проявляется, а не вспыхивает.
+ * Выключено — тёмный «стеклянный» круг с ободком из насечек, как у часов.
+ * Подключено — круг наливается акцентом, как светящийся шар, насечки
+ * загораются тем же цветом и медленно идут по кругу, а от кнопки расходятся
+ * кольца. Переход плавный: заливка проявляется, а не вспыхивает.
  */
 @Composable
 private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -518,6 +580,13 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modif
         targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
         label = "ring",
+    )
+    // полный оборот ободка за минуту: движение есть, но в глаза не лезет
+    val bezel by pulse.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(60_000, easing = LinearEasing)),
+        label = "bezel",
     )
     val scale by pulse.animateFloat(
         initialValue = 1f,
@@ -548,14 +617,25 @@ private fun PowerButton(vpnState: VpnState, onClick: () -> Unit, modifier: Modif
                 )
             }
             drawCircle(hairline, radius = radius * 0.86f, style = Stroke(1.dp.toPx()))
-            drawCircle(
-                accent.copy(alpha = 0.4f),
-                radius = radius * 0.77f,
-                style = Stroke(
-                    width = 1.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 6.dp.toPx())),
-                ),
-            )
+            // Ободок с насечками: шестьдесят коротких штрихов вокруг кнопки.
+            val tickOuter = radius * 0.80f
+            val tickInner = tickOuter - 6.dp.toPx()
+            val tickColor = accent.copy(alpha = 0.4f + 0.5f * fill)
+            val tickWidth = 1.5.dp.toPx()
+            rotate(degrees = if (connected) bezel else 0f) {
+                for (tick in 0 until 60) {
+                    val angle = Math.toRadians(tick * 6.0)
+                    val dx = cos(angle).toFloat()
+                    val dy = sin(angle).toFloat()
+                    drawLine(
+                        color = tickColor,
+                        start = Offset(center.x + tickInner * dx, center.y + tickInner * dy),
+                        end = Offset(center.x + tickOuter * dx, center.y + tickOuter * dy),
+                        strokeWidth = tickWidth,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
             if (connected) {
                 listOf(ringProgress, (ringProgress + 0.5f) % 1f).forEach { progress ->
                     drawCircle(
