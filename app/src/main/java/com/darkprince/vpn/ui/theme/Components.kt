@@ -421,7 +421,7 @@ fun NavPillItem(
     val cutout = LocalPalette.current.background
 
     val lift by animateDpAsState(
-        targetValue = if (selected) (-17).dp else 0.dp,
+        targetValue = if (selected) (-12).dp else 0.dp,
         animationSpec = tween(260),
         label = "navLift",
     )
@@ -460,7 +460,7 @@ fun NavPillItem(
         Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
             Box(
                 Modifier
-                    .requiredSize(46.dp)
+                    .requiredSize(44.dp)
                     .offset(y = lift)
                     .graphicsLayer {
                         alpha = token
@@ -490,8 +490,11 @@ fun NavPillItem(
             label,
             style = MaterialTheme.typography.labelSmall,
             color = labelColor,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            // Medium у обоих: полужирная подпись активного раздела шире и при
+            // шести пунктах (у админа) упиралась в соседей
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
+            softWrap = false,
         )
     }
 }

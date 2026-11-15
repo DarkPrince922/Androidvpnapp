@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -448,6 +449,8 @@ private fun AppRoot(
                 // Плавающая панель: скруглённый блок, активный раздел —
                 // «жетон», приподнятый над ней. Фон задан формой, а не обрезкой:
                 // обрезка срезала бы жетону верх.
+                val panelFill = LocalPalette.current.panel.copy(alpha = 0.95f)
+                val panelLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
                 androidx.compose.foundation.layout.Row(
                     modifier = Modifier
                         // системные кнопки навигации рисуются поверх приложения,
@@ -455,13 +458,20 @@ private fun AppRoot(
                         .navigationBarsPadding()
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .fillMaxWidth()
-                        .background(LocalPalette.current.panel.copy(alpha = 0.95f), RoundedCornerShape(26.dp))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-                            RoundedCornerShape(26.dp),
-                        )
-                        .padding(6.dp),
+                        // Фон и рамку рисуем под содержимым. `border` рисует поверх
+                        // детей, и линия рамки шла прямо по золотому кругу.
+                        .drawBehind {
+                            val corner = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx())
+                            drawRoundRect(panelFill, cornerRadius = corner)
+                            drawRoundRect(
+                                panelLine,
+                                cornerRadius = corner,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()),
+                            )
+                        }
+                        // по бокам отступ больше обычного: крайний пункт иначе
+                        // оказывается в закруглённом углу, и жетон прижимает к нему
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     bottomItems.forEach { item ->
