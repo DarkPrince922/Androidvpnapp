@@ -3,15 +3,14 @@ package com.darkprince.vpn.ui.vm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkprince.vpn.core.model.ProxyProfile
-import com.darkprince.vpn.core.xray.XrayConfigBuilder
 import com.darkprince.vpn.data.api.dto.SubscriptionListItem
 import com.darkprince.vpn.data.api.dto.SubscriptionStatusResponse
 import com.darkprince.vpn.data.repo.SubscriptionUserInfo
 import com.darkprince.vpn.data.repo.userMessage
 import com.darkprince.vpn.data.update.AppUpdater
 import com.darkprince.vpn.di.ServiceLocator
-import com.darkprince.vpn.vpn.CoreEnv
 import com.darkprince.vpn.vpn.TrafficStats
+import com.darkprince.vpn.vpn.ServerPing
 import com.darkprince.vpn.vpn.VpnState
 import com.darkprince.vpn.vpn.VpnStateStore
 import com.darkprince.vpn.vpn.XVpnService
@@ -26,7 +25,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import libv2ray.Libv2ray
 import java.util.concurrent.ConcurrentHashMap
 
 /** Результат замера: >=0 — задержка в мс, -1 — сервер недоступен. */
@@ -380,8 +378,8 @@ class HomeViewModel : ViewModel() {
         _state.value.servers.getOrNull(_state.value.selectedServer)
 
     /**
-     * Замер реальной задержки через ядро Xray (запрос через прокси-протокол,
-     * как real ping в v2rayNG), до 3 серверов одновременно.
+     * Пинг до каждого сервера напрямую, мимо VPN — см. [ServerPing]. До шести
+     * серверов одновременно: замер лёгкий, одно соединение на сервер.
      */
     fun pingAll() {
         if (_state.value.pinging) return
@@ -389,21 +387,13 @@ class HomeViewModel : ViewModel() {
         if (servers.isEmpty()) return
         _state.value = _state.value.copy(pinging = true, pings = emptyMap())
         viewModelScope.launch(Dispatchers.IO) {
-            CoreEnv.ensure(ServiceLocator.appContext)
             val results = ConcurrentHashMap<String, Long>()
-            val semaphore = Semaphore(3)
+            val semaphore = Semaphore(6)
             coroutineScope {
                 servers.forEach { profile ->
                     launch {
                         semaphore.withPermit {
-                            val ms = try {
-                                Libv2ray.measureOutboundDelay(
-                                    XrayConfigBuilder.build(profile),
-                                    "https://www.gstatic.com/generate_204",
-                                )
-                            } catch (_: Throwable) {
-                                -1L
-                            }
+                            val ms = ServerPing.measure(ServiceLocator.appContext, profile)
                             results[profile.key] = ms
                             // update, а не «прочитать и записать копию»: замер идёт в
                             // фоновых потоках, и копия затирала то, что успело

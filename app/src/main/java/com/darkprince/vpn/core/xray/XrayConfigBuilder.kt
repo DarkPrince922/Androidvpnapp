@@ -3,7 +3,10 @@ package com.darkprince.vpn.core.xray
 import com.darkprince.vpn.core.model.Protocol
 import com.darkprince.vpn.core.model.ProxyProfile
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -19,6 +22,12 @@ import kotlinx.serialization.json.putJsonObject
 object XrayConfigBuilder {
 
     const val SOCKS_PORT = 10808
+
+    /** Тег нашего входа. */
+    private const val SOCKS_TAG = "socks"
+
+    /** Входы панели, через которые ходят программы; служебные (DNS) сюда не входят. */
+    private val USER_INBOUNDS = setOf("socks", "http", "mixed")
 
     private val json = Json { prettyPrint = false }
 
@@ -37,7 +46,7 @@ object XrayConfigBuilder {
         val merged = buildJsonObject {
             for ((key, value) in original) {
                 if (key == "inbounds") continue
-                put(key, value)
+                put(key, if (key == "routing") routingForOurInbound(original, value) else value)
             }
             putJsonArray("inbounds") { add(socksInbound()) }
             if ("stats" !in original) putJsonObject("stats") { }
@@ -54,6 +63,43 @@ object XrayConfigBuilder {
             }
         }
         return json.encodeToString(JsonObject.serializer(), merged)
+    }
+
+    /**
+     * Переводит правила панели с её входов на наш.
+     *
+     * В шаблоне панели правило может быть привязано к входу: «всё, что пришло
+     * через socks-in, на рекламные адреса — блокировать». Входы панели мы
+     * заменяем своим, с другим тегом, и такое правило переставало совпадать
+     * без единой ошибки. То же исправление стоит в компьютерных версиях:
+     * расходиться клиентам нельзя.
+     *
+     * Служебные входы — например, для DNS — не трогаем: их правила к трафику
+     * программ не относятся.
+     */
+    private fun routingForOurInbound(original: JsonObject, routing: JsonElement): JsonElement {
+        val routingObject = routing as? JsonObject ?: return routing
+        val rules = routingObject["rules"] as? JsonArray ?: return routing
+        val panelTags = (original["inbounds"] as? JsonArray).orEmpty()
+            .mapNotNull { it as? JsonObject }
+            .filter { (it["protocol"] as? JsonPrimitive)?.content?.lowercase() in USER_INBOUNDS }
+            .mapNotNull { (it["tag"] as? JsonPrimitive)?.content?.takeIf { tag -> tag.isNotEmpty() } }
+            .toSet()
+        if (panelTags.isEmpty()) return routing
+
+        val patched = rules.map { rule ->
+            val obj = rule as? JsonObject ?: return@map rule
+            // ядро принимает и список, и строку через запятую
+            val tags: List<String> = when (val field = obj["inboundTag"]) {
+                is JsonArray -> field.mapNotNull { (it as? JsonPrimitive)?.content }
+                is JsonPrimitive -> field.content.split(',').map { it.trim() }
+                else -> return@map rule
+            }
+            if (tags.none { it in panelTags } || SOCKS_TAG in tags) return@map rule
+            val ours: List<JsonElement> = (tags + SOCKS_TAG).map { JsonPrimitive(it) }
+            JsonObject(obj + ("inboundTag" to JsonArray(ours)))
+        }
+        return JsonObject(routingObject + ("rules" to JsonArray(patched)))
     }
 
     /** Теги прокси-аутбаундов конфига — для опроса статистики трафика. */
@@ -75,7 +121,7 @@ object XrayConfigBuilder {
     }
 
     private fun socksInbound(): JsonObject = buildJsonObject {
-        put("tag", "socks")
+        put("tag", SOCKS_TAG)
         put("listen", "127.0.0.1")
         put("port", SOCKS_PORT)
         put("protocol", "socks")
@@ -85,9 +131,11 @@ object XrayConfigBuilder {
         }
         putJsonObject("sniffing") {
             put("enabled", true)
+            // quic — чтобы правила по доменам действовали и на HTTP/3
             putJsonArray("destOverride") {
                 add("http")
                 add("tls")
+                add("quic")
             }
             put("routeOnly", false)
         }

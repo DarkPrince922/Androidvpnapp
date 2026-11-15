@@ -27,10 +27,14 @@ import java.util.concurrent.atomic.AtomicInteger
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -136,6 +140,8 @@ class XVpnService : VpnService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val vpnMutex = Mutex()
     private var statsJob: Job? = null
+    /** Фоновая проверка, идёт ли через поднятый туннель трафик. */
+    private var verifyJob: Job? = null
     private var tunFd: ParcelFileDescriptor? = null
     private var coreController: CoreController? = null
     /** Последний startId: останавливаемся только им, иначе новый запуск,
@@ -357,29 +363,15 @@ class XVpnService : VpnService() {
             configFile.writeText(yaml)
             TProxyService.TProxyStartService(configFile.absolutePath, fd.fd)
 
-            // 4. Туннель поднят — но это ещё не значит, что через него идёт
-            // трафик: ядро стартует и с мёртвым сервером. Раньше здесь сразу
-            // горело «Подключено», а перебор узлов срабатывал только на
-            // ошибках запуска, то есть почти никогда.
-            if (!internetWorks()) {
-                tried += profile.key
-                val spare = if (physicalNetworkOnline()) nextCandidate() else null
-                if (spare != null) {
-                    AppLog.write("${profile.name}: туннель есть, а интернета через него нет — пробую ${spare.name}")
-                    updateNotificationForce("${profile.name} не отвечает · пробую ${spare.name}")
-                    saveProfile(spare)
-                    startVpn(spare)
-                    return
-                }
-                // Запасного нет или нет самой сети под туннелем — тогда
-                // сервер не виноват. Туннель не рушим: связь может вернуться
-                // через секунду, а выключенный VPN — это утечка.
-                AppLog.write("${profile.name}: интернета через туннель пока нет, оставляю подключение")
-            }
-
+            // 4. Туннель поднят, трафик уже может идти — говорим «Подключено»
+            // сразу. Раньше подключение ждало здесь проверку связи: запрос
+            // через сервер наружу, до шести секунд на адрес, два адреса
+            // подряд. На живом сервере это секунда-другая лишнего ожидания
+            // при каждом подключении и каждой смене сети, на медленной связи —
+            // до двенадцати. Проверка осталась, но идёт следом, в фоне: если
+            // сервер окажется мёртвым, перебор запасных сработает как прежде.
             VpnStateStore.setState(VpnState.CONNECTED)
             attempt = 0
-            tried.clear()
             VpnStateStore.setSwitchedFrom(requested?.takeIf { it != profile.name })
             AppLog.write("подключено: ${profile.name}")
             ServiceLocator.apiClient.onNetworkChanged()
@@ -388,6 +380,7 @@ class XVpnService : VpnService() {
             startStatsLoop(profile)
             // первый замер задержки сразу после подключения
             scope.launch { measurePing() }
+            verifyInBackground(profile, controller)
         } catch (e: Throwable) {
             AppLog.write("подключиться не удалось: ${e.javaClass.simpleName}: ${e.message}")
             VpnStateStore.setState(VpnState.ERROR, e.message)
@@ -418,31 +411,84 @@ class XVpnService : VpnService() {
     }
 
     /**
+     * Проверяет уже поднятый туннель и, если трафик через него не идёт,
+     * переходит на запасной сервер.
+     *
+     * Ядро стартует и с мёртвым сервером, поэтому без проверки «Подключено»
+     * горело бы при полном отсутствии связи. Но ждать её перед «Подключено»
+     * незачем: на живом сервере она ничего не меняет, а человек всё это время
+     * смотрит на «Подключение…».
+     *
+     * [controller] — ядро, которое проверяем. Пока шла проверка, туннель
+     * могли пересобрать или выключить; тогда её ответ уже ни о чём.
+     */
+    private fun verifyInBackground(profile: ProxyProfile, controller: CoreController) {
+        verifyJob?.cancel()
+        verifyJob = scope.launch {
+            val works = internetWorks()
+            vpnMutex.withLock {
+                if (coreController !== controller) return@withLock
+                if (works) {
+                    tried.clear()
+                    return@withLock
+                }
+                tried += profile.key
+                val spare = if (physicalNetworkOnline()) nextCandidate() else null
+                if (spare == null) {
+                    // Запасного нет или нет самой сети под туннелем — тогда
+                    // сервер не виноват. Туннель не рушим: связь может вернуться
+                    // через секунду, а выключенный VPN — это утечка.
+                    AppLog.write("${profile.name}: интернета через туннель пока нет, оставляю подключение")
+                    tried.clear()
+                    return@withLock
+                }
+                AppLog.write("${profile.name}: туннель есть, а интернета через него нет — пробую ${spare.name}")
+                updateNotificationForce("${profile.name} не отвечает · пробую ${spare.name}")
+                saveProfile(spare)
+                startVpn(spare)
+            }
+        }
+    }
+
+    /**
      * Ходит ли через запущенное ядро трафик на самом деле.
      *
      * Запрос идёт в SOCKS-вход ядра, то есть тем же путём, что и весь
      * трафик телефона, до того же сервера. Приложение исключено из
      * собственного туннеля, поэтому петли тут нет.
+     *
+     * Два разных адреса: правила маршрутизации из подписки могут пустить
+     * один из них мимо прокси или заблокировать, и тогда «нет связи» было бы
+     * ложным — а за ним последовал бы ненужный переход на другой сервер.
+     * Спрашиваем оба сразу и берём первый удачный ответ: подряд они в худшем
+     * случае ждали бы вдвое дольше.
      */
-    private fun internetWorks(): Boolean {
+    private suspend fun internetWorks(): Boolean = coroutineScope {
         val client = OkHttpClient.Builder()
             .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", XrayConfigBuilder.SOCKS_PORT)))
             .callTimeout(PROBE_TIMEOUT_S, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false)
             .build()
-        // Два разных адреса: правила маршрутизации из подписки могут пустить
-        // один из них мимо прокси или заблокировать, и тогда «нет связи»
-        // было бы ложным — а за ним последовал бы ненужный переход на другой
-        // сервер.
-        PROBE_URLS.forEachIndexed { attemptNo, url ->
-            val ok = runCatching {
-                client.newCall(Request.Builder().url(url).build()).execute()
-                    .use { it.code in 200..399 }
-            }.getOrDefault(false)
-            if (ok) return true
-            AppLog.write("проверка связи: попытка ${attemptNo + 1} без ответа")
+        val calls = PROBE_URLS.map { client.newCall(Request.Builder().url(it).build()) }
+        val pending: MutableList<Deferred<Boolean>> = calls.map { call ->
+            async(Dispatchers.IO) {
+                runCatching { call.execute().use { it.code in 200..399 } }.getOrDefault(false)
+            }
+        }.toMutableList()
+
+        var ok = false
+        while (!ok && pending.isNotEmpty()) {
+            val (finished, answer) = select<Pair<Deferred<Boolean>, Boolean>> {
+                pending.forEach { deferred -> deferred.onAwait { value -> deferred to value } }
+            }
+            pending.remove(finished)
+            ok = answer
         }
-        return false
+        // Оставшийся запрос обрываем сами: иначе пришлось бы дожидаться его
+        // до конца, и выигрыш от первого ответа пропал бы.
+        calls.forEach { it.cancel() }
+        if (!ok) AppLog.write("проверка связи: ни один адрес не ответил")
+        ok
     }
 
     /**
@@ -702,6 +748,8 @@ class XVpnService : VpnService() {
     private fun teardown(keepTun: Boolean = false) {
         statsJob?.cancel()
         statsJob = null
+        verifyJob?.cancel()
+        verifyJob = null
         if (coreController == null && tunFd == null) return
         try {
             TProxyService.TProxyStopService()
@@ -759,6 +807,7 @@ class XVpnService : VpnService() {
         // момент, когда та ещё идёт, — а двойной вызов в нативный код роняет
         // весь процесс вместе с интерфейсом.
         statsJob?.cancel()
+        verifyJob?.cancel()
         reconnectJob?.cancel()
         unwatchNetwork()
         super.onDestroy()
@@ -845,15 +894,7 @@ class XVpnService : VpnService() {
         } catch (_: Exception) {
             return
         }
-        lastPingMs = try {
-            CoreEnv.ensure(this)
-            Libv2ray.measureOutboundDelay(
-                XrayConfigBuilder.build(profile),
-                "https://www.gstatic.com/generate_204",
-            )
-        } catch (_: Throwable) {
-            -1L
-        }
+        lastPingMs = ServerPing.measure(this, profile)
         updateNotification()
     }
 }
