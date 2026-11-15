@@ -2,9 +2,8 @@ package com.darkprince.vpn.ui.vm
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.darkprince.vpn.core.xray.XrayConfigBuilder
 import com.darkprince.vpn.di.ServiceLocator
-import com.darkprince.vpn.vpn.CoreEnv
+import com.darkprince.vpn.vpn.ServerPing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -12,7 +11,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import libv2ray.Libv2ray
 import retrofit2.HttpException
 import java.io.IOException
 import java.time.Instant
@@ -319,13 +317,7 @@ class DiagnosticsViewModel : ViewModel() {
         }
 
         val ms = withContext(Dispatchers.IO) {
-            runCatching {
-                CoreEnv.ensure(ServiceLocator.appContext)
-                Libv2ray.measureOutboundDelay(
-                    XrayConfigBuilder.build(profile),
-                    "https://www.gstatic.com/generate_204",
-                )
-            }.getOrDefault(-1L)
+            runCatching { ServerPing.measure(ServiceLocator.appContext, profile) }.getOrDefault(-1L)
         }
 
         add(

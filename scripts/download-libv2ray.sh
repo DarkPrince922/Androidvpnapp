@@ -3,7 +3,7 @@
 # 2dust/AndroidLibXrayLite в app/libs/.
 set -euo pipefail
 
-VERSION="${LIBV2RAY_VERSION:-v26.7.19}"
+VERSION="${LIBV2RAY_VERSION:-v26.11.9}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$DIR/app/libs"
 

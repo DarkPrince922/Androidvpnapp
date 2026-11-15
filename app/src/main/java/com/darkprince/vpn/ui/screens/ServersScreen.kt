@@ -33,6 +33,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -133,21 +139,36 @@ internal fun ServerRow(
 ) {
     val accent = MaterialTheme.colorScheme.primary
     val borderColor by animateColorAsState(
-        targetValue = if (selected) accent else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+        targetValue = if (selected) accent.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
         animationSpec = tween(250),
         label = "serverBorder",
     )
-    val background by animateColorAsState(
-        targetValue = if (selected) accent.copy(alpha = 0.11f) else MaterialTheme.colorScheme.surface,
+    // Выбранный узел — заливка, гаснущая слева направо, и полоска у левого
+    // края. Ровная заливка всей строки сливалась с рамкой в одно пятно.
+    val glow by animateColorAsState(
+        targetValue = if (selected) accent.copy(alpha = 0.16f) else Color.Transparent,
         animationSpec = tween(250),
-        label = "serverBackground",
+        label = "serverGlow",
     )
+    val surface = MaterialTheme.colorScheme.surface
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(background)
+            .background(surface)
+            .background(Brush.horizontalGradient(listOf(glow, glow.copy(alpha = glow.alpha * 0.2f))))
+            .drawBehind {
+                if (selected) {
+                    val inset = 12.dp.toPx()
+                    drawRoundRect(
+                        color = accent,
+                        topLeft = Offset(0f, inset),
+                        size = Size(3.dp.toPx(), size.height - inset * 2),
+                        cornerRadius = CornerRadius(3.dp.toPx()),
+                    )
+                }
+            }
             .border(1.dp, borderColor, RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
             .padding(14.dp),

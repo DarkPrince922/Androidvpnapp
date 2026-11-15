@@ -2,6 +2,16 @@ package com.darkprince.vpn.ui.theme
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,6 +44,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
+import kotlin.math.abs
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,14 +68,14 @@ import androidx.compose.ui.unit.sp
  * строки настроек, плитки-иконки и чипы.
  */
 
-/** Подпись над группой: капсом, с разрядкой, приглушённым цветом. */
+/** Подпись над группой: обычным словом, полужирно. */
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        letterSpacing = 1.4.sp,
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onBackground,
         modifier = modifier.padding(start = 4.dp, bottom = 8.dp),
     )
 }
@@ -227,38 +249,52 @@ fun PingChip(millis: Long, modifier: Modifier = Modifier) {
         else -> 1
     }
 
+    // Без подложки: число крупно, шрифтом заголовков, рядом шкала. Цвет
+    // качества несёт шкала, а число остаётся спокойным — в длинном списке
+    // цветные плашки у каждой строки рябили.
     Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(tint.copy(alpha = 0.12f))
-            .padding(horizontal = 7.dp, vertical = 4.dp)
-            // ширина под «1000 мс»: без неё строки списка дёргались бы,
-            // когда у соседних серверов разное число цифр
-            .widthIn(min = 58.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        // ширина под «1000 мс»: без неё строки списка дёргались бы,
+        // когда у соседних серверов разное число цифр
+        modifier = modifier.widthIn(min = 58.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            listOf(4.dp, 6.5.dp, 9.dp).forEachIndexed { index, barHeight ->
+            listOf(5.dp, 9.dp, 13.dp).forEachIndexed { index, barHeight ->
                 Box(
                     Modifier
-                        .width(2.5.dp)
+                        .width(3.dp)
                         .height(barHeight)
                         .clip(RoundedCornerShape(2.dp))
                         .background(if (index < bars) tint else tint.copy(alpha = 0.25f)),
                 )
             }
         }
-        Text(
-            text = if (unreachable) "нет" else "$millis мс",
-            style = MaterialTheme.typography.labelSmall,
-            color = tint,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-        )
+        if (unreachable) {
+            Text(
+                text = "нет",
+                style = MaterialTheme.typography.labelMedium,
+                color = tint,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+        } else {
+            Text(
+                text = millis.toString(),
+                style = MaterialTheme.typography.titleSmall.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+            Text(
+                text = "мс",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -374,46 +410,152 @@ fun CircleActionButton(
     }
 }
 
-/** Пункт плавающей нижней навигации: у активного — «таблетка» под ним. */
+/**
+ * Лампа нижней панели: золотой круг со свечением, конус света и черта на
+ * верхнем краю — один на всю панель, и он **переезжает** между разделами.
+ *
+ * Раньше у каждого пункта был свой круг, который появлялся и гас. Пока круг
+ * проявлялся (альфа меньше единицы), Android рисовал его через промежуточный
+ * буфер размером с сам круг и обрезал свечение вокруг: сначала виден мелкий
+ * круг, а в конце анимации свечение вспыхивало разом. Один плавно едущий круг
+ * этой беды лишён.
+ *
+ * Рисуется под значками, поэтому ставится на строку панели до её внутренних
+ * отступов. [position] — дробный номер раздела (1,5 — между вторым и
+ * третьим); читается в момент отрисовки, и перекомпоновки на каждый кадр нет.
+ */
+fun Modifier.navLamp(
+    position: () -> Float,
+    count: Int,
+    accent: Color,
+    sidePadding: Dp = 8.dp,
+    topPadding: Dp = 6.dp,
+    corner: Dp = 24.dp,
+): Modifier = drawBehind {
+    if (count <= 0) return@drawBehind
+    val light = lerp(accent, Color.White, 0.40f)
+    val side = sidePadding.toPx()
+    val cell = (size.width - 2f * side) / count
+    val cx = side + (position() + 0.5f) * cell
+    val radius = 16.dp.toPx()
+    val cy = topPadding.toPx() + radius
+
+    // Свет и свечение — внутри формы панели: у края они не вылезают наружу.
+    val shape = Path().apply {
+        addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(corner.toPx())))
+    }
+    clipPath(shape) {
+        val reach = 56.dp.toPx()
+        val cone = Path().apply {
+            moveTo(cx - 6.dp.toPx(), 0f)
+            lineTo(cx + 6.dp.toPx(), 0f)
+            lineTo(cx + 36.dp.toPx(), reach)
+            lineTo(cx - 36.dp.toPx(), reach)
+            close()
+        }
+        drawPath(
+            cone,
+            Brush.verticalGradient(listOf(accent.copy(alpha = 0.26f), Color.Transparent), startY = 0f, endY = reach),
+        )
+        val halo = 30.dp.toPx()
+        drawCircle(
+            Brush.radialGradient(
+                listOf(accent.copy(alpha = 0.55f), Color.Transparent),
+                center = Offset(cx, cy),
+                radius = halo,
+            ),
+            radius = halo,
+            center = Offset(cx, cy),
+        )
+    }
+
+    // золотой круг под значком
+    drawCircle(
+        Brush.radialGradient(
+            listOf(lerp(accent, Color.White, 0.45f), accent, lerp(accent, Color.Black, 0.30f)),
+            center = Offset(cx - radius * 0.25f, cy - radius * 0.30f),
+            radius = radius * 1.6f,
+        ),
+        radius = radius,
+        center = Offset(cx, cy),
+    )
+
+    // черта на верхнем краю: ореол и сама черта
+    val width = 28.dp.toPx()
+    val height = 2.dp.toPx()
+    val top = -1.dp.toPx()
+    drawRoundRect(
+        accent.copy(alpha = 0.22f),
+        topLeft = Offset(cx - width / 2f - 4.dp.toPx(), top - 2.dp.toPx()),
+        size = Size(width + 8.dp.toPx(), height + 4.dp.toPx()),
+        cornerRadius = CornerRadius(4.dp.toPx()),
+    )
+    drawRoundRect(
+        light,
+        topLeft = Offset(cx - width / 2f, top),
+        size = Size(width, height),
+        cornerRadius = CornerRadius(height / 2f),
+    )
+}
+
+/**
+ * Пункт плавающей нижней навигации: значок и подпись.
+ *
+ * Круг и свет рисует не пункт, а сама панель ([navLamp]). Пункт лишь красит
+ * значок и подпись по тому, насколько близко к нему сейчас лампа: чем ближе,
+ * тем темнее значок (он лежит на золотом круге) и ярче подпись. Цвет идёт
+ * от того же числа, что и движение круга, поэтому они не расходятся.
+ *
+ * Высота пункта у всех одна: значок живёт в слоте 32 dp, и панель не меняется
+ * при переключении.
+ */
 @Composable
 fun NavPillItem(
-    selected: Boolean,
+    index: Int,
+    lampPosition: () -> Float,
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // активный пункт — сплошная «таблетка» акцентного цвета, как в макете
-    val accent = MaterialTheme.colorScheme.primary
-    val background by animateColorAsState(
-        targetValue = if (selected) accent else Color.Transparent,
-        animationSpec = tween(220),
-        label = "navBackground",
-    )
-    val contentColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(220),
-        label = "navContent",
-    )
+    val scheme = MaterialTheme.colorScheme
+    // 1 — лампа ровно над пунктом, 0 — на соседнем и дальше
+    val near = (1f - abs(lampPosition() - index)).coerceIn(0f, 1f)
+    val iconColor = lerp(scheme.onSurfaceVariant, scheme.onPrimary, near)
+    val labelColor = lerp(scheme.onSurfaceVariant, lerp(scheme.primary, Color.White, 0.20f), near)
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(background)
-            .clickable(onClick = onClick)
-            .padding(vertical = 9.dp),
+            // без волны нажатия: прямоугольная вспышка во всю ячейку рядом с
+            // круглой лампой выглядела бы грубо — нажатие видно по переезду света
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(top = 6.dp, bottom = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.height(2.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = contentColor,
-            maxLines = 1,
-        )
+        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = label, tint = iconColor, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.height(1.dp))
+        // Подпись не растёт вслед за системным масштабом шрифта дальше 1,1:
+        // при шести пунктах крупная подпись не влезала в ячейку и обрезалась
+        // («Серверы» → «Серверь»). Значок и нажимаемая область от шрифта не зависят.
+        val density = LocalDensity.current
+        CompositionLocalProvider(
+            LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.1f))
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = labelColor,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
     }
 }
 

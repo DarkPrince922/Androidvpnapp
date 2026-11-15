@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -82,6 +83,7 @@ import com.darkprince.vpn.ui.theme.AppTheme
 import com.darkprince.vpn.ui.theme.LocalPalette
 import com.darkprince.vpn.ui.theme.paletteById
 import com.darkprince.vpn.ui.theme.NavPillItem
+import com.darkprince.vpn.ui.theme.navLamp
 import com.darkprince.vpn.ui.vm.AppsViewModel
 import com.darkprince.vpn.ui.vm.AuthViewModel
 import com.darkprince.vpn.ui.vm.BalanceViewModel
@@ -445,7 +447,23 @@ private fun AppRoot(
         containerColor = Color.Transparent,
         bottomBar = {
             if (showBottomBar) {
-                // плавающая панель: скруглённый блок с «таблеткой» под активным
+                // Плавающая панель: скруглённый блок, активный раздел —
+                // «жетон», приподнятый над ней. Фон задан формой, а не обрезкой:
+                // обрезка срезала бы жетону верх.
+                val panelFill = LocalPalette.current.panel.copy(alpha = 0.95f)
+                val panelLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                // Лампа одна и плавно едет к выбранному разделу: пружина с едва
+                // заметным перелётом. Первый показ панели — без анимации.
+                val selectedIndex = bottomItems.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
+                val lampPosition by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = selectedIndex.toFloat(),
+                    animationSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = 0.8f,
+                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
+                    ),
+                    label = "navLamp",
+                )
+                val lampColor = MaterialTheme.colorScheme.primary
                 androidx.compose.foundation.layout.Row(
                     modifier = Modifier
                         // системные кнопки навигации рисуются поверх приложения,
@@ -453,19 +471,28 @@ private fun AppRoot(
                         .navigationBarsPadding()
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(LocalPalette.current.panel.copy(alpha = 0.92f))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-                            RoundedCornerShape(26.dp),
-                        )
-                        .padding(6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        // Фон и рамку рисуем под содержимым. `border` рисует поверх
+                        // детей, и линия рамки шла прямо по золотому кругу.
+                        .drawBehind {
+                            val corner = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx())
+                            drawRoundRect(panelFill, cornerRadius = corner)
+                            drawRoundRect(
+                                panelLine,
+                                cornerRadius = corner,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()),
+                            )
+                        }
+                        // золотой круг и свет — под значками, см. navLamp
+                        .navLamp(position = { lampPosition }, count = bottomItems.size, accent = lampColor)
+                        // отступ по бокам небольшой: у шести пунктов (у админа)
+                        // каждая ячейка должна быть как можно шире
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
-                    bottomItems.forEach { item ->
+                    bottomItems.forEachIndexed { index, item ->
                         NavPillItem(
-                            selected = currentRoute == item.route,
+                            index = index,
+                            lampPosition = { lampPosition },
                             icon = item.icon,
                             label = item.label,
                             onClick = {
@@ -585,6 +612,16 @@ private fun AppRoot(
                         }
                     },
                     onDisconnectClick = { XVpnService.stop(activity) },
+                    // у гостя раздела «Тарифы» нет — ссылку не показываем
+                    onOpenPlans = if (authState.guestMode) null else {
+                        {
+                            navController.navigate("plans") {
+                                popUpTo("home") { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
                     onReminderButton = { button ->
                         if (button.kind == "cabinet") {
                             val route = reminderRoute(button.target)
