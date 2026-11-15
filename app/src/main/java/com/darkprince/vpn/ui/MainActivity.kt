@@ -83,6 +83,7 @@ import com.darkprince.vpn.ui.theme.AppTheme
 import com.darkprince.vpn.ui.theme.LocalPalette
 import com.darkprince.vpn.ui.theme.paletteById
 import com.darkprince.vpn.ui.theme.NavPillItem
+import com.darkprince.vpn.ui.theme.navLamp
 import com.darkprince.vpn.ui.vm.AppsViewModel
 import com.darkprince.vpn.ui.vm.AuthViewModel
 import com.darkprince.vpn.ui.vm.BalanceViewModel
@@ -451,6 +452,18 @@ private fun AppRoot(
                 // обрезка срезала бы жетону верх.
                 val panelFill = LocalPalette.current.panel.copy(alpha = 0.95f)
                 val panelLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                // Лампа одна и плавно едет к выбранному разделу: пружина с едва
+                // заметным перелётом. Первый показ панели — без анимации.
+                val selectedIndex = bottomItems.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
+                val lampPosition by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = selectedIndex.toFloat(),
+                    animationSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = 0.8f,
+                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
+                    ),
+                    label = "navLamp",
+                )
+                val lampColor = MaterialTheme.colorScheme.primary
                 androidx.compose.foundation.layout.Row(
                     modifier = Modifier
                         // системные кнопки навигации рисуются поверх приложения,
@@ -469,14 +482,17 @@ private fun AppRoot(
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()),
                             )
                         }
+                        // золотой круг и свет — под значками, см. navLamp
+                        .navLamp(position = { lampPosition }, count = bottomItems.size, accent = lampColor)
                         // отступ по бокам небольшой: у шести пунктов (у админа)
                         // каждая ячейка должна быть как можно шире
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
-                    bottomItems.forEach { item ->
+                    bottomItems.forEachIndexed { index, item ->
                         NavPillItem(
-                            selected = currentRoute == item.route,
+                            index = index,
+                            lampPosition = { lampPosition },
                             icon = item.icon,
                             label = item.label,
                             onClick = {

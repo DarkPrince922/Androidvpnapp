@@ -44,6 +44,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
+import kotlin.math.abs
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -408,49 +411,123 @@ fun CircleActionButton(
 }
 
 /**
- * Пункт плавающей нижней навигации.
+ * Лампа нижней панели: золотой круг со свечением, конус света и черта на
+ * верхнем краю — один на всю панель, и он **переезжает** между разделами.
  *
- * Активный раздел подсвечен «лампой»: над ним, на верхнем краю панели, горит
- * тонкая золотая черта, от неё вниз идёт мягкий конус света, а под значком
- * — золотой круг со свечением. Всё остаётся внутри панели: раньше круг был
- * приподнят над ней, торчал над списком тёмным выступом и упирался в угол.
+ * Раньше у каждого пункта был свой круг, который появлялся и гас. Пока круг
+ * проявлялся (альфа меньше единицы), Android рисовал его через промежуточный
+ * буфер размером с сам круг и обрезал свечение вокруг: сначала виден мелкий
+ * круг, а в конце анимации свечение вспыхивало разом. Один плавно едущий круг
+ * этой беды лишён.
  *
- * Высота пункта у активного и неактивных одна: круг и значок живут в слоте
- * 32 dp, поэтому панель не меняется при переключении.
+ * Рисуется под значками, поэтому ставится на строку панели до её внутренних
+ * отступов. [position] — дробный номер раздела (1,5 — между вторым и
+ * третьим); читается в момент отрисовки, и перекомпоновки на каждый кадр нет.
+ */
+fun Modifier.navLamp(
+    position: () -> Float,
+    count: Int,
+    accent: Color,
+    sidePadding: Dp = 8.dp,
+    topPadding: Dp = 6.dp,
+    corner: Dp = 24.dp,
+): Modifier = drawBehind {
+    if (count <= 0) return@drawBehind
+    val light = lerp(accent, Color.White, 0.40f)
+    val side = sidePadding.toPx()
+    val cell = (size.width - 2f * side) / count
+    val cx = side + (position() + 0.5f) * cell
+    val radius = 16.dp.toPx()
+    val cy = topPadding.toPx() + radius
+
+    // Свет и свечение — внутри формы панели: у края они не вылезают наружу.
+    val shape = Path().apply {
+        addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(corner.toPx())))
+    }
+    clipPath(shape) {
+        val reach = 56.dp.toPx()
+        val cone = Path().apply {
+            moveTo(cx - 6.dp.toPx(), 0f)
+            lineTo(cx + 6.dp.toPx(), 0f)
+            lineTo(cx + 36.dp.toPx(), reach)
+            lineTo(cx - 36.dp.toPx(), reach)
+            close()
+        }
+        drawPath(
+            cone,
+            Brush.verticalGradient(listOf(accent.copy(alpha = 0.26f), Color.Transparent), startY = 0f, endY = reach),
+        )
+        val halo = 30.dp.toPx()
+        drawCircle(
+            Brush.radialGradient(
+                listOf(accent.copy(alpha = 0.55f), Color.Transparent),
+                center = Offset(cx, cy),
+                radius = halo,
+            ),
+            radius = halo,
+            center = Offset(cx, cy),
+        )
+    }
+
+    // золотой круг под значком
+    drawCircle(
+        Brush.radialGradient(
+            listOf(lerp(accent, Color.White, 0.45f), accent, lerp(accent, Color.Black, 0.30f)),
+            center = Offset(cx - radius * 0.25f, cy - radius * 0.30f),
+            radius = radius * 1.6f,
+        ),
+        radius = radius,
+        center = Offset(cx, cy),
+    )
+
+    // черта на верхнем краю: ореол и сама черта
+    val width = 28.dp.toPx()
+    val height = 2.dp.toPx()
+    val top = -1.dp.toPx()
+    drawRoundRect(
+        accent.copy(alpha = 0.22f),
+        topLeft = Offset(cx - width / 2f - 4.dp.toPx(), top - 2.dp.toPx()),
+        size = Size(width + 8.dp.toPx(), height + 4.dp.toPx()),
+        cornerRadius = CornerRadius(4.dp.toPx()),
+    )
+    drawRoundRect(
+        light,
+        topLeft = Offset(cx - width / 2f, top),
+        size = Size(width, height),
+        cornerRadius = CornerRadius(height / 2f),
+    )
+}
+
+/**
+ * Пункт плавающей нижней навигации: значок и подпись.
+ *
+ * Круг и свет рисует не пункт, а сама панель ([navLamp]). Пункт лишь красит
+ * значок и подпись по тому, насколько близко к нему сейчас лампа: чем ближе,
+ * тем темнее значок (он лежит на золотом круге) и ярче подпись. Цвет идёт
+ * от того же числа, что и движение круга, поэтому они не расходятся.
+ *
+ * Высота пункта у всех одна: значок живёт в слоте 32 dp, и панель не меняется
+ * при переключении.
  */
 @Composable
 fun NavPillItem(
-    selected: Boolean,
+    index: Int,
+    lampPosition: () -> Float,
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val accent = scheme.primary
-    val light = lerp(accent, Color.White, 0.40f)
-
-    val glow by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = tween(260),
-        label = "navGlow",
-    )
-    val iconColor by animateColorAsState(
-        targetValue = if (selected) scheme.onPrimary else scheme.onSurfaceVariant,
-        animationSpec = tween(220),
-        label = "navIcon",
-    )
-    val labelColor by animateColorAsState(
-        targetValue = if (selected) lerp(accent, Color.White, 0.20f) else scheme.onSurfaceVariant,
-        animationSpec = tween(220),
-        label = "navLabel",
-    )
+    // 1 — лампа ровно над пунктом, 0 — на соседнем и дальше
+    val near = (1f - abs(lampPosition() - index)).coerceIn(0f, 1f)
+    val iconColor = lerp(scheme.onSurfaceVariant, scheme.onPrimary, near)
+    val labelColor = lerp(scheme.onSurfaceVariant, lerp(scheme.primary, Color.White, 0.20f), near)
 
     Column(
         modifier = modifier
-            .drawBehind { if (glow > 0f) drawNavLamp(accent, light, glow) }
             // без волны нажатия: прямоугольная вспышка во всю ячейку рядом с
-            // круглым свечением выглядела бы грубо — нажатие видно по переезду света
+            // круглой лампой выглядела бы грубо — нажатие видно по переезду света
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -460,39 +537,12 @@ fun NavPillItem(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
-            Box(
-                Modifier
-                    .size(32.dp)
-                    .graphicsLayer {
-                        alpha = glow
-                        scaleX = 0.7f + 0.3f * glow
-                        scaleY = 0.7f + 0.3f * glow
-                    }
-                    // свечение вокруг круга — шире самого круга
-                    .drawBehind {
-                        val halo = 30.dp.toPx()
-                        drawCircle(
-                            Brush.radialGradient(
-                                listOf(accent.copy(alpha = 0.55f), Color.Transparent),
-                                center = center,
-                                radius = halo,
-                            ),
-                            radius = halo,
-                        )
-                    }
-                    .background(
-                        Brush.radialGradient(
-                            listOf(lerp(accent, Color.White, 0.45f), accent, lerp(accent, Color.Black, 0.30f)),
-                        ),
-                        CircleShape,
-                    )
-            )
             Icon(icon, contentDescription = label, tint = iconColor, modifier = Modifier.size(22.dp))
         }
         Spacer(Modifier.height(1.dp))
         // Подпись не растёт вслед за системным масштабом шрифта дальше 1,1:
         // при шести пунктах крупная подпись не влезала в ячейку и обрезалась
-        // («Серверы» → «Серверь»). Значок и нажимаемая область не зависят от шрифта.
+        // («Серверы» → «Серверь»). Значок и нажимаемая область от шрифта не зависят.
         val density = LocalDensity.current
         CompositionLocalProvider(
             LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.1f))
@@ -507,51 +557,6 @@ fun NavPillItem(
             )
         }
     }
-}
-
-/**
- * Лампа над активным пунктом: черта на верхнем краю панели и конус света вниз.
- *
- * Верхний край панели — на 6 dp выше пункта (внутренний отступ панели), поэтому
- * координата «верха» отрицательная. Рисуем без обрезки: конус заканчивается
- * внутри панели, а черта лежит ровно на её рамке.
- */
-private fun DrawScope.drawNavLamp(accent: Color, light: Color, glow: Float) {
-    val cx = size.width / 2f
-    val top = -6.dp.toPx()
-    val reach = 56.dp.toPx()
-
-    val cone = Path().apply {
-        moveTo(cx - 6.dp.toPx(), top)
-        lineTo(cx + 6.dp.toPx(), top)
-        lineTo(cx + 36.dp.toPx(), top + reach)
-        lineTo(cx - 36.dp.toPx(), top + reach)
-        close()
-    }
-    drawPath(
-        cone,
-        Brush.verticalGradient(
-            listOf(accent.copy(alpha = 0.26f * glow), Color.Transparent),
-            startY = top,
-            endY = top + reach,
-        ),
-    )
-
-    val width = 28.dp.toPx()
-    val height = 2.dp.toPx()
-    // мягкий ореол вокруг черты, затем сама черта
-    drawRoundRect(
-        accent.copy(alpha = 0.22f * glow),
-        topLeft = Offset(cx - width / 2f - 4.dp.toPx(), top - 2.dp.toPx()),
-        size = Size(width + 8.dp.toPx(), height + 4.dp.toPx()),
-        cornerRadius = CornerRadius(4.dp.toPx()),
-    )
-    drawRoundRect(
-        light.copy(alpha = glow),
-        topLeft = Offset(cx - width / 2f, top),
-        size = Size(width, height),
-        cornerRadius = CornerRadius(height / 2f),
-    )
 }
 
 /**
