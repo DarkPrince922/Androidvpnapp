@@ -677,9 +677,22 @@ class XVpnService : VpnService() {
             while (isActive) {
                 val controller = coreController ?: break
                 try {
-                    for (tag in tags) {
-                        up += controller.queryStats(tag, "uplink")
-                        down += controller.queryStats(tag, "downlink")
+                    // Библиотека отдаёт все счётчики исходящего трафика одной
+                    // строкой «тег,направление,значение;…» и обнуляет их при
+                    // чтении — как прежний запрос по одному тегу. Считаем только
+                    // прокси-узлы: «direct» и «block» в трафик через VPN не входят.
+                    for (entry in controller.queryAllOutboundTrafficStats().split(';')) {
+                        if (entry.isBlank()) continue
+                        val parts = entry.split(',')
+                        if (parts.size < 3) continue
+                        // тег мог содержать запятую: направление и значение — два последних поля
+                        val tag = parts.dropLast(2).joinToString(",")
+                        if (tag !in tags) continue
+                        val value = parts.last().toLongOrNull() ?: continue
+                        when (parts[parts.size - 2]) {
+                            "uplink" -> up += value
+                            "downlink" -> down += value
+                        }
                     }
                     VpnStateStore.setStats(TrafficStats(uplinkBytes = up, downlinkBytes = down))
                 } catch (_: Exception) {
