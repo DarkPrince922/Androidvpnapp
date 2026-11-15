@@ -44,6 +44,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -401,12 +410,13 @@ fun CircleActionButton(
 /**
  * Пункт плавающей нижней навигации.
  *
- * Активный раздел — «жетон»: круг в цвет акцента, приподнятый над панелью,
- * со значком внутри; подпись под ним того же цвета. Вокруг круга кольцо в
- * цвет фона экрана — оно отделяет жетон от панели, будто в ней вырез.
+ * Активный раздел подсвечен «лампой»: над ним, на верхнем краю панели, горит
+ * тонкая золотая черта, от неё вниз идёт мягкий конус света, а под значком
+ * — золотой круг со свечением. Всё остаётся внутри панели: раньше круг был
+ * приподнят над ней, торчал над списком тёмным выступом и упирался в угол.
  *
- * Жетон рисуется за пределами своей ячейки и самой панели. Поэтому ни у
- * ячейки, ни у панели нет обрезки по форме: она срезала бы его верх.
+ * Высота пункта у активного и неактивных одна: круг и значок живут в слоте
+ * 32 dp, поэтому панель не меняется при переключении.
  */
 @Composable
 fun NavPillItem(
@@ -418,17 +428,12 @@ fun NavPillItem(
 ) {
     val scheme = MaterialTheme.colorScheme
     val accent = scheme.primary
-    val cutout = LocalPalette.current.background
+    val light = lerp(accent, Color.White, 0.40f)
 
-    val lift by animateDpAsState(
-        targetValue = if (selected) (-12).dp else 0.dp,
-        animationSpec = tween(260),
-        label = "navLift",
-    )
-    val token by animateFloatAsState(
+    val glow by animateFloatAsState(
         targetValue = if (selected) 1f else 0f,
         animationSpec = tween(260),
-        label = "navToken",
+        label = "navGlow",
     )
     val iconColor by animateColorAsState(
         targetValue = if (selected) scheme.onPrimary else scheme.onSurfaceVariant,
@@ -436,67 +441,117 @@ fun NavPillItem(
         label = "navIcon",
     )
     val labelColor by animateColorAsState(
-        targetValue = if (selected) accent else scheme.onSurfaceVariant,
+        targetValue = if (selected) lerp(accent, Color.White, 0.20f) else scheme.onSurfaceVariant,
         animationSpec = tween(220),
         label = "navLabel",
     )
 
     Column(
         modifier = modifier
-            // без волны нажатия: обрезать её по форме здесь нечем, а
-            // прямоугольная вспышка во всю ячейку рядом с круглым жетоном
-            // выглядела бы грубо — нажатие и так видно по переезду жетона
+            .drawBehind { if (glow > 0f) drawNavLamp(accent, light, glow) }
+            // без волны нажатия: прямоугольная вспышка во всю ячейку рядом с
+            // круглым свечением выглядела бы грубо — нажатие видно по переезду света
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
             )
-            .padding(vertical = 9.dp),
+            .padding(top = 6.dp, bottom = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
-        // Место под значок всегда 22 dp: жетон больше, но в раскладке не
-        // участвует, иначе панель подрастала бы под активным разделом.
-        Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
             Box(
                 Modifier
-                    .requiredSize(44.dp)
-                    .offset(y = lift)
+                    .size(32.dp)
                     .graphicsLayer {
-                        alpha = token
-                        scaleX = 0.6f + 0.4f * token
-                        scaleY = 0.6f + 0.4f * token
+                        alpha = glow
+                        scaleX = 0.7f + 0.3f * glow
+                        scaleY = 0.7f + 0.3f * glow
                     }
-                    .background(cutout, CircleShape)
-                    .padding(4.dp)
+                    // свечение вокруг круга — шире самого круга
+                    .drawBehind {
+                        val halo = 30.dp.toPx()
+                        drawCircle(
+                            Brush.radialGradient(
+                                listOf(accent.copy(alpha = 0.55f), Color.Transparent),
+                                center = center,
+                                radius = halo,
+                            ),
+                            radius = halo,
+                        )
+                    }
                     .background(
                         Brush.radialGradient(
-                            listOf(lerp(accent, Color.White, 0.40f), accent, lerp(accent, Color.Black, 0.28f)),
+                            listOf(lerp(accent, Color.White, 0.45f), accent, lerp(accent, Color.Black, 0.30f)),
                         ),
                         CircleShape,
                     )
             )
-            Icon(
-                icon,
-                contentDescription = label,
-                tint = iconColor,
-                modifier = Modifier
-                    .size(22.dp)
-                    .offset(y = lift),
+            Icon(icon, contentDescription = label, tint = iconColor, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.height(1.dp))
+        // Подпись не растёт вслед за системным масштабом шрифта дальше 1,1:
+        // при шести пунктах крупная подпись не влезала в ячейку и обрезалась
+        // («Серверы» → «Серверь»). Значок и нажимаемая область не зависят от шрифта.
+        val density = LocalDensity.current
+        CompositionLocalProvider(
+            LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.1f))
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = labelColor,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
             )
         }
-        Spacer(Modifier.height(2.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = labelColor,
-            // Medium у обоих: полужирная подпись активного раздела шире и при
-            // шести пунктах (у админа) упиралась в соседей
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            softWrap = false,
-        )
     }
+}
+
+/**
+ * Лампа над активным пунктом: черта на верхнем краю панели и конус света вниз.
+ *
+ * Верхний край панели — на 6 dp выше пункта (внутренний отступ панели), поэтому
+ * координата «верха» отрицательная. Рисуем без обрезки: конус заканчивается
+ * внутри панели, а черта лежит ровно на её рамке.
+ */
+private fun DrawScope.drawNavLamp(accent: Color, light: Color, glow: Float) {
+    val cx = size.width / 2f
+    val top = -6.dp.toPx()
+    val reach = 56.dp.toPx()
+
+    val cone = Path().apply {
+        moveTo(cx - 6.dp.toPx(), top)
+        lineTo(cx + 6.dp.toPx(), top)
+        lineTo(cx + 36.dp.toPx(), top + reach)
+        lineTo(cx - 36.dp.toPx(), top + reach)
+        close()
+    }
+    drawPath(
+        cone,
+        Brush.verticalGradient(
+            listOf(accent.copy(alpha = 0.26f * glow), Color.Transparent),
+            startY = top,
+            endY = top + reach,
+        ),
+    )
+
+    val width = 28.dp.toPx()
+    val height = 2.dp.toPx()
+    // мягкий ореол вокруг черты, затем сама черта
+    drawRoundRect(
+        accent.copy(alpha = 0.22f * glow),
+        topLeft = Offset(cx - width / 2f - 4.dp.toPx(), top - 2.dp.toPx()),
+        size = Size(width + 8.dp.toPx(), height + 4.dp.toPx()),
+        cornerRadius = CornerRadius(4.dp.toPx()),
+    )
+    drawRoundRect(
+        light.copy(alpha = glow),
+        topLeft = Offset(cx - width / 2f, top),
+        size = Size(width, height),
+        cornerRadius = CornerRadius(height / 2f),
+    )
 }
 
 /**

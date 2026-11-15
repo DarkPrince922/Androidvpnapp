@@ -469,10 +469,10 @@ private fun AppRoot(
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()),
                             )
                         }
-                        // по бокам отступ больше обычного: крайний пункт иначе
-                        // оказывается в закруглённом углу, и жетон прижимает к нему
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        // отступ по бокам небольшой: у шести пунктов (у админа)
+                        // каждая ячейка должна быть как можно шире
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
                     bottomItems.forEach { item ->
                         NavPillItem(
