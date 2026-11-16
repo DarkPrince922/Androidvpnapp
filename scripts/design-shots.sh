@@ -12,3 +12,4 @@ for screen in home_off home_on home_light servers settings; do
   adb exec-out screencap -p > "/tmp/shots/$screen.png"
 done
 # shots
+# shots 2
