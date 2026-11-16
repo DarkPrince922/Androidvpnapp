@@ -410,6 +410,10 @@ fun CircleActionButton(
     }
 }
 
+/** Слот значка в пункте панели и отступ над ним: по ним же считается центр круга лампы. */
+private val NavSlot = 32.dp
+private val NavItemTopPadding = 6.dp
+
 /**
  * Лампа нижней панели: золотой круг со свечением, конус света и черта на
  * верхнем краю — один на всю панель, и он **переезжает** между разделами.
@@ -437,8 +441,11 @@ fun Modifier.navLamp(
     val side = sidePadding.toPx()
     val cell = (size.width - 2f * side) / count
     val cx = side + (position() + 0.5f) * cell
-    val radius = 16.dp.toPx()
-    val cy = topPadding.toPx() + radius
+    val radius = NavSlot.toPx() / 2f
+    // Центр круга — центр слота значка: отступ строки панели, отступ самого
+    // пункта и половина слота. Без отступа пункта круг уезжал на 6 dp вверх, и
+    // значок оказывался ниже его центра.
+    val cy = topPadding.toPx() + NavItemTopPadding.toPx() + radius
 
     // Свет и свечение — внутри формы панели: у края они не вылезают наружу.
     val shape = Path().apply {
@@ -533,10 +540,10 @@ fun NavPillItem(
                 indication = null,
                 onClick = onClick,
             )
-            .padding(top = 6.dp, bottom = 5.dp),
+            .padding(top = NavItemTopPadding, bottom = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(NavSlot), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = label, tint = iconColor, modifier = Modifier.size(22.dp))
         }
         Spacer(Modifier.height(1.dp))
