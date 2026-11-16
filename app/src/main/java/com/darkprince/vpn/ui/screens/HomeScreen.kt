@@ -14,6 +14,10 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.shadow
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -197,10 +201,7 @@ fun HomeContent(
         listOfNotNull(server?.name?.let(::leadingEmoji), name).joinToString(" ")
     }
 
-    // Текст переживает саму полосу: пока она уезжает, ей нужно что-то рисовать.
-    var lastNotice by remember { mutableStateOf<Notice?>(null) }
-    if (notice != null) lastNotice = notice
-
+    Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -343,15 +344,6 @@ fun HomeContent(
                 }
             }
 
-            // Полоса гаснет сама: держать её до следующего нажатия незачем.
-            AnimatedVisibility(
-                visible = notice != null,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                lastNotice?.let { NoticeBar(it) }
-            }
-
             // Подмена узла держится, пока человек не переподключится сам: от неё
             // зависят и скорость, и то, какие сайты откроются.
             switchedFrom?.let { asked ->
@@ -388,6 +380,9 @@ fun HomeContent(
             }
             Spacer(Modifier.height(24.dp + LocalBottomInset.current))
         }
+    }
+    // итог обновления всплывает сверху и уходит сам
+    NoticeToast(notice, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
     }
 }
 
@@ -894,6 +889,72 @@ private fun untilLabel(raw: String?, expireUnix: Long?): String? {
     return java.time.format.DateTimeFormatter
         .ofPattern("d MMMM yyyy", Locale.forLanguageTag("ru"))
         .format(instant.atZone(java.time.ZoneId.systemDefault()))
+}
+
+/**
+ * Всплывающее уведомление: компактная таблетка по центру сверху. Появляется
+ * поверх экрана и уходит само — вызывающий убирает [notice] через пару
+ * секунд. Текст переживает саму таблетку: пока она уезжает, ей нужно что-то
+ * рисовать.
+ */
+@Composable
+internal fun NoticeToast(notice: Notice?, modifier: Modifier = Modifier) {
+    var last by remember { mutableStateOf<Notice?>(null) }
+    if (notice != null) last = notice
+    AnimatedVisibility(
+        visible = notice != null,
+        modifier = modifier,
+        enter = slideInVertically(tween(260)) { -it } + fadeIn(tween(200)),
+        exit = slideOutVertically(tween(220)) { -it } + fadeOut(tween(160)),
+    ) {
+        val shown = last ?: return@AnimatedVisibility
+        val palette = com.darkprince.vpn.ui.theme.LocalPalette.current
+        val tint = if (shown.ok) MaterialTheme.colorScheme.primary else Color(0xFFFF8A80)
+        val base = if (palette.isLight) Color.White.copy(alpha = 0.96f) else palette.panel.copy(alpha = 0.92f)
+        val shape = RoundedCornerShape(50)
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .widthIn(max = 340.dp)
+                .drawBehind {
+                    // мягкое свечение вокруг таблетки
+                    val grow = 6.dp.toPx()
+                    drawRoundRect(
+                        color = tint.copy(alpha = 0.06f),
+                        topLeft = Offset(-grow, -grow),
+                        size = Size(size.width + grow * 2, size.height + grow * 2),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2 + grow),
+                    )
+                }
+                .shadow(10.dp, shape, ambientColor = Color.Black.copy(alpha = 0.4f), spotColor = Color.Black.copy(alpha = 0.4f))
+                .clip(shape)
+                .background(base)
+                .border(1.dp, tint.copy(alpha = 0.32f), shape)
+                .padding(start = 12.dp, end = 18.dp, top = 9.dp, bottom = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(24.dp).clip(CircleShape).background(tint.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                AquaIconView(
+                    if (shown.ok) AquaIcon.Check else AquaIcon.Alert,
+                    tint,
+                    size = 15.dp,
+                    stroke = 2.4f,
+                )
+            }
+            Spacer(Modifier.width(9.dp))
+            Text(
+                shown.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 /**

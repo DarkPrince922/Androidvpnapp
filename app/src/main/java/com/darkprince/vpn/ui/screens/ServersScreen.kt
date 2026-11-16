@@ -80,6 +80,7 @@ fun ServersContent(
     onRefresh: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -118,12 +119,6 @@ fun ServersContent(
             }
         }
 
-        // тот же итог обновления, что и на главной: кнопка здесь такая же,
-        // и молчать в ответ на неё было бы так же непонятно
-        notice?.let {
-            Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp)) { NoticeBar(it) }
-        }
-
         if (state.servers.isEmpty()) {
             Text(
                 "Список серверов пуст. Проверьте подписку.",
@@ -159,6 +154,9 @@ fun ServersContent(
                 }
             }
         }
+    }
+    // тот же итог обновления, что и на главной: всплывает сверху
+    NoticeToast(notice, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
     }
 }
 

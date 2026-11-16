@@ -107,6 +107,7 @@ enum class AquaIcon(val d: String) {
     Refresh("M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"),
     Speed("M4 16a8 8 0 1 1 16 0M12 16l4-5"),
     More("M5 12h.01M12 12h.01M19 12h.01"),
+    Alert("M12 6v7M12 17.5h.01"),
     Backspace("M20 6H9l-6 6 6 6h11a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1ZM15 10l-4 4M11 10l4 4");
 
     fun vector(stroke: Float): ImageVector =
