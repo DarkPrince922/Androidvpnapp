@@ -200,13 +200,7 @@ fun DevicesScreen(viewModel: DevicesViewModel) {
         }
 
         when {
-            // серые «скелеты» строк вместо пустого крутящегося круга
-            state.loading -> Column(Modifier.fillMaxWidth().glass()) {
-                repeat(4) { index ->
-                    if (index > 0) androidx.compose.material3.HorizontalDivider(color = ink(0.07f))
-                    SkeletonDeviceRow()
-                }
-            }
+            state.loading -> com.darkprince.vpn.ui.theme.LoadingCapsule("Загружаем устройства")
             state.devices.isEmpty() -> Column(Modifier.fillMaxWidth().glass().padding(18.dp)) {
                 Text(
                     "Устройств пока нет. Панель заводит устройство в момент " +
@@ -436,22 +430,6 @@ private fun DeviceRow(
                     onClick = { menuOpen = false; onDelete() },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun SkeletonDeviceRow() {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(ink(0.07f)))
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Box(Modifier.fillMaxWidth(0.55f).height(13.dp).clip(RoundedCornerShape(7.dp)).background(ink(0.09f)))
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.fillMaxWidth(0.35f).height(10.dp).clip(RoundedCornerShape(6.dp)).background(ink(0.06f)))
         }
     }
 }

@@ -155,13 +155,7 @@ fun AppsScreen(viewModel: AppsViewModel) {
             }
 
             if (state.loading) {
-                // серые «скелеты» строк вместо пустого крутящегося круга
-                Column(Modifier.fillMaxWidth().glass()) {
-                    repeat(6) { index ->
-                        if (index > 0) androidx.compose.material3.HorizontalDivider(color = ink(0.07f))
-                        SkeletonAppRow()
-                    }
-                }
+                com.darkprince.vpn.ui.theme.LoadingCapsule("Загружаем приложения")
             } else {
                 val apps = state.visibleApps
                 LazyColumn(modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp)) {
@@ -235,22 +229,6 @@ fun AppsScreen(viewModel: AppsViewModel) {
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SkeletonAppRow() {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(ink(0.07f)))
-        Spacer(Modifier.size(12.dp))
-        Column(Modifier.weight(1f)) {
-            Box(Modifier.fillMaxWidth(0.5f).height(13.dp).clip(RoundedCornerShape(7.dp)).background(ink(0.09f)))
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.fillMaxWidth(0.7f).height(10.dp).clip(RoundedCornerShape(6.dp)).background(ink(0.06f)))
         }
     }
 }

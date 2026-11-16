@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Spacer
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -374,6 +375,53 @@ fun GlassSearchField(
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { onSearch() }),
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+    }
+}
+
+
+/**
+ * Загрузка: стеклянная капсула по центру с тремя пульсирующими точками и
+ * подписью, что именно грузится. Заменяет голый крутящийся круг.
+ */
+@Composable
+fun LoadingCapsule(text: String, modifier: Modifier = Modifier) {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "loading")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing),
+        ),
+        label = "loadingPhase",
+    )
+    val accent = MaterialTheme.colorScheme.primary
+    Box(modifier.fillMaxWidth().padding(top = 36.dp), contentAlignment = Alignment.TopCenter) {
+        Row(
+            modifier = Modifier
+                // мягкое свечение вокруг капсулы
+                .drawBehind {
+                    val grow = 7.dp.toPx()
+                    drawRoundRect(
+                        color = accent.copy(alpha = 0.06f),
+                        topLeft = Offset(-grow, -grow),
+                        size = Size(size.width + grow * 2, size.height + grow * 2),
+                        cornerRadius = CornerRadius(size.height / 2 + grow),
+                    )
+                }
+                .glass(RoundedCornerShape(50))
+                .padding(start = 20.dp, end = 22.dp, top = 13.dp, bottom = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                repeat(3) { i ->
+                    val x = (phase + i / 3f) % 1f
+                    val a = 0.3f + 0.7f * (if (x < 0.5f) x * 2f else (1f - x) * 2f)
+                    Box(Modifier.size(9.dp).clip(CircleShape).background(accent.copy(alpha = a)))
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
