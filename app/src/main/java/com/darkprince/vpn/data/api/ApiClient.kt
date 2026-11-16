@@ -37,17 +37,22 @@ class ApiClient(private val prefs: AppPrefs) {
     }
 
     /**
-     * Отмечает, жив ли кабинет: обрыв и 5xx — сбой, любой другой ответ —
-     * жив. Смотрит на каждый запрос к кабинету, поэтому знание всегда свежее.
+     * Отмечает, жив ли кабинет: обрыв и ответы шлюза (502–504) — сбой, любой
+     * другой ответ — жив. Смотрит на каждый запрос к кабинету, поэтому знание
+     * всегда свежее.
+     *
+     * Сбоем не считаем: отменённый запрос (человек ушёл с экрана, и корутина
+     * оборвала вызов — это не вина сервиса) и обычную 500: так отвечает одна
+     * конкретная ручка, а не весь кабинет, и остальные при этом работают.
      */
     private val healthInterceptor = Interceptor { chain ->
         val response = try {
             chain.proceed(chain.request())
         } catch (e: java.io.IOException) {
-            ServiceHealth.reportFailure()
+            if (!chain.call().isCanceled()) ServiceHealth.reportFailure()
             throw e
         }
-        if (response.code in 500..599) ServiceHealth.reportFailure() else ServiceHealth.reportOk()
+        if (response.code in 502..504) ServiceHealth.reportFailure() else ServiceHealth.reportOk()
         response
     }
 

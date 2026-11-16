@@ -52,8 +52,13 @@ object ServiceHealth {
         .stateIn(scope, SharingStarted.Eagerly, false)
     val isDown: Boolean get() = _status.value != Status.OK
 
-    /** Один таймаут — ещё не сбой: ждём второго подряд. */
-    private const val FAILURES_TO_DOWN = 2
+    /**
+     * Один-два таймаута — ещё не сбой: на слабой сети они случаются и при
+     * живом сервисе. Нужно три сбоя за минуту, и перед плашкой ещё проверка.
+     */
+    private const val FAILURES_TO_DOWN = 3
+    private const val FAILURE_WINDOW_MS = 60_000L
+    private val failureTimes = ArrayDeque<Long>()
     private const val RECHECK_MS = 30_000L
 
     /** Российский сайт, который открывается и при белых списках. */
@@ -77,6 +82,7 @@ object ServiceHealth {
     }
 
     fun reportOk() {
+        synchronized(failureTimes) { failureTimes.clear() }
         failures = 0
         if (_status.value != Status.OK) {
             AppLog.write("кабинет снова отвечает")
@@ -108,7 +114,15 @@ object ServiceHealth {
     }
 
     fun reportFailure() {
-        failures += 1
+        val now = android.os.SystemClock.elapsedRealtime()
+        synchronized(failureTimes) {
+            failureTimes.addLast(now)
+            // сбои старше минуты не в счёт: они давно позади
+            while (failureTimes.isNotEmpty() && now - failureTimes.first() > FAILURE_WINDOW_MS) {
+                failureTimes.removeFirst()
+            }
+            failures = failureTimes.size
+        }
         if (failures >= FAILURES_TO_DOWN && classifyJob?.isActive != true) {
             classifyJob = scope.launch { classify() }
         }
@@ -124,6 +138,16 @@ object ServiceHealth {
         }
         // пока проверяли, кабинет мог ответить — тогда всё уже хорошо
         if (failures == 0) return
+        // Интернет есть, а кабинет молчит: прежде чем объявлять «сервис
+        // недоступен», стучимся в него сами ещё раз-другой. Ответ любым кодом
+        // сбросит счётчик через перехватчик.
+        if (domestic && foreign) {
+            repeat(2) { attempt ->
+                runCatching { ping?.invoke() }
+                if (failures == 0) return
+                if (attempt == 0) delay(2_000)
+            }
+        }
         val next = when {
             !domestic && !foreign -> Status.OFFLINE
             !foreign -> Status.RESTRICTED
