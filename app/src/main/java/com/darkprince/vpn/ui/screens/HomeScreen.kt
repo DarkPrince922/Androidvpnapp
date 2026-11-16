@@ -81,6 +81,7 @@ import com.darkprince.vpn.ui.theme.GroupCard
 import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import com.darkprince.vpn.ui.theme.LocalBottomInset
 import com.darkprince.vpn.ui.theme.glass
+import com.darkprince.vpn.ui.theme.leadingEmoji
 import com.darkprince.vpn.ui.theme.ink
 import com.darkprince.vpn.ui.theme.nameWithoutEmoji
 import com.darkprince.vpn.ui.vm.HomeUiState
@@ -191,6 +192,10 @@ fun HomeContent(
     val server = state.servers.getOrNull(state.selectedServer)
     val serverName = server?.name?.let(::nameWithoutEmoji)
     val locked = vpnState == VpnState.CONNECTED || vpnState == VpnState.CONNECTING
+    // «🇩🇪 Германия · Франкфурт»: флаг рядом с названием, как у крупных клиентов
+    val serverLabel = serverName?.let { name ->
+        listOfNotNull(server?.name?.let(::leadingEmoji), name).joinToString(" ")
+    }
 
     // Текст переживает саму полосу: пока она уезжает, ей нужно что-то рисовать.
     var lastNotice by remember { mutableStateOf<Notice?>(null) }
@@ -251,20 +256,25 @@ fun HomeContent(
                         VpnState.ERROR -> "Не подключено"
                         VpnState.DISCONNECTED -> "Не защищено"
                     },
-                    style = MaterialTheme.typography.displaySmall,
+                    style = MaterialTheme.typography.displaySmall.copy(
+                        fontSize = 38.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = (-1).sp,
+                    ),
                     color = if (current == VpnState.ERROR) scheme.error else scheme.onBackground,
                 )
                 if (current == VpnState.CONNECTED) {
-                    ConnectedSubtitle(serverName, connectedSince)
+                    ConnectedSubtitle(serverLabel, connectedSince)
                 } else {
                     Text(
                         when (current) {
-                            VpnState.CONNECTING -> serverName ?: ""
+                            VpnState.CONNECTING -> serverLabel ?: ""
                             VpnState.ERROR -> vpnError ?: "Не удалось подключиться"
                             else -> "Нажмите, чтобы подключиться"
                         },
-                        fontSize = 14.sp,
-                        color = ink(0.55f),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = ink(0.6f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 24.dp),
@@ -554,45 +564,62 @@ private fun PowerDisc(vpnState: VpnState, onClick: () -> Unit) {
         if (on) accent.copy(alpha = 0.20f) else ink(if (light) 0.10f else 0.08f), spec, label = "ring",
     )
     val borderColor by animateColorAsState(
-        when {
-            on -> accent.copy(alpha = if (light) 0.55f else 0.45f)
-            else -> ink(if (light) 0.14f else 0.16f)
-        }, spec, label = "border",
+        if (on) Color.White.copy(alpha = 0.55f) else ink(if (light) 0.14f else 0.18f), spec, label = "border",
     )
+    // Выключено — стекло, включено — залитая аквамариновая «кнопка»:
+    // состояние читается с вытянутой руки.
     val top by animateColorAsState(
         when {
-            on -> accent.copy(alpha = if (light) 0.26f else 0.28f)
+            on -> Color(0xFF7BF7E8)
             light -> Color.White.copy(alpha = 0.95f)
-            else -> ink(0.12f)
+            else -> ink(0.14f)
         }, spec, label = "top",
+    )
+    val mid by animateColorAsState(
+        when {
+            on -> Color(0xFF00BFB0)
+            light -> Color.White.copy(alpha = 0.7f)
+            else -> ink(0.07f)
+        }, spec, label = "mid",
     )
     val bottom by animateColorAsState(
         when {
-            on -> if (light) accent.copy(alpha = 0.08f) else Color(0xFF0096C8).copy(alpha = 0.08f)
+            on -> Color(0xFF0092A8)
             light -> Color.White.copy(alpha = 0.55f)
-            else -> ink(0.03f)
+            else -> ink(0.04f)
         }, spec, label = "bottom",
     )
     val iconColor by animateColorAsState(
         when {
-            on -> if (light) accent else Color(0xFF8FF5E8)
+            on -> Color(0xFF04302D)
             else -> ink(if (light) 0.62f else 0.78f)
         }, spec, label = "icon",
     )
-    val rim = if (light) Color.White else ink(0.25f)
+    val glow by animateColorAsState(
+        if (on) Color(0xFF00E6D2).copy(alpha = if (light) 0.35f else 0.55f) else Color.Transparent,
+        spec, label = "glow",
+    )
+    val rim = if (on) Color.White.copy(alpha = 0.55f) else if (light) Color.White else ink(0.22f)
 
     Box(contentAlignment = Alignment.Center) {
         // кольца ничего не зажимают: они крупнее самой полосы
         Box(Modifier.requiredSize(300.dp).border(1.dp, ringColor, CircleShape))
         Box(Modifier.requiredSize(244.dp).border(1.dp, ringColor, CircleShape))
 
+        // свечение под включённой кнопкой
+        Box(
+            Modifier
+                .requiredSize(250.dp)
+                .background(Brush.radialGradient(listOf(glow, Color.Transparent)), CircleShape)
+        )
+
         val shape = CircleShape
         Box(
             modifier = Modifier
-                .size(176.dp)
+                .size(180.dp)
                 .clip(shape)
                 // 160° в CSS — от верхнего левого угла к нижнему правому, почти по диагонали
-                .background(Brush.linearGradient(listOf(top, bottom), start = Offset(0f, 0f), end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)))
+                .background(Brush.linearGradient(0f to top, 0.7f to mid, 1f to bottom, start = Offset(0f, 0f), end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)))
                 .border(1.dp, borderColor, shape)
                 .drawBehind {
                     // блик по верхней кромке, как inset 0 1px rgba(255,255,255,.25)
@@ -621,9 +648,9 @@ private fun PowerDisc(vpnState: VpnState, onClick: () -> Unit) {
                 label = "discIcon",
             ) { connected ->
                 if (connected) {
-                    AquaIconView(AquaIcon.ShieldCheck, iconColor, size = 64.dp, stroke = 1.2f)
+                    AquaIconView(AquaIcon.ShieldCheck, iconColor, size = 72.dp, stroke = 1.5f)
                 } else {
-                    AquaIconView(AquaIcon.Power, iconColor, size = 60.dp, stroke = 1.2f)
+                    AquaIconView(AquaIcon.Power, iconColor, size = 66.dp, stroke = 1.4f)
                 }
             }
         }
@@ -677,8 +704,9 @@ private fun ConnectedSubtitle(serverName: String?, since: Long?) {
     ).joinToString(" · ")
     Text(
         label,
-        fontSize = 14.sp,
-        color = ink(0.55f),
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.primary,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.padding(horizontal = 24.dp),
