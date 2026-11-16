@@ -169,7 +169,7 @@ fun AquaNavBar(
         label = "navBubble",
     )
     val activeColor = if (connected || palette.isLight) scheme.primary else scheme.onBackground
-    val bubble = if (palette.isLight) Color.White else ink(0.12f)
+    val bubble = if (palette.isLight) scheme.primary.copy(alpha = 0.12f) else ink(0.12f)
     val inactive = scheme.onSurfaceVariant
 
     val islandShape = RoundedCornerShape(35.dp)
