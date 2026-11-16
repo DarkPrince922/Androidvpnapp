@@ -180,7 +180,7 @@ fun AquaNavBar(
         modifier = modifier
             // системные кнопки навигации рисуются поверх приложения
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
             .fillMaxWidth()
             .height(70.dp)
             .shadow(
@@ -196,7 +196,7 @@ fun AquaNavBar(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 4.dp)
                 .drawBehind {
                     if (items.isEmpty()) return@drawBehind
                     val cell = size.width / items.size
@@ -236,7 +236,7 @@ fun AquaNavBar(
                         Text(
                             item.label,
                             color = color,
-                            fontSize = 10.sp,
+                            fontSize = if (items.size >= 6) 9.sp else 10.sp,
                             fontWeight = FontWeight.Medium,
                             maxLines = 1,
                             softWrap = false,

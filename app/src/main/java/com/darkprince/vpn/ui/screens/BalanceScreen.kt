@@ -445,7 +445,7 @@ private fun Pill(
         modifier = modifier
             .height(44.dp)
             .clip(shape)
-            .background(if (selected) scheme.primary else ink(0.05f))
+            .background(if (selected) scheme.primary.copy(alpha = 0.16f) else ink(0.05f))
             .border(1.dp, if (selected) scheme.primary else ink(0.12f), shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),
@@ -454,7 +454,7 @@ private fun Pill(
         Text(
             text,
             style = MaterialTheme.typography.labelLarge,
-            color = if (selected) scheme.onPrimary else scheme.onSurface,
+            color = if (selected) scheme.primary else scheme.onSurface,
             maxLines = 1,
         )
     }
