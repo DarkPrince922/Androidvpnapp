@@ -37,7 +37,6 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.ui.theme.BrandColors
 import com.darkprince.vpn.ui.theme.GlassSearchField
-import com.darkprince.vpn.ui.theme.LocalPalette
 import com.darkprince.vpn.ui.theme.glass
 import com.darkprince.vpn.ui.theme.ink
 import com.darkprince.vpn.ui.vm.AppsViewModel
@@ -47,7 +46,6 @@ import com.darkprince.vpn.ui.vm.SplitMode
 fun AppsScreen(viewModel: AppsViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
-    val glassFill = LocalPalette.current.glassFill
 
     Column(
         modifier = Modifier
@@ -158,72 +156,74 @@ fun AppsScreen(viewModel: AppsViewModel) {
                 com.darkprince.vpn.ui.theme.LoadingCapsule("Загружаем приложения")
             } else {
                 val apps = state.visibleApps
-                LazyColumn(modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp)) {
-                    items(apps.size, key = { apps[it].packageName }) { index ->
-                        val app = apps[index]
-                        val icon = remember(app.packageName) {
-                            app.icon?.let { drawable ->
-                                try {
-                                    drawable.toBitmap(96, 96).asImageBitmap()
-                                } catch (_: Exception) {
-                                    null
+                // Список — окно со скруглёнными углами и сверху, и снизу: строки
+                // уходят под край окна, а не режутся прямой линией у экрана.
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(bottom = 16.dp)
+                        .glass(RoundedCornerShape(24.dp)),
+                ) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(apps.size, key = { apps[it].packageName }) { index ->
+                            val app = apps[index]
+                            val icon = remember(app.packageName) {
+                                app.icon?.let { drawable ->
+                                    try {
+                                        drawable.toBitmap(96, 96).asImageBitmap()
+                                    } catch (_: Exception) {
+                                        null
+                                    }
                                 }
                             }
-                        }
-                        // одна «плита»: у первой строки скруглён верх, у последней — низ
-                        val shape = RoundedCornerShape(
-                            topStart = if (index == 0) 24.dp else 0.dp,
-                            topEnd = if (index == 0) 24.dp else 0.dp,
-                            bottomStart = if (index == apps.lastIndex) 24.dp else 0.dp,
-                            bottomEnd = if (index == apps.lastIndex) 24.dp else 0.dp,
-                        )
-                        Column(Modifier.clip(shape).background(glassFill)) {
-                            if (index > 0) androidx.compose.material3.HorizontalDivider(color = ink(0.07f))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { viewModel.toggle(app.packageName) }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (icon != null) {
-                                    Image(
-                                        bitmap = icon,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)),
+                            Column {
+                                if (index > 0) androidx.compose.material3.HorizontalDivider(color = ink(0.07f))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.toggle(app.packageName) }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (icon != null) {
+                                        Image(
+                                            bitmap = icon,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)),
+                                        )
+                                    } else {
+                                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(ink(0.08f)))
+                                    }
+                                    Spacer(Modifier.size(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            app.label,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            app.packageName,
+                                            fontSize = 11.sp,
+                                            color = ink(0.4f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    Switch(
+                                        checked = app.packageName in state.selected,
+                                        onCheckedChange = { viewModel.toggle(app.packageName) },
+                                        colors = SwitchDefaults.colors(
+                                            checkedTrackColor = scheme.primary,
+                                            checkedThumbColor = scheme.onPrimary,
+                                            checkedBorderColor = Color.Transparent,
+                                            uncheckedTrackColor = ink(0.14f),
+                                            uncheckedThumbColor = ink(0.7f),
+                                            uncheckedBorderColor = Color.Transparent,
+                                        ),
                                     )
-                                } else {
-                                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(ink(0.08f)))
                                 }
-                                Spacer(Modifier.size(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        app.label,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        app.packageName,
-                                        fontSize = 11.sp,
-                                        color = ink(0.4f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Switch(
-                                    checked = app.packageName in state.selected,
-                                    onCheckedChange = { viewModel.toggle(app.packageName) },
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = scheme.primary,
-                                        checkedThumbColor = scheme.onPrimary,
-                                        checkedBorderColor = Color.Transparent,
-                                        uncheckedTrackColor = ink(0.14f),
-                                        uncheckedThumbColor = ink(0.7f),
-                                        uncheckedBorderColor = Color.Transparent,
-                                    ),
-                                )
                             }
                         }
                     }
