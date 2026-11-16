@@ -13,3 +13,4 @@ for screen in home_off home_on home_light servers settings; do
 done
 # shots
 # shots 2
+# shots 3
