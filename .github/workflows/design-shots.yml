@@ -1,0 +1,59 @@
+name: Design shots
+
+# Снимки экранов с эмулятора: собираем debug, открываем отладочный просмотр
+# с поддельными данными и кладём PNG в ветку design-shots.
+on:
+  push:
+    branches: [aqua-design]
+    paths:
+      - scripts/design-shots.sh
+      - .github/workflows/design-shots.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: bash scripts/download-libv2ray.sh
+      - run: bash scripts/download-geodata.sh
+      - name: Build hev-socks5-tunnel
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          bash scripts/compile-hevtun.sh
+      - run: ./gradlew --no-daemon assembleDebug
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash scripts/design-shots.sh
+
+      - name: Publish to design-shots branch
+        run: |
+          git config user.name "design-shots"
+          git config user.email "design-shots@users.noreply.github.com"
+          git checkout --orphan design-shots
+          git rm -rf . >/dev/null 2>&1 || true
+          mkdir -p shots && cp /tmp/shots/*.png shots/
+          git add shots
+          git commit -m "design shots for ${GITHUB_SHA} [skip ci]"
+          git push -f origin design-shots

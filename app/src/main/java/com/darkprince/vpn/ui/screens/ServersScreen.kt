@@ -1,12 +1,14 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,13 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,100 +31,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.core.model.ProxyProfile
-import com.darkprince.vpn.ui.theme.EmojiTile
-import com.darkprince.vpn.ui.theme.PingChip
-import com.darkprince.vpn.ui.theme.PingPendingChip
-import com.darkprince.vpn.ui.theme.SectionHeader
-import com.darkprince.vpn.ui.theme.TransportBadge
+import com.darkprince.vpn.ui.theme.AquaIcon
+import com.darkprince.vpn.ui.theme.AquaIconView
+import com.darkprince.vpn.ui.theme.glass
+import com.darkprince.vpn.ui.theme.ink
 import com.darkprince.vpn.ui.theme.leadingEmoji
 import com.darkprince.vpn.ui.theme.nameWithoutEmoji
+import com.darkprince.vpn.ui.vm.HomeUiState
 import com.darkprince.vpn.ui.vm.HomeViewModel
 import kotlinx.coroutines.delay
 
-@Composable
-fun ServersScreen(viewModel: HomeViewModel) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    val notice by viewModel.notice.collectAsStateWithLifecycle()
-
-    LaunchedEffect(notice) {
-        val shown = notice ?: return@LaunchedEffect
-        delay(if (shown.ok) 2500 else 4500)
-        viewModel.consumeNotice()
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Серверы", style = MaterialTheme.typography.headlineSmall)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (state.pinging) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    IconButton(onClick = { viewModel.pingAll() }) {
-                        Icon(Icons.Default.Speed, contentDescription = "Проверить пинг")
-                    }
-                }
-                IconButton(onClick = { viewModel.refresh(forceServers = true, notify = true) }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Обновить список")
-                }
-            }
-        }
-
-        // тот же итог обновления, что и на главной: кнопка здесь такая же,
-        // и молчать в ответ на неё было бы так же непонятно
-        notice?.let { NoticeBar(it) }
-
-        Spacer(Modifier.height(4.dp))
-
-        if (state.servers.isEmpty()) {
-            Text(
-                "Список серверов пуст. Проверьте подписку.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        } else {
-            SectionHeader("Доступные узлы · ${state.servers.size}")
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
-            ) {
-                itemsIndexed(state.servers) { index, server ->
-                    ServerRow(
-                        server = server,
-                        selected = index == state.selectedServer,
-                        ping = state.pings[server.key],
-                        pinging = state.pinging,
-                        onClick = { viewModel.selectServer(index) },
-                    )
-                }
-            }
-        }
-    }
-}
-
 /**
- * Строка сервера: слева плитка с флагом из названия, справа — метки
- * транспорта и формата конфига. Выбранный узел обведён акцентной рамкой.
+ * Строка сервера в стеклянной группе: плитка с флагом, название, подпись
+ * из меток транспорта и задержка справа. Выбранный узел подсвечен аквой
+ * слева направо и полоской у края, цифра у него акцентная.
  */
 @Composable
 internal fun ServerRow(
@@ -137,87 +64,87 @@ internal fun ServerRow(
     onClick: () -> Unit,
     pinging: Boolean = false,
 ) {
-    val accent = MaterialTheme.colorScheme.primary
-    val borderColor by animateColorAsState(
-        targetValue = if (selected) accent.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-        animationSpec = tween(250),
-        label = "serverBorder",
-    )
-    // Выбранный узел — заливка, гаснущая слева направо, и полоска у левого
-    // края. Ровная заливка всей строки сливалась с рамкой в одно пятно.
+    val scheme = MaterialTheme.colorScheme
+    val accent = scheme.primary
     val glow by animateColorAsState(
-        targetValue = if (selected) accent.copy(alpha = 0.16f) else Color.Transparent,
+        targetValue = if (selected) Color(0xFF00D6C4) else Color.Transparent,
         animationSpec = tween(250),
         label = "serverGlow",
     )
-    val surface = MaterialTheme.colorScheme.surface
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(surface)
-            .background(Brush.horizontalGradient(listOf(glow, glow.copy(alpha = glow.alpha * 0.2f))))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(glow.copy(alpha = glow.alpha * 0.16f), glow.copy(alpha = glow.alpha * 0.03f))
+                )
+            )
             .drawBehind {
-                if (selected) {
-                    val inset = 12.dp.toPx()
-                    drawRoundRect(
-                        color = accent,
-                        topLeft = Offset(0f, inset),
-                        size = Size(3.dp.toPx(), size.height - inset * 2),
-                        cornerRadius = CornerRadius(3.dp.toPx()),
-                    )
-                }
+                if (selected) drawRect(accent, size = Size(3.dp.toPx(), size.height), topLeft = Offset.Zero)
             }
-            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
-            .padding(14.dp),
+            .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        EmojiTile(emoji = leadingEmoji(server.name) ?: "🌐", tint = accent)
-        Spacer(Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(ink(0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(leadingEmoji(server.name) ?: "🌐", fontSize = 22.sp)
+        }
+        Spacer(Modifier.width(14.dp))
 
         Column(Modifier.weight(1f)) {
             Text(
                 nameWithoutEmoji(server.name),
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.5.sp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
-            // подпись узла из панели Remnawave, если её там задали
-            server.serverDescription?.let { note ->
-                Spacer(Modifier.height(2.dp))
+            // подпись узла из панели Remnawave, если её там задали, иначе — метки
+            val tags = server.serverDescription ?: server.transportParts.joinToString(" · ").uppercase()
+            Text(
+                tags,
+                fontSize = 11.sp,
+                letterSpacing = 0.44.sp,
+                color = scheme.onBackground.copy(alpha = 0.45f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+
+        val unit = scheme.onBackground.copy(alpha = 0.5f)
+        when {
+            ping != null && ping < 0 -> Text(
+                "нет",
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Light,
+                color = scheme.error,
+                maxLines = 1,
+            )
+            ping != null -> Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    note,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ping.toString(),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Light,
+                    color = if (selected) accent else scheme.onBackground,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    " мс",
+                    fontSize = 11.sp,
+                    color = if (selected) accent.copy(alpha = 0.7f) else unit,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                    maxLines = 1,
                 )
             }
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                server.transportParts.forEach { TransportBadge(it) }
-            }
-        }
-
-        // пока идёт замер — заглушка того же размера, чтобы строки не прыгали
-        when {
-            ping != null -> {
-                Spacer(Modifier.width(8.dp))
-                PingChip(ping)
-            }
-            pinging -> {
-                Spacer(Modifier.width(8.dp))
-                PingPendingChip()
-            }
-        }
-        if (selected) {
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                Icons.Default.CheckCircle,
-                contentDescription = "Выбран",
-                tint = accent,
-                modifier = Modifier.size(20.dp),
-            )
+            pinging -> LoadingDots(color = unit)
         }
     }
 }

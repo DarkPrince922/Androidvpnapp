@@ -1,5 +1,6 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.foundation.Image
@@ -53,7 +54,7 @@ fun AttachmentImage(fileId: String, url: String, onOpen: (String) -> Unit) {
                 .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
-        ) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
+        ) { LoadingDots() }
 
         image!!.isSuccess -> Image(
             bitmap = image!!.getOrThrow(),

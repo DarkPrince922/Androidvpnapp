@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import android.os.Build
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -100,7 +102,7 @@ fun AdminGate(
         content()
     } else {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            LoadingCapsule("Проверяем доступ", fullScreen = true)
         }
     }
 }

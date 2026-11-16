@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -192,7 +194,7 @@ fun LoginScreen(
         Spacer(Modifier.height(16.dp))
 
         if (state.waitingTelegram) {
-            CircularProgressIndicator()
+            LoadingDots()
             Spacer(Modifier.height(12.dp))
             Text(
                 "Откройте Telegram и нажмите «Start», ждём подтверждения…",
@@ -212,12 +214,6 @@ fun LoginScreen(
                     modifier = Modifier.size(26.dp),
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Войти через Telegram — если вы уже пользовались нашим ботом",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
 
         Spacer(Modifier.height(20.dp))

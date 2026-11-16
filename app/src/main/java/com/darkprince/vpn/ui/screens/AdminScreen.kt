@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import com.darkprince.vpn.ui.theme.BrandColors
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.data.api.dto.AdminUserDetailDto
@@ -8,6 +10,14 @@ import com.darkprince.vpn.data.api.dto.AdminTariffOptionDto
 import com.darkprince.vpn.data.api.dto.AdminSubscriptionInfoDto
 import com.darkprince.vpn.data.api.dto.AdminSubscriptionAction
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import com.darkprince.vpn.ui.theme.AquaIcon
+import com.darkprince.vpn.ui.theme.AquaIconView
+import com.darkprince.vpn.ui.theme.GlassSegments
+import com.darkprince.vpn.ui.theme.glass
+import com.darkprince.vpn.ui.theme.ink
+import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.BorderStroke
@@ -103,27 +113,47 @@ fun AdminScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .padding(bottom = com.darkprince.vpn.ui.theme.LocalBottomInset.current),
     ) {
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                // Заголовок называет открытый раздел, а не всегда обращения:
-                // подпись, которая спорит с выбранной кнопкой, читается как
-                // ошибка приложения.
-                Text(state.section.title, style = MaterialTheme.typography.headlineSmall)
-                val roles = state.permissions.roles.joinToString(", ").takeIf { it.isNotBlank() }
-                Text(
-                    roles?.let { "Роль: $it" } ?: "Панель управления",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = viewModel::refresh, enabled = !state.loading) {
+            // Заголовок называет открытый раздел; у обращений — «Входящие» и
+            // число обращений в выборке.
+            Text(
+                if (state.section == AdminSection.TICKETS) "Входящие" else state.section.title,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.8).sp,
+                maxLines = 1,
+            )
+            Spacer(Modifier.weight(1f))
+            // роль — маленькой плашкой: нужна, чтобы понять, чьи права действуют,
+            // но не заголовку
+            val roles = state.permissions.roles.joinToString(", ").takeIf { it.isNotBlank() }
+            Text(
+                roles ?: "Панель",
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = ink(0.75f),
+                maxLines = 1,
+                modifier = Modifier
+                    .widthIn(max = 120.dp)
+                    .glass(RoundedCornerShape(50))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .glass(CircleShape)
+                    .clickable(enabled = !state.loading, onClick = viewModel::refresh),
+                contentAlignment = Alignment.Center,
+            ) {
                 if (state.loading) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    LoadingDots()
                 } else {
-                    Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                    AquaIconView(AquaIcon.Refresh, ink(0.85f), size = 19.dp, stroke = 1.6f)
                 }
             }
         }
@@ -142,18 +172,37 @@ fun AdminScreen(
         }
 
         // Разделы, которых роль не даёт, не показываем вовсе: переключатель
-        // с недоступными кнопками обещал бы то, чего нет.
-        // разделов бывает до шести — ряд прокручивается, а не сжимается
+        // с недоступными кнопками обещал бы то, чего нет. Разделов бывает до
+        // шести — ряд прокручивается, а не сжимается.
         Row(
             modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             state.sections.forEach { section ->
-                FilterChip(
-                    selected = state.section == section,
-                    onClick = { viewModel.setSection(section) },
-                    label = { Text(section.title, fontSize = 12.sp) },
-                )
+                val selected = state.section == section
+                Column(
+                    modifier = Modifier
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                        ) { viewModel.setSection(section) }
+                        .padding(top = 8.dp),
+                ) {
+                    Text(
+                        section.title,
+                        fontSize = 14.5.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                        color = if (selected) MaterialTheme.colorScheme.onBackground else ink(0.5f),
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    Box(
+                        Modifier
+                            .height(2.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    )
+                }
             }
         }
 
@@ -185,17 +234,31 @@ private fun TicketsSection(
     state: AdminUiState,
     onOpenTicket: (Long) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        TicketFilter.entries.forEach { filter ->
-            FilterChip(
-                selected = state.filter == filter,
-                onClick = { viewModel.setFilter(filter) },
-                label = { Text(filter.title, fontSize = 12.sp) },
+    GlassSegments(
+        items = TicketFilter.entries.map { it to it.title },
+        selected = state.filter,
+        onSelect = { viewModel.setFilter(it) },
+    )
+    val waiting = state.tickets.count { it.needsReply }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (state.tickets.isEmpty()) "" else "Показано ${state.tickets.size}",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (waiting > 0) {
+            Text(
+                "Ждут ответа: $waiting",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = BrandColors.Warning,
             )
         }
     }
-
-    Spacer(Modifier.height(10.dp))
 
     when {
         state.loading && state.tickets.isEmpty() -> Loader()
@@ -203,9 +266,17 @@ private fun TicketsSection(
         state.tickets.isEmpty() && state.error == null ->
             AdminNotice("Обращений в этой выборке нет.")
 
-        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.tickets, key = { it.id }) { ticket ->
-                AdminTicketRow(ticket) { onOpenTicket(ticket.id) }
+        else -> LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 8.dp)) {
+            // ждущие ответа — первыми, остальные в порядке, в каком пришли;
+            // всё — одной стеклянной плитой, как список людей
+            item {
+                val sorted = state.tickets.sortedByDescending { it.needsReply }
+                Column(Modifier.fillMaxWidth().glass()) {
+                    sorted.forEachIndexed { index, ticket ->
+                        if (index > 0) androidx.compose.material3.HorizontalDivider(color = ink(0.07f))
+                        AdminTicketRow(ticket) { onOpenTicket(ticket.id) }
+                    }
+                }
             }
         }
     }
@@ -214,7 +285,7 @@ private fun TicketsSection(
 @Composable
 private fun Loader() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
+        LoadingCapsule("Загружаем", fullScreen = true)
     }
 }
 
@@ -422,20 +493,15 @@ private fun suggestPromoCode(): String {
 
 @Composable
 private fun SummaryCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .glass()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(8.dp))
-            content()
-        }
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        content()
     }
 }
 
@@ -468,89 +534,143 @@ private fun PeopleSection(
     state: AdminUiState,
     onOpenPerson: (AdminUserDto) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = state.search,
-            onValueChange = viewModel::setSearch,
-            placeholder = { Text("Имя, @ник или Telegram ID") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(6.dp))
-        IconButton(onClick = viewModel::searchPeople, enabled = !state.loading) {
-            Icon(Icons.Default.Search, contentDescription = "Искать")
-        }
-    }
-
-    Spacer(Modifier.height(8.dp))
-
-    // Два ряда: сперва кого показывать, потом в каком порядке. Оба
-    // прокручиваются вбок — на узком экране они не помещаются, а прятать
-    // их в меню значит спрятать сортировку, ради которой сюда и заходят.
-    ChipRow {
-        PeopleFilter.entries.forEach { filter ->
-            FilterChip(
-                selected = state.peopleFilter == filter,
-                onClick = { viewModel.setPeopleFilter(filter) },
-                label = { Text(filter.title, fontSize = 12.sp) },
+    // Поиск: стеклянное поле, просто «Поиск». Искать можно клавишей на
+    // клавиатуре или значком слева.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .glass(RoundedCornerShape(23.dp))
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.clip(CircleShape).clickable(enabled = !state.loading, onClick = viewModel::searchPeople),
+        ) { AquaIconView(AquaIcon.Search, ink(0.6f), size = 19.dp, stroke = 1.6f) }
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (state.search.isEmpty()) {
+                Text("Поиск", fontSize = 14.sp, color = ink(0.5f))
+            }
+            androidx.compose.foundation.text.BasicTextField(
+                value = state.search,
+                onValueChange = viewModel::setSearch,
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 14.sp,
+                ),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { viewModel.searchPeople() },
+                ),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
-    Spacer(Modifier.height(6.dp))
-    ChipRow {
-        PeopleSort.entries.forEach { sort ->
-            FilterChip(
-                selected = state.peopleSort == sort,
-                onClick = { viewModel.setPeopleSort(sort) },
-                label = { Text(sort.title, fontSize = 12.sp) },
-            )
-        }
-    }
 
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(10.dp))
 
-    if (state.peopleTotal > 0) {
+    // Кого показывать — одной капсулой
+    GlassSegments(
+        items = PeopleFilter.entries.map { filter ->
+            filter to when (filter) {
+                PeopleFilter.ANY -> "Все"
+                PeopleFilter.ACTIVE -> "Активные"
+                PeopleFilter.TRIAL -> "Пробные"
+                PeopleFilter.EXPIRED -> "Истекшие"
+            }
+        },
+        selected = state.peopleFilter,
+        onSelect = viewModel::setPeopleFilter,
+    )
+
+    // Счётчик слева, порядок справа: сортировка выбирается из меню
+    var sortOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 2.dp, top = 10.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
-            if (state.sortedLocally) {
-                "Показано ${state.people.size} из ${state.peopleTotal} — " +
-                    "панель не умеет так сортировать, порядок задан на телефоне"
-            } else {
-                "Показано ${state.people.size} из ${state.peopleTotal}"
+            when {
+                state.peopleTotal <= 0 -> ""
+                state.sortedLocally -> "Показано ${state.people.size} из ${state.peopleTotal} · порядок задан на телефоне"
+                else -> "Показано ${state.people.size} из ${state.peopleTotal}"
             },
-            style = MaterialTheme.typography.labelSmall,
+            fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(6.dp))
+        Box {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { sortOpen = true }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(state.peopleSort.title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = ink(0.8f))
+                Spacer(Modifier.width(4.dp))
+                AquaIconView(AquaIcon.Chevron, ink(0.6f), size = 14.dp, stroke = 1.6f, modifier = Modifier.rotate(90f))
+            }
+            androidx.compose.material3.DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
+                PeopleSort.entries.forEach { sort ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = {
+                            Text(
+                                sort.title,
+                                fontWeight = if (sort == state.peopleSort) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        },
+                        onClick = { sortOpen = false; viewModel.setPeopleSort(sort) },
+                    )
+                }
+            }
+        }
     }
 
     when {
         state.loading && state.people.isEmpty() -> Loader()
         state.people.isEmpty() -> AdminNotice("Никого не нашлось. Попробуйте другой запрос.")
-        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.people, key = { it.id }) { person ->
-                PersonRow(person) { onOpenPerson(person) }
+        else -> LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 8.dp)) {
+            // весь список — одной плитой, статус подписки — цветной точкой
+            item {
+                Column(Modifier.fillMaxWidth().glass()) {
+                    state.people.forEachIndexed { index, person ->
+                        if (index > 0) androidx.compose.material3.HorizontalDivider(color = ink(0.07f))
+                        PersonRow(person) { onOpenPerson(person) }
+                    }
+                }
             }
             if (state.hasMorePeople) {
                 item {
                     // Кнопкой, а не по достижению конца списка: подгрузка
                     // «сама собой» на длинном списке легко уносит человека
                     // дальше, чем он собирался, и обратно он уже не найдёт.
-                    OutlinedButton(
-                        onClick = viewModel::loadMorePeople,
-                        enabled = !state.loadingMore,
-                        modifier = Modifier.fillMaxWidth(),
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 10.dp)
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .glass(RoundedCornerShape(23.dp))
+                            .clickable(enabled = !state.loadingMore, onClick = viewModel::loadMorePeople),
+                        contentAlignment = Alignment.Center,
                     ) {
                         if (state.loadingMore) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            LoadingDots()
                         } else {
-                            Text("Показать ещё")
+                            Text("Показать ещё", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
             }
         }
     }
-
 }
 
 /** Ряд чипов, который прокручивается вбок, если не помещается. */
@@ -567,37 +687,46 @@ private fun ChipRow(content: @Composable RowScope.() -> Unit) {
 
 @Composable
 private fun PersonRow(person: AdminUserDto, onClick: () -> Unit) {
-    Card(
+    // цвет точки — состояние подписки: активная, пробная, истёкшая, нет
+    val dot = when {
+        !person.hasSubscription -> ink(0.35f)
+        person.subscriptionIsTrial -> BrandColors.Warning
+        person.daysRemaining > 0 -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.error
+    }
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    person.displayName,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    rubles(person.balanceKopeks),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            Spacer(Modifier.height(4.dp))
+        Box(Modifier.size(9.dp).clip(CircleShape).background(dot))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                person.displayName,
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 subscriptionSummary(person),
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            rubles(person.balanceKopeks),
+            fontSize = 13.5.sp,
+            fontWeight = if (person.balanceKopeks > 0) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (person.balanceKopeks > 0) MaterialTheme.colorScheme.onBackground else ink(0.45f),
+            maxLines = 1,
+        )
     }
 }
 
@@ -634,53 +763,89 @@ private fun AdminNotice(text: String) {
 
 @Composable
 private fun AdminTicketRow(ticket: AdminTicketDto, onClick: () -> Unit) {
-    Card(
+    val scheme = MaterialTheme.colorScheme
+    // Срочное — жёлтым, новое — акцентом, отвеченное и закрытое — тише
+    val needs = ticket.needsReply
+    val tint = when {
+        needs -> BrandColors.Warning
+        ticket.status.equals("open", true) || ticket.status.equals("pending", true) -> scheme.primary
+        ticket.status.equals("answered", true) -> scheme.secondary
+        else -> null
+    }
+    val name = ticket.user?.displayName ?: "Пользователь удалён"
+    val quiet = !needs && !ticket.status.equals("open", true) && !ticket.status.equals("pending", true)
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(
-            1.dp,
-            // Ждущее ответа обращение обводим акцентом: в списке из тридцати
-            // строк важно не «сколько всего», а «где меня ждут».
-            if (ticket.needsReply) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-            },
-        ),
+            .then(
+                if (needs) Modifier.background(
+                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                        listOf(BrandColors.Warning.copy(alpha = 0.10f), Color.Transparent)
+                    )
+                ) else Modifier
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background((tint ?: Color.White).copy(alpha = if (tint != null && !quiet) 0.16f else 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                name.trimStart('@', ' ').take(1).uppercase().ifEmpty { "?" },
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (tint != null && !quiet) tint else ink(0.8f),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     ticket.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    fontWeight = if (quiet) FontWeight.Medium else FontWeight.Bold,
+                    color = if (quiet) ink(0.75f) else scheme.onBackground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(8.dp))
-                StatusChip(ticket.status)
+                Text(ticketTime(ticket.updatedAt), fontSize = 11.sp, color = ink(0.4f))
             }
-            Spacer(Modifier.height(4.dp))
             Text(
-                ticket.user?.displayName ?: "Пользователь удалён",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                listOfNotNull(name, ticket.lastMessage?.messageText?.takeIf { it.isNotBlank() }).joinToString(" — "),
+                fontSize = 12.5.sp,
+                color = ink(0.5f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
             )
-            ticket.lastMessage?.messageText?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+        }
+        if (tint != null && !ticket.isClosed) {
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.size(9.dp).clip(CircleShape).background(tint))
         }
     }
 }
+
+/** «14:05» сегодня, «вчера», иначе «12 нояб.»; время сервер отдаёт в UTC. */
+private fun ticketTime(raw: String): String = runCatching {
+    val zone = java.time.ZoneId.systemDefault()
+    val instant = runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+        .getOrElse { java.time.LocalDateTime.parse(raw.take(19)).toInstant(java.time.ZoneOffset.UTC) }
+    val local = instant.atZone(zone)
+    val today = java.time.LocalDate.now(zone)
+    when (local.toLocalDate()) {
+        today -> java.time.format.DateTimeFormatter.ofPattern("HH:mm").format(local)
+        today.minusDays(1) -> "вчера"
+        else -> java.time.format.DateTimeFormatter.ofPattern("d MMM", Locale("ru")).format(local)
+    }
+}.getOrDefault("")
 
 /** Статус обращения цветом: открытое зовёт, закрытое молчит. */
 @Composable
@@ -780,7 +945,7 @@ fun AdminTicketScreen(
             state.ticketLoading -> Box(
                 Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            ) { LoadingCapsule("Загружаем обращение", fullScreen = true) }
 
             ticket == null -> Box(
                 Modifier.fillMaxSize(),
@@ -843,7 +1008,7 @@ fun AdminTicketScreen(
                             enabled = !state.sending && reply.isNotBlank(),
                         ) {
                             if (state.sending) {
-                                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                                LoadingDots()
                             } else {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Send,

@@ -1,6 +1,22 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import androidx.compose.foundation.background
+import com.darkprince.vpn.ui.theme.ink
+import com.darkprince.vpn.ui.theme.glass
+import com.darkprince.vpn.ui.theme.AquaIconView
+import com.darkprince.vpn.ui.theme.AquaIcon
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.rotate
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,8 +77,15 @@ fun GiftsScreen(viewModel: GiftsViewModel, onShare: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Spacer(Modifier.height(4.dp))
-            Text("Подарки", style = MaterialTheme.typography.headlineSmall)
+            Column(Modifier.padding(start = 4.dp, top = 12.dp)) {
+                Text("Подарки", style = MaterialTheme.typography.displaySmall)
+                Text(
+                    "Подарить подписку другу или активировать код",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
             ServiceDownBanner(modifier = Modifier.padding(top = 10.dp))
         }
 
@@ -77,31 +100,59 @@ fun GiftsScreen(viewModel: GiftsViewModel, onShare: (String) -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        CircularProgressIndicator(Modifier.height(24.dp))
+                        LoadingDots()
                         Text("Ждём оплату. Код подарка появится здесь, как только деньги дойдут")
                     }
                 }
             }
         }
 
-        item { SectionHeader("Мне подарили код") }
+        // Код, который подарили, — строкой; нажали — раскрывается поле
         item {
-            GroupCard {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = code,
-                        onValueChange = { code = it.trim() },
-                        label = { Text("Код подарка") },
-                        placeholder = { Text("GIFT-…") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+            var codeOpen by rememberSaveable { mutableStateOf(false) }
+            Column(Modifier.fillMaxWidth().glass().animateContentSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { codeOpen = !codeOpen }
+                        .padding(horizontal = 16.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier.size(34.dp).clip(RoundedCornerShape(12.dp)).background(ink(0.08f)),
+                        contentAlignment = Alignment.Center,
+                    ) { AquaIconView(AquaIcon.Bolt, ink(0.85f), size = 18.dp, stroke = 1.5f) }
+                    Spacer(Modifier.width(12.dp))
+                    Text("Мне подарили код", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    AquaIconView(
+                        AquaIcon.Chevron,
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        size = 18.dp,
+                        stroke = 1.6f,
+                        modifier = Modifier.rotate(if (codeOpen) -90f else 90f),
                     )
-                    Button(
-                        onClick = { viewModel.activate(code) },
-                        enabled = !busy && code.length >= 8,
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        shape = RoundedCornerShape(16.dp),
-                    ) { Text("Активировать") }
+                }
+                if (codeOpen) {
+                    Column(
+                        Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = code,
+                            onValueChange = { code = it.trim() },
+                            placeholder = { Text("GIFT-…") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(18.dp),
+                            colors = giftFieldColors(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Button(
+                            onClick = { viewModel.activate(code) },
+                            enabled = !busy && code.length >= 8,
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                            shape = RoundedCornerShape(26.dp),
+                        ) { Text("Активировать", fontWeight = FontWeight.Bold) }
+                    }
                 }
             }
         }
@@ -113,11 +164,10 @@ fun GiftsScreen(viewModel: GiftsViewModel, onShare: (String) -> Unit) {
         if (state.loading && config == null) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    CircularProgressIndicator()
+                    LoadingCapsule("Загружаем подарки")
                 }
             }
         } else if (config != null && config.isEnabled && config.tariffs.isNotEmpty()) {
-            item { SectionHeader("Подарить подписку") }
             item {
                 GiftForm(
                     tariffs = config.tariffs,
@@ -210,6 +260,16 @@ private fun ReadyCard(ready: GiftReady, onShare: (String) -> Unit, onDone: () ->
 }
 
 @Composable
+private fun giftFieldColors() = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+    unfocusedBorderColor = ink(0.14f),
+    focusedBorderColor = MaterialTheme.colorScheme.primary,
+)
+
+/**
+ * Подарок мастером: Тариф → Срок → Кому и оплата. Один шаг на экран, внизу
+ * «Назад» и «Далее»; на последнем шаге «Далее» становится «Подарить за …».
+ */
+@Composable
 private fun GiftForm(
     tariffs: List<GiftTariffDto>,
     balanceKopeks: Long,
@@ -217,6 +277,8 @@ private fun GiftForm(
     busy: Boolean,
     onBuy: (Long, Int, com.darkprince.vpn.ui.vm.GiftPayment, String, String) -> Unit,
 ) {
+    val scheme = MaterialTheme.colorScheme
+    var step by rememberSaveable { mutableStateOf(1) }
     var tariffId by rememberSaveable { mutableStateOf(tariffs.first().id) }
     val tariff = tariffs.firstOrNull { it.id == tariffId } ?: tariffs.first()
     var days by rememberSaveable(tariff.id) { mutableStateOf(tariff.periods.first().days) }
@@ -228,89 +290,228 @@ private fun GiftForm(
     val payment = payments.firstOrNull { (it.methodId ?: "balance") == paymentKey } ?: defaultPayment
     var recipient by rememberSaveable { mutableStateOf("") }
     var message by rememberSaveable { mutableStateOf("") }
+    val notEnough = payment.fromBalance && balanceKopeks < period.priceKopeks
 
-    GroupCard {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Choices(
-                items = tariffs.map { it.id.toString() to it.name },
-                selected = tariff.id.toString(),
-                onSelect = { tariffId = it.toLong() },
-            )
-            Choices(
-                items = tariff.periods.map {
-                    it.days.toString() to "${it.days} дн. · ${formatKopeks(it.priceKopeks)}" +
-                        (it.discountPercent?.let { d -> " −$d%" } ?: "")
-                },
-                selected = period.days.toString(),
-                onSelect = { days = it.toInt() },
-            )
-            OutlinedTextField(
-                value = recipient,
-                onValueChange = { recipient = it },
-                label = { Text("Кому (необязательно)") },
-                placeholder = { Text("@ник в Telegram или почта") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = message,
-                onValueChange = { if (it.length <= 300) message = it },
-                label = { Text("Пожелание (необязательно)") },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text("Оплата", style = MaterialTheme.typography.titleSmall)
-            Choices(
-                items = payments.map {
-                    (it.methodId ?: "balance") to
-                        if (it.fromBalance) "С баланса · ${formatKopeks(balanceKopeks)}" else it.label
-                },
-                selected = payment.methodId ?: "balance",
-                onSelect = { paymentKey = it },
-            )
-            if (payment.fromBalance && balanceKopeks < period.priceKopeks) {
+    Column(Modifier.fillMaxWidth()) {
+        // --- шаги ---
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            listOf("Тариф", "Срок", "Кому").forEachIndexed { index, label ->
+                val n = index + 1
+                val done = n < step
+                val active = n == step
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                active -> scheme.primary
+                                done -> scheme.primary.copy(alpha = 0.2f)
+                                else -> ink(0.08f)
+                            }
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (done) AquaIconView(AquaIcon.Check, scheme.primary, size = 14.dp, stroke = 2.6f)
+                    else Text(
+                        n.toString(),
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (active) scheme.onPrimary else ink(0.5f),
+                    )
+                }
+                Spacer(Modifier.width(7.dp))
                 Text(
-                    "На балансе не хватает ${formatKopeks(period.priceKopeks - balanceKopeks)} — выберите карту или СБП",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = BrandColors.Warning,
+                    label,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (active) scheme.onBackground else ink(0.5f),
                 )
+                if (index < 2) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp)
+                            .height(1.dp)
+                            .background(ink(0.15f))
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        when (step) {
+            1 -> {
+                Text("Какой тариф дарим?", fontSize = 13.5.sp, color = scheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+                Spacer(Modifier.height(10.dp))
+                GiftRadioGroup {
+                    tariffs.forEachIndexed { index, t ->
+                        if (index > 0) HorizontalDivider(color = ink(0.07f))
+                        GiftRadioRow(
+                            title = t.name,
+                            trailing = t.periods.minOfOrNull { it.priceKopeks }?.let { "от ${formatKopeks(it)}" },
+                            selected = t.id == tariff.id,
+                            onClick = { tariffId = t.id },
+                        )
+                    }
+                }
+            }
+            2 -> {
+                Text(
+                    "Тариф «${tariff.name}». На сколько дарим?",
+                    fontSize = 13.5.sp,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+                Spacer(Modifier.height(10.dp))
+                GiftRadioGroup {
+                    tariff.periods.forEachIndexed { index, p ->
+                        if (index > 0) HorizontalDivider(color = ink(0.07f))
+                        GiftRadioRow(
+                            title = "${p.days} дней",
+                            badge = p.discountPercent?.let { "−$it%" },
+                            trailing = formatKopeks(p.priceKopeks),
+                            selected = p.days == period.days,
+                            onClick = { days = p.days },
+                        )
+                    }
+                }
+            }
+            else -> {
+                OutlinedTextField(
+                    value = recipient,
+                    onValueChange = { recipient = it },
+                    placeholder = { Text("Кому: @ник в Telegram или почта") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(18.dp),
+                    colors = giftFieldColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = message,
+                    onValueChange = { if (it.length <= 300) message = it },
+                    placeholder = { Text("Пожелание (необязательно)") },
+                    shape = RoundedCornerShape(18.dp),
+                    colors = giftFieldColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "ОПЛАТА",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.6.sp,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 6.dp, top = 16.dp, bottom = 8.dp),
+                )
+                GiftRadioGroup {
+                    payments.forEachIndexed { index, pay ->
+                        if (index > 0) HorizontalDivider(color = ink(0.07f))
+                        val key = pay.methodId ?: "balance"
+                        GiftRadioRow(
+                            title = if (pay.fromBalance) "С баланса" else pay.label,
+                            trailing = if (pay.fromBalance) formatKopeks(balanceKopeks) else null,
+                            selected = key == (payment.methodId ?: "balance"),
+                            onClick = { paymentKey = key },
+                        )
+                    }
+                }
+                if (notEnough) {
+                    Text(
+                        "На балансе не хватает ${formatKopeks(period.priceKopeks - balanceKopeks)} — выберите карту или СБП",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BrandColors.Warning,
+                        modifier = Modifier.padding(start = 6.dp, top = 8.dp),
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (step > 1) {
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .glass(CircleShape)
+                        .clickable { step -= 1 },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AquaIconView(
+                        AquaIcon.Chevron,
+                        ink(0.85f),
+                        size = 20.dp,
+                        stroke = 1.8f,
+                        modifier = Modifier.rotate(180f),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
             }
             Button(
-                onClick = { onBuy(tariff.id, period.days, payment, recipient, message) },
-                enabled = !busy && !(payment.fromBalance && balanceKopeks < period.priceKopeks),
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(18.dp),
-            ) { Text("Подарить за ${formatKopeks(period.priceKopeks)}") }
+                onClick = {
+                    if (step < 3) step += 1
+                    else onBuy(tariff.id, period.days, payment, recipient, message)
+                },
+                enabled = step < 3 || (!busy && !notEnough),
+                modifier = Modifier.weight(1f).height(54.dp),
+                shape = RoundedCornerShape(27.dp),
+            ) {
+                Text(
+                    if (step < 3) "Далее" else "Подарить за ${formatKopeks(period.priceKopeks)}",
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
     }
 }
 
-/** Выбор одного из нескольких — «таблетками», переносятся по строкам. */
+/** Рамка группы вариантов: одна стеклянная плита. */
 @Composable
-private fun Choices(items: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+private fun GiftRadioGroup(content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp))) { content() }
+}
+
+/** Строка выбора с радио-кнопкой: название, отметка, цена справа. */
+@Composable
+private fun GiftRadioRow(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    trailing: String? = null,
+    badge: String? = null,
+) {
     val scheme = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { (key, label) ->
-                    val on = key == selected
-                    val shape = RoundedCornerShape(14.dp)
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (on) scheme.onPrimary else scheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(shape)
-                            .background(if (on) scheme.primary else scheme.onSurface.copy(alpha = 0.04f))
-                            .border(1.dp, if (on) scheme.primary else scheme.outline.copy(alpha = 0.7f), shape)
-                            .clickable { onSelect(key) }
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                    )
-                }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
-            }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) scheme.primary.copy(alpha = 0.10f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .border(2.dp, if (selected) scheme.primary else ink(0.3f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) Box(Modifier.size(10.dp).clip(CircleShape).background(scheme.primary))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            title,
+            fontSize = 14.5.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+            maxLines = 1,
+        )
+        if (badge != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(badge, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = scheme.primary, maxLines = 1)
+        }
+        Spacer(Modifier.weight(1f))
+        if (trailing != null) {
+            Text(trailing, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }

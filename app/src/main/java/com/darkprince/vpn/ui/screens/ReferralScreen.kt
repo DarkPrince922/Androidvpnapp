@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -68,7 +70,7 @@ fun ReferralScreen(viewModel: ReferralViewModel, onShare: (String) -> Unit) {
             item {
                 if (state.loading) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        CircularProgressIndicator()
+                        LoadingCapsule("Загружаем программу")
                     }
                 } else {
                     Text(state.error ?: "Реферальная программа недоступна", color = MaterialTheme.colorScheme.error)

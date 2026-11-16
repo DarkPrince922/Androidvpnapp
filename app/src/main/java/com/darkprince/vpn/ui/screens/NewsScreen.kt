@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -75,7 +77,7 @@ fun NewsScreen(viewModel: NewsViewModel, onOpen: (String) -> Unit) {
             state.loading && state.items.isEmpty() -> Box(
                 Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            ) { LoadingCapsule("Загружаем новости", fullScreen = true) }
 
             state.error != null && state.items.isEmpty() -> NewsNotice(state.error!!)
 
@@ -211,7 +213,7 @@ fun NewsArticleScreen(viewModel: NewsViewModel, slug: String) {
             state.articleLoading -> Box(
                 Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            ) { LoadingCapsule("Открываем новость", fullScreen = true) }
 
             state.articleError != null -> NewsNotice(state.articleError!!)
 

@@ -12,24 +12,24 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.CardGiftcard
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.QrCode2
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.SupportAgent
-import androidx.compose.material.icons.filled.Troubleshoot
-import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.Campaign
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.CardGiftcard
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.LocalOffer
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.ShoppingBag
+import androidx.compose.material.icons.outlined.SupportAgent
+import androidx.compose.material.icons.outlined.Troubleshoot
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -88,10 +88,17 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(8.dp))
-        Text("Настройки", style = MaterialTheme.typography.headlineSmall)
+        Column(Modifier.padding(start = 4.dp, top = 12.dp)) {
+            Text("Ещё", style = MaterialTheme.typography.displaySmall)
+            Text(
+                "Аккаунт, помощь, оформление и подключение",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
         Spacer(Modifier.height(20.dp))
 
         // --- Аккаунт ---
@@ -111,7 +118,7 @@ fun SettingsScreen(
                 else -> user?.firstName
             }
             SettingsRow(
-                icon = Icons.Default.VerifiedUser,
+                icon = Icons.Outlined.VerifiedUser,
                 title = identity,
                 subtitle = hint,
                 showChevron = false,
@@ -122,7 +129,7 @@ fun SettingsScreen(
             if (!guestMode && user != null && user.email == null) {
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.Email,
+                    icon = Icons.Outlined.Email,
                     title = "Привязать почту",
                     subtitle = "Чтобы входить и без Telegram",
                     onClick = onLinkEmail,
@@ -130,7 +137,7 @@ fun SettingsScreen(
             } else if (!guestMode && user?.email != null && user.emailVerified == false) {
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.Email,
+                    icon = Icons.Outlined.Email,
                     title = "Почта не подтверждена",
                     subtitle = "Перейдите по ссылке из письма на ${user.email}",
                     showChevron = false,
@@ -140,7 +147,7 @@ fun SettingsScreen(
             if (guestMode) {
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.ShoppingBag,
+                    icon = Icons.Outlined.ShoppingBag,
                     title = "Своя подписка",
                     subtitle = "Зарегистрируйтесь и купите собственную",
                     onClick = onCreateAccount,
@@ -148,7 +155,7 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(24.dp))
 
         // --- Помощь ---
         SectionHeader("Помощь")
@@ -156,7 +163,7 @@ fun SettingsScreen(
             // Стоит перед поддержкой намеренно: половина обращений — это то,
             // что человек может выяснить сам за пять секунд.
             SettingsRow(
-                icon = Icons.Default.Troubleshoot,
+                icon = Icons.Outlined.Troubleshoot,
                 title = "Почему не работает",
                 subtitle = "Проверить подписку, трафик, устройства и сервер",
                 onClick = onOpenDiagnostics,
@@ -165,7 +172,7 @@ fun SettingsScreen(
             RowDivider()
 
             SettingsRow(
-                icon = Icons.Default.SupportAgent,
+                icon = Icons.Outlined.SupportAgent,
                 title = "Техподдержка",
                 subtitle = when {
                     supportUnreadCount > 0 -> "Новых ответов: $supportUnreadCount"
@@ -182,7 +189,7 @@ fun SettingsScreen(
             if (!guestMode) {
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.Campaign,
+                    icon = Icons.Outlined.Campaign,
                     title = "Новости",
                     subtitle = if (newsUnreadCount > 0) {
                         "Новых: $newsUnreadCount"
@@ -199,7 +206,7 @@ fun SettingsScreen(
                 )
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.Description,
+                    icon = Icons.Outlined.Description,
                     title = "Вопросы и документы",
                     subtitle = "Частые вопросы, правила, оферта, конфиденциальность",
                     onClick = onOpenDocs,
@@ -207,7 +214,7 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(24.dp))
 
         // --- Оформление ---
         SectionHeader("Оформление")
@@ -228,13 +235,13 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(24.dp))
 
         // --- Подключение ---
         SectionHeader("Подключение")
         GroupCard {
             SettingsRow(
-                icon = Icons.Default.Apps,
+                icon = Icons.Outlined.Apps,
                 title = "Приложения через VPN",
                 subtitle = "Какие идут через VPN, а какие в обход",
                 onClick = onOpenApps,
@@ -244,7 +251,7 @@ fun SettingsScreen(
 
             var autoOpen by remember { mutableStateOf(false) }
             SettingsRow(
-                icon = Icons.Default.PlayCircle,
+                icon = Icons.Outlined.PlayCircle,
                 title = "Автоподключение",
                 subtitle = autoConnectTitle(autoConnectMode),
                 onClick = { autoOpen = true },
@@ -263,7 +270,7 @@ fun SettingsScreen(
             RowDivider()
 
             SettingsRow(
-                icon = Icons.Default.SwapHoriz,
+                icon = Icons.Outlined.SwapHoriz,
                 title = "Запасной сервер при сбое",
                 subtitle = if (failover) {
                     "Если выбранный не отвечает, подключимся к ближайшему живому"
@@ -280,7 +287,7 @@ fun SettingsScreen(
             RowDivider()
 
             SettingsRow(
-                icon = Icons.Default.Shield,
+                icon = Icons.Outlined.Shield,
                 title = "Блокировать трафик при обрыве",
                 subtitle = if (killSwitch) {
                     "Пока туннель поднимается заново, сеть не работает"
@@ -297,7 +304,7 @@ fun SettingsScreen(
             if (killSwitch) {
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.Lock,
+                    icon = Icons.Outlined.Lock,
                     title = "Запретить сеть без VPN",
                     subtitle = "Системная настройка: постоянный VPN и блокировка " +
                         "соединений без него. Включается только вручную",
@@ -307,27 +314,27 @@ fun SettingsScreen(
         }
 
         if (!guestMode) {
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(24.dp))
 
             // --- Подписка ---
             SectionHeader("Подписка")
             GroupCard {
                 SettingsRow(
-                    icon = Icons.Default.Devices,
+                    icon = Icons.Outlined.Devices,
                     title = "Подключённые устройства",
                     subtitle = "Отключите лишние, чтобы освободить лимит",
                     onClick = onOpenDevices,
                 )
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.QrCode2,
+                    icon = Icons.Outlined.QrCode2,
                     title = "Поделиться подпиской",
                     subtitle = "QR-код для близких, без доступа к оплате",
                     onClick = onOpenShare,
                 )
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.PersonAdd,
+                    icon = Icons.Outlined.PersonAdd,
                     title = "Пригласить друга",
                     subtitle = "Бонусы с платежей приглашённых и вывод",
                     tint = MaterialTheme.colorScheme.secondary,
@@ -335,7 +342,7 @@ fun SettingsScreen(
                 )
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.CardGiftcard,
+                    icon = Icons.Outlined.CardGiftcard,
                     title = "Подарки",
                     subtitle = "Подарить подписку или активировать код",
                     tint = MaterialTheme.colorScheme.secondary,
@@ -343,7 +350,7 @@ fun SettingsScreen(
                 )
                 RowDivider()
                 SettingsRow(
-                    icon = Icons.Default.LocalOffer,
+                    icon = Icons.Outlined.LocalOffer,
                     title = "Скидки и бонусы",
                     subtitle = "Персональные предложения и уровни лояльности",
                     tint = MaterialTheme.colorScheme.secondary,
@@ -352,13 +359,13 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(24.dp))
 
         // --- Выход ---
         GroupCard {
             if (!guestMode && usingSharedSubscription) {
                 SettingsRow(
-                    icon = Icons.Default.QrCode2,
+                    icon = Icons.Outlined.QrCode2,
                     title = "Отключить гостевой доступ",
                     subtitle = "Перестать пользоваться чужой подпиской",
                     showChevron = false,
@@ -367,7 +374,7 @@ fun SettingsScreen(
                 RowDivider()
             }
             SettingsRow(
-                icon = Icons.Default.Logout,
+                icon = Icons.Outlined.Logout,
                 title = if (guestMode) "Отключить гостевой доступ" else "Выйти из аккаунта",
                 tint = MaterialTheme.colorScheme.error,
                 showChevron = false,
@@ -375,7 +382,7 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(24.dp + com.darkprince.vpn.ui.theme.LocalBottomInset.current))
     }
 }
 
