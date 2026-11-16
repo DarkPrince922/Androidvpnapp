@@ -11,3 +11,4 @@ for screen in home_off home_on servers; do
   sleep 6
   adb exec-out screencap -p > "/tmp/shots/$screen.png"
 done
+# shots

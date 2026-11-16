@@ -288,7 +288,7 @@ fun HomeContent(
                     InfoRow(
                         AquaIcon.Servers,
                         "Сервер",
-                        listOfNotNull(serverName ?: "Нет серверов", ping?.let { "$it мс" }).joinToString(" · "),
+                        listOfNotNull(serverName?.substringAfter(" · ") ?: "Нет серверов", ping?.let { "$it мс" }).joinToString(" · "),
                     )
                 }
             } else {
@@ -392,7 +392,7 @@ private fun SubscriptionWarning(text: String, color: Color) {
 
 /** «VLESS · Reality»: первое слово — протокол заглавными, остальное с большой буквы. */
 private fun protocolText(server: ProxyProfile): String =
-    server.transportParts.mapIndexed { i, part ->
+    server.transportParts.take(2).mapIndexed { i, part ->
         if (i == 0) part.uppercase() else part.replaceFirstChar { it.uppercase() }
     }.joinToString(" · ").ifBlank { "—" }
 
