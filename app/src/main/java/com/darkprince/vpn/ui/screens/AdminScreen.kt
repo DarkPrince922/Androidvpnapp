@@ -610,10 +610,18 @@ private fun PeopleSection(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    filter.title,
+                    // короткие подписи: четыре части капсулы не вмещают «С подпиской»
+                    when (filter) {
+                        PeopleFilter.ANY -> "Все"
+                        PeopleFilter.ACTIVE -> "Активные"
+                        PeopleFilter.TRIAL -> "Пробные"
+                        PeopleFilter.EXPIRED -> "Истекшие"
+                    },
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
                     color = if (selected) MaterialTheme.colorScheme.primary else ink(0.6f),
                 )
             }

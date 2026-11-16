@@ -465,7 +465,13 @@ private fun AppRoot(
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.padding(top = innerPadding.calculateTopPadding()),
+            // Экраны с панелью сами оставляют место под неё (LocalBottomInset); у
+            // остальных панели нет, и системная навигация не должна лежать на
+            // содержимом — например, на поле ответа в обращении.
+            modifier = Modifier.padding(
+                top = innerPadding.calculateTopPadding(),
+                bottom = if (showBottomBar) 0.dp else innerPadding.calculateBottomPadding(),
+            ),
             // мягкие переходы вместо резкой смены экранов
             // Между вкладками панели — только мягкое появление, без сдвига: сдвиг
             // вместе с движением панели давал рваную картинку.
