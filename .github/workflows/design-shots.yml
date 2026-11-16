@@ -3,6 +3,11 @@ name: Design shots
 # Снимки экранов с эмулятора: собираем debug, открываем отладочный просмотр
 # с поддельными данными и кладём PNG в ветку design-shots.
 on:
+  push:
+    branches: [aqua-design]
+    paths:
+      - scripts/design-shots.sh
+      - .github/workflows/design-shots.yml
   workflow_dispatch:
 
 permissions:
