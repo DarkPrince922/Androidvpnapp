@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -115,6 +116,7 @@ enum class AquaIcon(val d: String) {
     Speed("M4 16a8 8 0 1 1 16 0M12 16l4-5"),
     More("M5 12h.01M12 12h.01M19 12h.01"),
     Alert("M12 6v7M12 17.5h.01"),
+    Phone("M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3ZM11 18h2"),
     Backspace("M20 6H9l-6 6 6 6h11a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1ZM15 10l-4 4M11 10l4 4");
 
     fun vector(stroke: Float): ImageVector =
@@ -330,6 +332,47 @@ private fun NavCell(
                         .graphicsLayer { alpha = ((nearOf(position.value, index) - 0.35f) / 0.65f).coerceIn(0f, 1f) },
                 )
             }
+        }
+    }
+}
+
+
+/** Стеклянное поле поиска: значок слева, подсказка, клавиша «Поиск» на клавиатуре. */
+@Composable
+fun GlassSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    onSearch: () -> Unit = {},
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .glass(RoundedCornerShape(23.dp))
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AquaIconView(AquaIcon.Search, ink(0.6f), size = 19.dp, stroke = 1.6f)
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (value.isEmpty()) Text(placeholder, fontSize = 14.sp, color = ink(0.5f))
+            androidx.compose.foundation.text.BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 14.sp,
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { onSearch() }),
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

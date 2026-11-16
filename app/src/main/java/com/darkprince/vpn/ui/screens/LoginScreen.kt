@@ -212,12 +212,6 @@ fun LoginScreen(
                     modifier = Modifier.size(26.dp),
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Войти через Telegram — если вы уже пользовались нашим ботом",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
 
         Spacer(Modifier.height(20.dp))
