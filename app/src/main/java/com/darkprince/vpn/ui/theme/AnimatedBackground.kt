@@ -20,6 +20,15 @@ import com.darkprince.vpn.vpn.VpnState
 import com.darkprince.vpn.vpn.VpnStateStore
 
 /**
+ * Насколько пролистан главный экран, в пикселях. Фон читает это значение
+ * только при рисовании, поэтому прокрутка не перекомпонует ничего, кроме
+ * самой картинки.
+ */
+object BackgroundScroll {
+    val offset = androidx.compose.runtime.mutableFloatStateOf(0f)
+}
+
+/**
  * Фон «Аквы»: три мягких цветных пятна на тёмной основе, как водяные
  * разводы. Цвет живёт вместе с VPN: пока он выключен, пятна холодные и
  * серые, при подключении оживают и становятся аквамариновыми и синими;
@@ -56,14 +65,20 @@ fun AnimatedBackground(
                 drawRect(palette.background)
                 val w = size.width
                 val h = size.height
+                // Параллакс: пятна едут вверх вслед за прокруткой, но медленнее
+                // самого экрана; верхнее тает, нижнее чуть крепнет — свет
+                // «стекает» к списку.
+                val scroll = BackgroundScroll.offset.floatValue
+                val progress = (scroll / (h * 0.8f)).coerceIn(0f, 1f)
                 val blobs = listOf(
-                    Triple(Offset(50.dp.toPx(), h * 0.100f), 150.dp.toPx(), 0),
-                    Triple(Offset(w - 35.dp.toPx(), h * 0.519f), 165.dp.toPx(), 1),
-                    Triple(Offset(80.dp.toPx(), h * 0.963f), 140.dp.toPx(), 2),
+                    Triple(Offset(50.dp.toPx(), h * 0.100f - scroll * 0.20f), 150.dp.toPx(), 0),
+                    Triple(Offset(w - 35.dp.toPx(), h * 0.519f - scroll * 0.12f), 165.dp.toPx(), 1),
+                    Triple(Offset(80.dp.toPx(), h * 0.963f - scroll * 0.06f), 140.dp.toPx(), 2),
                 )
+                val weight = floatArrayOf(1f - 0.65f * progress, 1f - 0.2f * progress, 1f + 0.35f * progress)
                 for ((center, core, i) in blobs) {
                     val color = if (palette.isLight) onColors[i] else lerp(offColors[i], onColors[i], live)
-                    val alpha = offAlphas[i] + (onAlphas[i] - offAlphas[i]) * live
+                    val alpha = (offAlphas[i] + (onAlphas[i] - offAlphas[i]) * live) * weight[i]
                     blob(center, core, color, alpha)
                 }
             },

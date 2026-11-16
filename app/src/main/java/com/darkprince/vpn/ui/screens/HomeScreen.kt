@@ -72,6 +72,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
@@ -212,11 +213,23 @@ fun HomeContent(
         listOfNotNull(server?.name?.let(::leadingEmoji), name).joinToString(" ")
     }
 
+    val scroll = rememberScrollState()
+    // фон узнаёт о прокрутке и двигает пятна; уходим с экрана — сбрасываем
+    LaunchedEffect(scroll) {
+        androidx.compose.runtime.snapshotFlow { scroll.value }.collect {
+            com.darkprince.vpn.ui.theme.BackgroundScroll.offset.floatValue = it.toFloat()
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { com.darkprince.vpn.ui.theme.BackgroundScroll.offset.floatValue = 0f }
+    }
+    val backdrop = com.darkprince.vpn.ui.theme.LocalPalette.current.background
+
     Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(scroll),
     ) {
         // --- шапка: название и, пока подключены, сервер со временем ---
         Row(
@@ -410,6 +423,16 @@ fun HomeContent(
             Spacer(Modifier.height(24.dp + LocalBottomInset.current))
         }
     }
+    // Мягкое затухание под статус-баром: пока прокрутили, строки не обрезаются
+    // жёсткой линией, а растворяются.
+    Box(
+        Modifier
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .height(28.dp)
+            .graphicsLayer { alpha = (scroll.value / 120f).coerceIn(0f, 1f) }
+            .background(Brush.verticalGradient(listOf(backdrop.copy(alpha = 0.92f), Color.Transparent)))
+    )
     // итог обновления всплывает сверху и уходит сам
     NoticeToast(notice, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
     }
