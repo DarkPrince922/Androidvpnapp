@@ -89,12 +89,7 @@ fun GroupCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(
-                BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
-                RoundedCornerShape(24.dp),
-            ),
+            .glass(),
         content = content,
     )
 }

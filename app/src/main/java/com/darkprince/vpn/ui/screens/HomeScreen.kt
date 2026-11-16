@@ -80,6 +80,7 @@ import com.darkprince.vpn.ui.theme.BrandColors
 import com.darkprince.vpn.ui.theme.GroupCard
 import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import com.darkprince.vpn.ui.theme.glass
+import com.darkprince.vpn.ui.theme.ink
 import com.darkprince.vpn.ui.theme.nameWithoutEmoji
 import com.darkprince.vpn.ui.vm.HomeUiState
 import com.darkprince.vpn.ui.vm.HomeViewModel
@@ -213,7 +214,7 @@ fun HomeContent(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Light,
                 letterSpacing = 1.8.sp,
-                color = Color.White.copy(alpha = 0.8f),
+                color = ink(0.8f),
             )
             SubscriptionPill(
                 state = state,
@@ -262,7 +263,7 @@ fun HomeContent(
                             else -> "Нажмите, чтобы подключиться"
                         },
                         fontSize = 14.sp,
-                        color = Color.White.copy(alpha = 0.55f),
+                        color = ink(0.55f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 24.dp),
@@ -493,7 +494,7 @@ private fun SubscriptionPill(
             if (lockHint) "Отключите VPN, чтобы сменить" else label,
             fontSize = 12.sp,
             color = if (sub.daysLeft != null && sub.daysLeft <= 0) MaterialTheme.colorScheme.error
-                else Color.White.copy(alpha = 0.8f),
+                else ink(0.8f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
@@ -545,21 +546,40 @@ private fun PowerDisc(vpnState: VpnState, onClick: () -> Unit) {
     val busy = vpnState == VpnState.CONNECTING
     val spec = tween<Color>(500)
 
+    val light = com.darkprince.vpn.ui.theme.LocalPalette.current.isLight
+    val accent = MaterialTheme.colorScheme.primary
+    // На светлых темах «стекло» диска — белое, а подключённый — акцентный:
+    // белые тона светлого диска на светлом фоне не видны вовсе.
     val ringColor by animateColorAsState(
-        if (on) Color(0xFF78F5E6).copy(alpha = 0.16f) else Color.White.copy(alpha = 0.08f), spec, label = "ring",
+        if (on) accent.copy(alpha = 0.20f) else ink(if (light) 0.10f else 0.08f), spec, label = "ring",
     )
     val borderColor by animateColorAsState(
-        if (on) Color(0xFF78F5E6).copy(alpha = 0.45f) else Color.White.copy(alpha = 0.16f), spec, label = "border",
+        when {
+            on -> accent.copy(alpha = if (light) 0.55f else 0.45f)
+            else -> ink(if (light) 0.14f else 0.16f)
+        }, spec, label = "border",
     )
     val top by animateColorAsState(
-        if (on) Color(0xFF00E6D2).copy(alpha = 0.28f) else Color.White.copy(alpha = 0.12f), spec, label = "top",
+        when {
+            on -> accent.copy(alpha = if (light) 0.26f else 0.28f)
+            light -> Color.White.copy(alpha = 0.95f)
+            else -> ink(0.12f)
+        }, spec, label = "top",
     )
     val bottom by animateColorAsState(
-        if (on) Color(0xFF0096C8).copy(alpha = 0.08f) else Color.White.copy(alpha = 0.03f), spec, label = "bottom",
+        when {
+            on -> if (light) accent.copy(alpha = 0.08f) else Color(0xFF0096C8).copy(alpha = 0.08f)
+            light -> Color.White.copy(alpha = 0.55f)
+            else -> ink(0.03f)
+        }, spec, label = "bottom",
     )
     val iconColor by animateColorAsState(
-        if (on) Color(0xFF8FF5E8) else Color.White.copy(alpha = 0.78f), spec, label = "icon",
+        when {
+            on -> if (light) accent else Color(0xFF8FF5E8)
+            else -> ink(if (light) 0.62f else 0.78f)
+        }, spec, label = "icon",
     )
+    val rim = if (light) Color.White else ink(0.25f)
 
     Box(contentAlignment = Alignment.Center) {
         // кольца ничего не зажимают: они крупнее самой полосы
@@ -577,7 +597,7 @@ private fun PowerDisc(vpnState: VpnState, onClick: () -> Unit) {
                 .drawBehind {
                     // блик по верхней кромке, как inset 0 1px rgba(255,255,255,.25)
                     drawArc(
-                        color = Color.White.copy(alpha = 0.25f),
+                        color = rim,
                         startAngle = 205f,
                         sweepAngle = 130f,
                         useCenter = false,
@@ -658,7 +678,7 @@ private fun ConnectedSubtitle(serverName: String?, since: Long?) {
     Text(
         label,
         fontSize = 14.sp,
-        color = Color.White.copy(alpha = 0.55f),
+        color = ink(0.55f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.padding(horizontal = 24.dp),
@@ -677,7 +697,7 @@ private fun TrafficTile(
     unit: String,
     modifier: Modifier = Modifier,
 ) {
-    val dim = Color.White.copy(alpha = 0.55f)
+    val dim = ink(0.55f)
     Column(modifier.glass().padding(horizontal = 16.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             AquaIconView(icon, dim, size = 14.dp, stroke = 1.6f)
@@ -721,10 +741,10 @@ private fun InfoRow(
             Modifier
                 .size(34.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color.White.copy(alpha = 0.08f)),
+                .background(ink(0.08f)),
             contentAlignment = Alignment.Center,
         ) {
-            AquaIconView(icon, Color.White.copy(alpha = 0.8f), size = 18.dp, stroke = 1.5f)
+            AquaIconView(icon, ink(0.8f), size = 18.dp, stroke = 1.5f)
         }
         Spacer(Modifier.width(12.dp))
         Text(label, fontSize = 16.sp, maxLines = 1)
@@ -739,7 +759,7 @@ private fun InfoRow(
             Text(
                 text,
                 fontSize = 14.5.sp,
-                color = Color.White.copy(alpha = 0.62f),
+                color = ink(0.62f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
@@ -751,7 +771,7 @@ private fun InfoRow(
 
 @Composable
 private fun InfoDivider() {
-    HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 1.dp)
+    HorizontalDivider(color = ink(0.07f), thickness = 1.dp)
 }
 
 @Composable

@@ -33,6 +33,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.foundation.shape.CircleShape
+import com.darkprince.vpn.ui.theme.AquaIcon
+import com.darkprince.vpn.ui.theme.AquaIconView
 import androidx.compose.material3.Button
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
@@ -134,12 +139,19 @@ fun PlansScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Spacer(Modifier.height(4.dp))
-            Text("Тарифы", style = MaterialTheme.typography.headlineSmall)
+            Column(Modifier.padding(start = 4.dp, top = 12.dp)) {
+                Text("Тарифы", style = MaterialTheme.typography.displaySmall)
+                Text(
+                    "Продление, устройства и автоплатёж",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
             ServiceDownBanner(modifier = Modifier.padding(top = 10.dp))
             PromoStrip(
                 discountPercent = state.discount?.discountPercent,
@@ -320,6 +332,12 @@ private fun MySubscriptionCard(
             },
         )
     }
+    val switchable = canSwitch && card.sub.isActive && card.sub.isTrial != true && card.sub.tariffId != null
+    val canManageDevices = legacy && card.devices != null
+    // Редкие действия спрятаны в меню «⋯»: на виду остаётся то, чем пользуются
+    // каждый месяц, — срок, продление, устройства.
+    val hasMenu = switchable || canManageDevices || card.sub.isActive || card.sub.isDeletable
+    var menuOpen by remember(card.id) { mutableStateOf(false) }
     val hasDevices = card.devices != null && !legacy
     val hasTraffic = !legacy && !card.unlimitedTraffic && card.trafficPackages.isNotEmpty()
 
@@ -342,6 +360,46 @@ private fun MySubscriptionCard(
                     )
                     Spacer(Modifier.width(8.dp))
                     TermBadge(card)
+                    if (hasMenu) {
+                        Box {
+                            Box(
+                                modifier = Modifier
+                                    .padding(start = 4.dp)
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .clickable(onClickLabel = "Другие действия") { menuOpen = true },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                AquaIconView(
+                                    AquaIcon.More,
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                    size = 20.dp,
+                                    stroke = 2.4f,
+                                )
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                if (switchable) DropdownMenuItem(
+                                    text = { Text("Сменить тариф") },
+                                    enabled = !purchasing,
+                                    onClick = { menuOpen = false; onSwitch() },
+                                )
+                                if (canManageDevices) DropdownMenuItem(
+                                    text = { Text("Устройства") },
+                                    onClick = { menuOpen = false; onOpenDevices() },
+                                )
+                                if (card.sub.isActive) DropdownMenuItem(
+                                    text = { Text("Сбросить ссылку") },
+                                    enabled = !purchasing,
+                                    onClick = { menuOpen = false; confirmRevoke = true },
+                                )
+                                if (card.sub.isDeletable) DropdownMenuItem(
+                                    text = { Text("Удалить подписку", color = MaterialTheme.colorScheme.error) },
+                                    enabled = !purchasing,
+                                    onClick = { menuOpen = false; confirmDelete = true },
+                                )
+                            }
+                        }
+                    }
                 }
                 Text(
                     cardSummary(card),
@@ -480,22 +538,6 @@ private fun MySubscriptionCard(
                                 }
                             }
                         }
-                    }
-                }
-            }
-
-            // Редкие действия — маленькими «таблетками» внизу, не мешая продлению
-            val switchable = canSwitch && card.sub.isActive && card.sub.isTrial != true && card.sub.tariffId != null
-            if (switchable || card.sub.isActive || card.sub.isDeletable) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (switchable) SmallAction("Сменить тариф", enabled = !purchasing, onClick = onSwitch)
-                    // у подписки без тарифа блока устройств нет, а отключить лишние нужно
-                    if (legacy && card.devices != null) SmallAction("Устройства", onClick = onOpenDevices)
-                    if (card.sub.isActive) {
-                        SmallAction("Сбросить ссылку", enabled = !purchasing, onClick = { confirmRevoke = true })
-                    }
-                    if (card.sub.isDeletable) {
-                        SmallAction("Удалить подписку", enabled = !purchasing, onClick = { confirmDelete = true })
                     }
                 }
             }

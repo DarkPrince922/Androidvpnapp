@@ -185,8 +185,8 @@ val IndigoPalette = AppPalette(
     glowAlpha = 0.10f,
     panel = Color(0xFFFFFFFF),
     scheme = IndigoScheme,
-    glassFill = Color.White.copy(alpha = 0.62f),
-    glassBorder = Color.White.copy(alpha = 0.95f),
+    glassFill = Color.White.copy(alpha = 0.72f),
+    glassBorder = Color(0xFF1B1F3B).copy(alpha = 0.09f),
 )
 
 // --- Графит: почти без цвета -----------------------------------------------
@@ -225,8 +225,8 @@ val GraphitePalette = AppPalette(
     glowAlpha = 0.14f,
     panel = Color(0xFFFFFFFF),
     scheme = GraphiteScheme,
-    glassFill = Color.White.copy(alpha = 0.62f),
-    glassBorder = Color.White.copy(alpha = 0.95f),
+    glassFill = Color.White.copy(alpha = 0.72f),
+    glassBorder = Color(0xFF1B1F3B).copy(alpha = 0.09f),
 )
 
 /** Все темы в том порядке, в каком они показываются в настройках. */

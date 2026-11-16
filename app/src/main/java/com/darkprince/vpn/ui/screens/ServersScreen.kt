@@ -43,6 +43,7 @@ import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.ui.theme.AquaIcon
 import com.darkprince.vpn.ui.theme.AquaIconView
 import com.darkprince.vpn.ui.theme.glass
+import com.darkprince.vpn.ui.theme.ink
 import com.darkprince.vpn.ui.theme.leadingEmoji
 import com.darkprince.vpn.ui.theme.nameWithoutEmoji
 import com.darkprince.vpn.ui.vm.HomeUiState
@@ -141,7 +142,7 @@ fun ServersContent(
                     Column(Modifier.fillMaxWidth().glass()) {
                         state.servers.forEachIndexed { index, server ->
                             if (index > 0) {
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.07f), thickness = 1.dp)
+                                HorizontalDivider(color = ink(0.07f), thickness = 1.dp)
                             }
                             ServerRow(
                                 server = server,
@@ -213,7 +214,7 @@ internal fun ServerRow(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White.copy(alpha = 0.08f)),
+                .background(ink(0.08f)),
             contentAlignment = Alignment.Center,
         ) {
             Text(leadingEmoji(server.name) ?: "🌐", fontSize = 22.sp)
@@ -224,7 +225,7 @@ internal fun ServerRow(
             Text(
                 nameWithoutEmoji(server.name),
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.5.sp),
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             // подпись узла из панели Remnawave, если её там задали, иначе — метки

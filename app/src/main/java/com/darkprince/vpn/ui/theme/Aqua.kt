@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -52,6 +53,14 @@ import kotlin.math.abs
 /**
  * «Аква»: общие кирпичики — стекло, тонкие линейные значки и нижняя панель.
  */
+
+/**
+ * Цвет текста и линий поверх стекла с заданной прозрачностью. На тёмных темах
+ * это почти белый, на светлых — тёмно-синий: белый на светлом не читается.
+ */
+@Composable
+@androidx.compose.runtime.ReadOnlyComposable
+fun ink(alpha: Float): Color = MaterialTheme.colorScheme.onBackground.copy(alpha = alpha)
 
 /**
  * Матовое стекло: заливка и контур из темы. Настоящего размытия того, что
@@ -95,7 +104,8 @@ enum class AquaIcon(val d: String) {
     Bolt("M13 3L5 13.5h6L10 21l8-10.5h-6z"),
     Search("M4.5 11a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0M16 16l4.5 4.5"),
     Refresh("M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"),
-    Speed("M4 16a8 8 0 1 1 16 0M12 16l4-5");
+    Speed("M4 16a8 8 0 1 1 16 0M12 16l4-5"),
+    More("M5 12h.01M12 12h.01M19 12h.01");
 
     fun vector(stroke: Float): ImageVector =
         cache.getOrPut(this to stroke) {
@@ -159,17 +169,29 @@ fun AquaNavBar(
         label = "navBubble",
     )
     val activeColor = if (connected || palette.isLight) scheme.primary else scheme.onBackground
-    val bubble = if (palette.isLight) Color.White else Color.White.copy(alpha = 0.12f)
+    val bubble = if (palette.isLight) Color.White else ink(0.12f)
     val inactive = scheme.onSurfaceVariant
 
+    val islandShape = RoundedCornerShape(35.dp)
+    // Остров должен читаться как отдельный предмет, а не как полоса внизу:
+    // плотная подложка под стеклом, мягкая тень и воздух вокруг.
+    val base = if (palette.isLight) Color.White.copy(alpha = 0.94f) else palette.panel.copy(alpha = 0.92f)
     Box(
         modifier = modifier
             // системные кнопки навигации рисуются поверх приложения
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp)
             .fillMaxWidth()
             .height(70.dp)
-            .glass(RoundedCornerShape(35.dp)),
+            .shadow(
+                elevation = 18.dp,
+                shape = islandShape,
+                ambientColor = Color.Black.copy(alpha = 0.35f),
+                spotColor = Color.Black.copy(alpha = 0.35f),
+            )
+            .clip(islandShape)
+            .background(base)
+            .glass(islandShape),
     ) {
         Row(
             modifier = Modifier

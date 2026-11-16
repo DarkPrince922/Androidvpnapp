@@ -36,7 +36,7 @@ class DesignPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val screen = intent.getStringExtra("screen") ?: "home_off"
-        val on = screen == "home_on"
+        val on = screen == "home_on" || screen == "home_light"
         VpnStateStore.setState(if (on) VpnState.CONNECTED else VpnState.DISCONNECTED)
 
         fun node(name: String, protocol: Protocol, security: String, network: String) =
@@ -67,7 +67,7 @@ class DesignPreviewActivity : ComponentActivity() {
         )
 
         setContent {
-            AppTheme(NightPalette) {
+            AppTheme(if (screen == "home_light") com.darkprince.vpn.ui.theme.IndigoPalette else NightPalette) {
                 AnimatedBackground {
                     Scaffold(
                         containerColor = Color.Transparent,
