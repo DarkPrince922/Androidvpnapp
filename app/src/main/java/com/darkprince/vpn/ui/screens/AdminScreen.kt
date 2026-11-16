@@ -8,6 +8,12 @@ import com.darkprince.vpn.data.api.dto.AdminTariffOptionDto
 import com.darkprince.vpn.data.api.dto.AdminSubscriptionInfoDto
 import com.darkprince.vpn.data.api.dto.AdminSubscriptionAction
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import com.darkprince.vpn.ui.theme.AquaIcon
+import com.darkprince.vpn.ui.theme.AquaIconView
+import com.darkprince.vpn.ui.theme.glass
+import com.darkprince.vpn.ui.theme.ink
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.BorderStroke
@@ -108,23 +114,52 @@ fun AdminScreen(
     ) {
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                // Заголовок называет открытый раздел, а не всегда обращения:
-                // подпись, которая спорит с выбранной кнопкой, читается как
-                // ошибка приложения.
-                Text(state.section.title, style = MaterialTheme.typography.headlineSmall)
-                val roles = state.permissions.roles.joinToString(", ").takeIf { it.isNotBlank() }
+            // Заголовок называет открытый раздел; у обращений — «Входящие» и
+            // число обращений в выборке.
+            Text(
+                if (state.section == AdminSection.TICKETS) "Входящие" else state.section.title,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.8).sp,
+                maxLines = 1,
+            )
+            if (state.section == AdminSection.TICKETS && state.tickets.isNotEmpty()) {
+                Spacer(Modifier.width(10.dp))
                 Text(
-                    roles?.let { "Роль: $it" } ?: "Панель управления",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    state.tickets.size.toString(),
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Light,
+                    letterSpacing = (-0.8).sp,
+                    color = ink(0.35f),
                 )
             }
-            IconButton(onClick = viewModel::refresh, enabled = !state.loading) {
+            Spacer(Modifier.weight(1f))
+            // роль — маленькой плашкой: нужна, чтобы понять, чьи права действуют,
+            // но не заголовку
+            val roles = state.permissions.roles.joinToString(", ").takeIf { it.isNotBlank() }
+            Text(
+                roles ?: "Панель",
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = ink(0.75f),
+                maxLines = 1,
+                modifier = Modifier
+                    .widthIn(max = 120.dp)
+                    .glass(RoundedCornerShape(50))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .glass(CircleShape)
+                    .clickable(enabled = !state.loading, onClick = viewModel::refresh),
+                contentAlignment = Alignment.Center,
+            ) {
                 if (state.loading) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 } else {
-                    Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                    AquaIconView(AquaIcon.Refresh, ink(0.85f), size = 19.dp, stroke = 1.6f)
                 }
             }
         }
@@ -143,18 +178,37 @@ fun AdminScreen(
         }
 
         // Разделы, которых роль не даёт, не показываем вовсе: переключатель
-        // с недоступными кнопками обещал бы то, чего нет.
-        // разделов бывает до шести — ряд прокручивается, а не сжимается
+        // с недоступными кнопками обещал бы то, чего нет. Разделов бывает до
+        // шести — ряд прокручивается, а не сжимается.
         Row(
             modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             state.sections.forEach { section ->
-                FilterChip(
-                    selected = state.section == section,
-                    onClick = { viewModel.setSection(section) },
-                    label = { Text(section.title, fontSize = 12.sp) },
-                )
+                val selected = state.section == section
+                Column(
+                    modifier = Modifier
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                        ) { viewModel.setSection(section) }
+                        .padding(top = 8.dp),
+                ) {
+                    Text(
+                        section.title,
+                        fontSize = 14.5.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                        color = if (selected) MaterialTheme.colorScheme.onBackground else ink(0.5f),
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    Box(
+                        Modifier
+                            .height(2.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    )
+                }
             }
         }
 
@@ -186,17 +240,37 @@ private fun TicketsSection(
     state: AdminUiState,
     onOpenTicket: (Long) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        TicketFilter.entries.forEach { filter ->
-            FilterChip(
-                selected = state.filter == filter,
-                onClick = { viewModel.setFilter(filter) },
-                label = { Text(filter.title, fontSize = 12.sp) },
-            )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.weight(1f)) {
+            TicketFilter.entries.forEach { filter ->
+                val selected = state.filter == filter
+                Text(
+                    filter.title,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (selected) MaterialTheme.colorScheme.primary else ink(0.5f),
+                    modifier = Modifier
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                        ) { viewModel.setFilter(filter) }
+                        .padding(vertical = 4.dp),
+                )
+            }
         }
     }
+    val waiting = state.tickets.count { it.needsReply }
+    if (waiting > 0) {
+        Text(
+            "Ждут ответа: $waiting",
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = BrandColors.Warning,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
 
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(6.dp))
 
     when {
         state.loading && state.tickets.isEmpty() -> Loader()
@@ -204,8 +278,10 @@ private fun TicketsSection(
         state.tickets.isEmpty() && state.error == null ->
             AdminNotice("Обращений в этой выборке нет.")
 
-        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.tickets, key = { it.id }) { ticket ->
+        else -> LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 8.dp)) {
+            // ждущие ответа — первыми, остальные в порядке, в каком пришли
+            val sorted = state.tickets.sortedByDescending { it.needsReply }
+            items(sorted, key = { it.id }) { ticket ->
                 AdminTicketRow(ticket) { onOpenTicket(ticket.id) }
             }
         }
@@ -635,53 +711,89 @@ private fun AdminNotice(text: String) {
 
 @Composable
 private fun AdminTicketRow(ticket: AdminTicketDto, onClick: () -> Unit) {
-    Card(
+    val scheme = MaterialTheme.colorScheme
+    // Срочное — жёлтым, новое — акцентом, отвеченное и закрытое — тише
+    val needs = ticket.needsReply
+    val tint = when {
+        needs -> BrandColors.Warning
+        ticket.status.equals("open", true) || ticket.status.equals("pending", true) -> scheme.primary
+        ticket.status.equals("answered", true) -> scheme.secondary
+        else -> null
+    }
+    val name = ticket.user?.displayName ?: "Пользователь удалён"
+    val quiet = !needs && !ticket.status.equals("open", true) && !ticket.status.equals("pending", true)
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(
-            1.dp,
-            // Ждущее ответа обращение обводим акцентом: в списке из тридцати
-            // строк важно не «сколько всего», а «где меня ждут».
-            if (ticket.needsReply) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-            },
-        ),
+            .then(
+                if (needs) Modifier.background(
+                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                        listOf(BrandColors.Warning.copy(alpha = 0.10f), Color.Transparent)
+                    )
+                ) else Modifier
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background((tint ?: Color.White).copy(alpha = if (tint != null && !quiet) 0.16f else 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                name.trimStart('@', ' ').take(1).uppercase().ifEmpty { "?" },
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (tint != null && !quiet) tint else ink(0.8f),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     ticket.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    fontWeight = if (quiet) FontWeight.Medium else FontWeight.Bold,
+                    color = if (quiet) ink(0.75f) else scheme.onBackground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(8.dp))
-                StatusChip(ticket.status)
+                Text(ticketTime(ticket.updatedAt), fontSize = 11.sp, color = ink(0.4f))
             }
-            Spacer(Modifier.height(4.dp))
             Text(
-                ticket.user?.displayName ?: "Пользователь удалён",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                listOfNotNull(name, ticket.lastMessage?.messageText?.takeIf { it.isNotBlank() }).joinToString(" — "),
+                fontSize = 12.5.sp,
+                color = ink(0.5f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
             )
-            ticket.lastMessage?.messageText?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+        }
+        if (tint != null && !ticket.isClosed) {
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.size(9.dp).clip(CircleShape).background(tint))
         }
     }
 }
+
+/** «14:05» сегодня, «вчера», иначе «12 нояб.»; время сервер отдаёт в UTC. */
+private fun ticketTime(raw: String): String = runCatching {
+    val zone = java.time.ZoneId.systemDefault()
+    val instant = runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+        .getOrElse { java.time.LocalDateTime.parse(raw.take(19)).toInstant(java.time.ZoneOffset.UTC) }
+    val local = instant.atZone(zone)
+    val today = java.time.LocalDate.now(zone)
+    when (local.toLocalDate()) {
+        today -> java.time.format.DateTimeFormatter.ofPattern("HH:mm").format(local)
+        today.minusDays(1) -> "вчера"
+        else -> java.time.format.DateTimeFormatter.ofPattern("d MMM", Locale("ru")).format(local)
+    }
+}.getOrDefault("")
 
 /** Статус обращения цветом: открытое зовёт, закрытое молчит. */
 @Composable

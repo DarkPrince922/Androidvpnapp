@@ -558,8 +558,9 @@ private fun SubscriptionCard(
                 Column(Modifier.weight(1f)) {
                     Text(
                         sub.title,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.3).sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -569,25 +570,33 @@ private fun SubscriptionCard(
                             sub.untilShort != null -> "до ${sub.untilShort}"
                             else -> "Срок неизвестен"
                         },
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
                         color = if (lockHint) BrandColors.Warning else scheme.onSurfaceVariant,
                         maxLines = 1,
                     )
                 }
                 Spacer(Modifier.width(10.dp))
-                when {
-                    sub.daysLeft == null -> Unit
-                    expired -> Text("Истекла", fontSize = 15.sp, color = scheme.error)
-                    else -> Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            sub.daysLeft.toString(),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Light,
-                            letterSpacing = (-0.5).sp,
-                            maxLines = 1,
-                        )
-                        Text(daysWord(sub.daysLeft), fontSize = 11.sp, color = scheme.onSurfaceVariant)
+                // остаток — компактной меткой: зелёная, на исходе (до недели) жёлтая,
+                // истекла — красная
+                if (sub.daysLeft != null) {
+                    val tint = when {
+                        expired -> scheme.error
+                        sub.daysLeft <= 7 -> BrandColors.Warning
+                        else -> scheme.primary
                     }
+                    Text(
+                        if (expired) "Истекла" else "${sub.daysLeft} ${daysWord(sub.daysLeft)}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = tint,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(tint.copy(alpha = 0.14f))
+                            .border(1.dp, tint.copy(alpha = 0.32f), RoundedCornerShape(50))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
                 }
                 if (multi) {
                     Spacer(Modifier.width(8.dp))
