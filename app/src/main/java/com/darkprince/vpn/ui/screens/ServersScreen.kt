@@ -134,7 +134,10 @@ fun ServersContent(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 16.dp),
+                contentPadding = PaddingValues(
+                    start = 20.dp, end = 20.dp, top = 18.dp,
+                    bottom = 16.dp + com.darkprince.vpn.ui.theme.LocalBottomInset.current,
+                ),
             ) {
                 // Все узлы — одной стеклянной группой, как в референсе; ключ с
                 // номером: два узла с одним именем и адресом не должны ронять список.

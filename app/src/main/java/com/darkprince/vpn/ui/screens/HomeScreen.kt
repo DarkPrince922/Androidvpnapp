@@ -79,6 +79,7 @@ import com.darkprince.vpn.ui.theme.AquaIconView
 import com.darkprince.vpn.ui.theme.BrandColors
 import com.darkprince.vpn.ui.theme.GroupCard
 import com.darkprince.vpn.ui.theme.ServiceDownBanner
+import com.darkprince.vpn.ui.theme.LocalBottomInset
 import com.darkprince.vpn.ui.theme.glass
 import com.darkprince.vpn.ui.theme.ink
 import com.darkprince.vpn.ui.theme.nameWithoutEmoji
@@ -275,16 +276,15 @@ fun HomeContent(
         // --- нижняя часть: плитки и группа строк ---
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             if (connected) {
-                Row(
-                    modifier = Modifier.padding(top = 22.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
+                // «Получено», «Отправлено» и «Сервер» — одной группой строк,
+                // как остальной экран, а не двумя тяжёлыми плитами
+                Column(Modifier.padding(top = 22.dp).fillMaxWidth().glass()) {
                     val (down, downUnit) = splitBytes(stats.downlinkBytes)
                     val (up, upUnit) = splitBytes(stats.uplinkBytes)
-                    TrafficTile("Получено", AquaIcon.Down, down, downUnit, Modifier.weight(1f))
-                    TrafficTile("Отправлено", AquaIcon.Up, up, upUnit, Modifier.weight(1f))
-                }
-                Column(Modifier.padding(top = 12.dp).fillMaxWidth().glass()) {
+                    TrafficRow(AquaIcon.Down, "Получено", down, downUnit)
+                    InfoDivider()
+                    TrafficRow(AquaIcon.Up, "Отправлено", up, upUnit)
+                    InfoDivider()
                     val ping = server?.let { state.pings[it.key] }?.takeIf { it >= 0 }
                     InfoRow(
                         AquaIcon.Servers,
@@ -376,7 +376,7 @@ fun HomeContent(
                     scheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(24.dp + LocalBottomInset.current))
         }
     }
 }
@@ -690,36 +690,33 @@ private fun formatDuration(seconds: Long): String =
     String.format(Locale.US, "%02d:%02d:%02d", seconds / 3600, seconds % 3600 / 60, seconds % 60)
 
 @Composable
-private fun TrafficTile(
-    label: String,
-    icon: AquaIcon,
-    value: String,
-    unit: String,
-    modifier: Modifier = Modifier,
-) {
-    val dim = ink(0.55f)
-    Column(modifier.glass().padding(horizontal = 16.dp, vertical = 14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AquaIconView(icon, dim, size = 14.dp, stroke = 1.6f)
-            Spacer(Modifier.width(6.dp))
-            Text(label, fontSize = 12.sp, color = dim, maxLines = 1)
+private fun TrafficRow(icon: AquaIcon, label: String, value: String, unit: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(ink(0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            AquaIconView(icon, ink(0.8f), size = 18.dp, stroke = 1.5f)
         }
-        Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.Bottom) {
-            Text(
-                value,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Light,
-                letterSpacing = (-1).sp,
-                maxLines = 1,
-            )
-            Text(
-                unit,
-                fontSize = 13.sp,
-                color = dim,
-                modifier = Modifier.padding(start = 3.dp, bottom = 5.dp),
-                maxLines = 1,
-            )
-        }
+        Spacer(Modifier.width(12.dp))
+        Text(label, fontSize = 16.sp, maxLines = 1)
+        Spacer(Modifier.weight(1f))
+        Text(value, fontSize = 19.sp, fontWeight = FontWeight.Light, maxLines = 1)
+        Text(
+            unit,
+            fontSize = 12.sp,
+            color = ink(0.5f),
+            modifier = Modifier.padding(start = 3.dp, top = 3.dp),
+            maxLines = 1,
+        )
     }
 }
 

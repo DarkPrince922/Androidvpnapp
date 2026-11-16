@@ -382,7 +382,7 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(24.dp + com.darkprince.vpn.ui.theme.LocalBottomInset.current))
     }
 }
 

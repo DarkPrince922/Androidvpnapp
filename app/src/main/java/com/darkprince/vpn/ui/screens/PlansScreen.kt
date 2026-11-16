@@ -243,7 +243,7 @@ fun PlansScreen(
         state.info?.let { info ->
             item { Text(info, color = MaterialTheme.colorScheme.primary) }
         }
-        item { Spacer(Modifier.height(16.dp)) }
+        item { Spacer(Modifier.height(16.dp + com.darkprince.vpn.ui.theme.LocalBottomInset.current)) }
     }
 }
 

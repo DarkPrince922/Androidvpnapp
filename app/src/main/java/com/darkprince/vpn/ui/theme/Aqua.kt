@@ -105,7 +105,8 @@ enum class AquaIcon(val d: String) {
     Search("M4.5 11a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0M16 16l4.5 4.5"),
     Refresh("M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"),
     Speed("M4 16a8 8 0 1 1 16 0M12 16l4-5"),
-    More("M5 12h.01M12 12h.01M19 12h.01");
+    More("M5 12h.01M12 12h.01M19 12h.01"),
+    Backspace("M20 6H9l-6 6 6 6h11a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1ZM15 10l-4 4M11 10l4 4");
 
     fun vector(stroke: Float): ImageVector =
         cache.getOrPut(this to stroke) {
@@ -144,6 +145,12 @@ fun AquaIconView(
         modifier = modifier.size(size),
     )
 }
+
+/** Сколько места внизу экрана занимает плавающая панель: списки оставляют его пустым в конце. */
+val LocalBottomInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
+/** Экран может спрятать панель (своя клавиатура и т. п.), выставив значение в true. */
+val LocalNavHidden = androidx.compose.runtime.compositionLocalOf<androidx.compose.runtime.MutableState<Boolean>?> { null }
 
 data class AquaNavItem(val route: String, val label: String, val icon: AquaIcon)
 

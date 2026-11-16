@@ -15,6 +15,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -442,39 +447,26 @@ private fun AppRoot(
     val showBottomBar = (authState.loggedIn || authState.guestMode) &&
         currentRoute in bottomItems.map { it.route }
 
+    val navHidden = remember { mutableStateOf(false) }
+    val navBarsBottom = androidx.compose.foundation.layout.WindowInsets.navigationBars
+        .asPaddingValues().calculateBottomPadding()
+    // Остров парит над списком: экраны сами оставляют внизу место под него,
+    // а список едет под островом, а не обрезается по его верхней кромке.
+    val bottomInset = if (showBottomBar) 90.dp + navBarsBottom else 0.dp
+
     Scaffold(
         // фон рисует AnimatedBackground, поэтому сам Scaffold прозрачный
         containerColor = Color.Transparent,
-        bottomBar = {
-            if (showBottomBar) {
-                val selectedIndex = bottomItems.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
-                val vpnNow by com.darkprince.vpn.vpn.VpnStateStore.state.collectAsState()
-                AquaNavBar(
-                    items = bottomItems,
-                    selectedIndex = selectedIndex,
-                    connected = vpnNow == com.darkprince.vpn.vpn.VpnState.CONNECTED,
-                    onSelect = { item ->
-                        if (item.route == "home") {
-                            // «Главная» всегда возвращает на корневой экран
-                            if (!navController.popBackStack("home", inclusive = false)) {
-                                navController.navigate("home") { launchSingleTop = true }
-                            }
-                        } else {
-                            navController.navigate(item.route) {
-                                popUpTo("home") { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        }
-                    },
-                )
-            }
-        }
     ) { innerPadding ->
+      androidx.compose.runtime.CompositionLocalProvider(
+        com.darkprince.vpn.ui.theme.LocalBottomInset provides bottomInset,
+        com.darkprince.vpn.ui.theme.LocalNavHidden provides navHidden,
+      ) {
+      Box(Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.padding(innerPadding),
+            modifier = Modifier.padding(top = innerPadding.calculateTopPadding()),
             // мягкие переходы вместо резкой смены экранов
             enterTransition = {
                 fadeIn(tween(280)) + slideInHorizontally(tween(320)) { it / 12 }
@@ -922,6 +914,53 @@ private fun AppRoot(
                 )
             }
         }
+
+        // остров поверх списка: затухание под ним вместо жёсткой линии среза
+        val vpnNow by com.darkprince.vpn.vpn.VpnStateStore.state.collectAsState()
+        val palette = LocalPalette.current
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showBottomBar && !navHidden.value,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = androidx.compose.animation.slideInVertically(tween(260)) { it } + fadeIn(tween(200)),
+            exit = androidx.compose.animation.slideOutVertically(tween(220)) { it } + fadeOut(tween(160)),
+        ) {
+            Box {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                0.55f to palette.background.copy(alpha = 0.85f),
+                                1f to palette.background.copy(alpha = 0.95f),
+                            )
+                        )
+                )
+                val selectedIndex = bottomItems.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
+                AquaNavBar(
+                    items = bottomItems,
+                    selectedIndex = selectedIndex,
+                    connected = vpnNow == com.darkprince.vpn.vpn.VpnState.CONNECTED,
+                    modifier = Modifier.padding(top = 14.dp),
+                    onSelect = { item ->
+                        if (item.route == "home") {
+                            // «Главная» всегда возвращает на корневой экран
+                            if (!navController.popBackStack("home", inclusive = false)) {
+                                navController.navigate("home") { launchSingleTop = true }
+                            }
+                        } else {
+                            navController.navigate(item.route) {
+                                popUpTo("home") { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                )
+            }
+        }
+      }
+      }
     }
 }
 
