@@ -8,7 +8,7 @@ adb shell wm density 420
 for screen in home_off home_on home_light servers settings; do
   adb shell am force-stop com.darkprince.vpn
   adb shell am start -n com.darkprince.vpn/.debug.DesignPreviewActivity --es screen "$screen"
-  sleep 6
+  sleep 9
   adb exec-out screencap -p > "/tmp/shots/$screen.png"
 done
 # shots

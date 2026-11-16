@@ -233,7 +233,11 @@ fun HomeContent(
                 color = ink(0.8f),
             )
             AnimatedVisibility(visible = connected, enter = fadeIn(), exit = fadeOut()) {
-                ConnectedSubtitle(serverLabel, connectedSince, Modifier.padding(start = 12.dp), fontSize = 13.sp)
+                // в шапке место узкое: флаг, город и время; страну опускаем
+                val short = serverName?.substringAfter(" · ")?.let { city ->
+                    listOfNotNull(server?.name?.let(::leadingEmoji), city).joinToString(" ")
+                }
+                ConnectedSubtitle(short ?: serverLabel, connectedSince, Modifier.padding(start = 12.dp), fontSize = 13.sp)
             }
         }
 
