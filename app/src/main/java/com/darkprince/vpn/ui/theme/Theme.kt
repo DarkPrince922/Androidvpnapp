@@ -266,10 +266,10 @@ val TextFont = InterFont
 
 private fun TextStyle.text(weight: FontWeight) = copy(fontFamily = InterFont, fontWeight = weight)
 
-/** Заголовки и крупные числа: тонкие и чуть сжатые по трекингу. */
+/** Заголовки экранов: жирные и чуть сжатые по трекингу. Крупные числа задают вес сами (Light). */
 private fun TextStyle.display(size: Int, tracking: Float) = copy(
     fontFamily = InterFont,
-    fontWeight = FontWeight.Light,
+    fontWeight = FontWeight.Bold,
     fontSize = size.sp,
     lineHeight = (size * 1.15f).sp,
     letterSpacing = tracking.sp,
@@ -279,13 +279,13 @@ private val AppTypography = Typography().run {
     copy(
         displayLarge = displayLarge.display(52, -1.5f),
         displayMedium = displayMedium.display(44, -1.2f),
-        displaySmall = displaySmall.display(36, -1f),
+        displaySmall = displaySmall.display(34, -1.1f),
         headlineLarge = headlineLarge.display(34, -0.9f),
         headlineMedium = headlineMedium.display(30, -0.8f),
         headlineSmall = headlineSmall.display(26, -0.6f),
-        titleLarge = titleLarge.text(FontWeight.Medium).copy(fontSize = 20.sp, letterSpacing = (-0.3).sp),
-        titleMedium = titleMedium.text(FontWeight.Medium).copy(fontSize = 16.sp),
-        titleSmall = titleSmall.text(FontWeight.Medium).copy(fontSize = 14.5.sp),
+        titleLarge = titleLarge.text(FontWeight.Bold).copy(fontSize = 20.sp, letterSpacing = (-0.3).sp),
+        titleMedium = titleMedium.text(FontWeight.SemiBold).copy(fontSize = 16.sp),
+        titleSmall = titleSmall.text(FontWeight.SemiBold).copy(fontSize = 14.5.sp),
         bodyLarge = bodyLarge.text(FontWeight.Normal),
         bodyMedium = bodyMedium.text(FontWeight.Normal),
         bodySmall = bodySmall.text(FontWeight.Normal),

@@ -265,7 +265,7 @@ fun HomeContent(
                         },
                         style = MaterialTheme.typography.displaySmall.copy(
                             fontSize = 30.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.8).sp,
                         ),
                         color = if (current == VpnState.ERROR) scheme.error else scheme.onBackground,

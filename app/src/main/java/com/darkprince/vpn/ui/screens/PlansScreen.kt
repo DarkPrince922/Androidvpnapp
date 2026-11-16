@@ -5,6 +5,11 @@ import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import com.darkprince.vpn.vpn.VpnStateStore
 import com.darkprince.vpn.vpn.VpnState
 import androidx.compose.animation.AnimatedVisibility
+import com.darkprince.vpn.ui.theme.ink
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -136,11 +141,21 @@ fun PlansScreen(
         )
     }
 
+    // Аккордеон: раскрыта одна подписка. По умолчанию — та, по которой идёт
+    // подключение, иначе первая; нажатие на раскрытую сворачивает всё.
+    var expandedId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var offersOpen by rememberSaveable { mutableStateOf(false) }
+    val openId = when (expandedId) {
+        null -> state.workingSubscriptionId ?: state.cards.firstOrNull()?.id
+        -1L -> null
+        else -> expandedId
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
             Column(Modifier.padding(start = 4.dp, top = 12.dp)) {
@@ -199,6 +214,8 @@ fun PlansScreen(
             items(state.cards, key = { "sub-${it.id}" }) { card ->
                 MySubscriptionCard(
                     card = card,
+                    expanded = card.id == openId,
+                    onToggle = { expandedId = if (card.id == openId) -1L else card.id },
                     purchasing = busy,
                     working = card.id == state.workingSubscriptionId,
                     // при одной подписке выбирать нечего — строку не показываем
@@ -224,15 +241,34 @@ fun PlansScreen(
         }
 
         if (state.offers.isNotEmpty()) {
-            item {
-                SectionTitle(if (state.cards.isEmpty()) "Выберите тариф" else "Купить ещё")
-            }
-            items(state.offers, key = { "offer-${it.id}" }) { tariff ->
-                OfferCard(
-                    tariff = tariff,
-                    purchasing = busy,
-                    onBuy = { period -> viewModel.purchase(tariff, period) },
-                )
+            if (state.cards.isEmpty()) {
+                item { SectionTitle("Выберите тариф") }
+                items(state.offers, key = { "offer-${it.id}" }) { tariff ->
+                    OfferCard(
+                        tariff = tariff,
+                        purchasing = busy,
+                        onBuy = { period -> viewModel.purchase(tariff, period) },
+                    )
+                }
+            } else {
+                item {
+                    val cheapest = state.offers.flatMap { it.periods }.minOfOrNull { it.priceKopeks }
+                    BuyMoreRow(
+                        count = state.offers.size,
+                        cheapest = cheapest,
+                        open = offersOpen,
+                        onToggle = { offersOpen = !offersOpen },
+                    )
+                }
+                if (offersOpen) {
+                    items(state.offers, key = { "offer-${it.id}" }) { tariff ->
+                        OfferCard(
+                            tariff = tariff,
+                            purchasing = busy,
+                            onBuy = { period -> viewModel.purchase(tariff, period) },
+                        )
+                    }
+                }
             }
         }
 
@@ -263,6 +299,8 @@ private fun SectionTitle(text: String) {
 @Composable
 private fun MySubscriptionCard(
     card: OwnedSubscription,
+    expanded: Boolean,
+    onToggle: () -> Unit,
     purchasing: Boolean,
     working: Boolean,
     showWorkingRow: Boolean,
@@ -341,26 +379,54 @@ private fun MySubscriptionCard(
     val hasDevices = card.devices != null && !legacy
     val hasTraffic = !legacy && !card.unlimitedTraffic && card.trafficPackages.isNotEmpty()
 
-    GroupCard {
+    GroupCard(Modifier.animateContentSize()) {
         Column(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(onClick = onToggle),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        card.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Box(
+                        Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(ink(0.08f)),
+                        contentAlignment = Alignment.Center,
+                    ) { AquaIconView(AquaIcon.Shield, ink(0.85f), size = 20.dp, stroke = 1.5f) }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            card.title,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.3).sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        // что в подписке и до какого числа — видно и в свёрнутом виде
+                        Text(
+                            card.sub.endDate?.let { "до ${cabinetDate(it)}" } ?: cardSummary(card),
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
                     Spacer(Modifier.width(8.dp))
                     TermBadge(card)
-                    if (hasMenu) {
+                    if (!expanded) {
+                        Spacer(Modifier.width(8.dp))
+                        AquaIconView(
+                            AquaIcon.Chevron,
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            size = 18.dp,
+                            stroke = 1.6f,
+                        )
+                    }
+                    if (expanded && hasMenu) {
                         Box {
                             Box(
                                 modifier = Modifier
@@ -401,6 +467,7 @@ private fun MySubscriptionCard(
                         }
                     }
                 }
+                if (expanded) {
                 Text(
                     cardSummary(card),
                     style = MaterialTheme.typography.bodySmall,
@@ -457,10 +524,12 @@ private fun MySubscriptionCard(
                         }
                     }
                 }
+                }
             }
 
+            if (expanded) {
             if (card.periods.isNotEmpty() && !legacy) {
-                PeriodGrid(
+                PeriodRows(
                     periods = card.periods,
                     selected = period,
                     onSelect = { selectedPeriod = it },
@@ -540,6 +609,7 @@ private fun MySubscriptionCard(
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -978,10 +1048,10 @@ private fun PrimaryAction(text: String, enabled: Boolean, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        shape = RoundedCornerShape(27.dp),
     ) {
-        Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
@@ -1055,7 +1125,7 @@ private fun OfferCard(
             }
             // единственный срок выбирать не из чего — он виден в кнопке
             if (tariff.periods.size > 1) {
-                PeriodGrid(
+                PeriodRows(
                     periods = tariff.periods,
                     selected = period,
                     onSelect = { selectedPeriod = it },
@@ -1196,4 +1266,114 @@ private fun BestValueBadge() {
             .background(BrandColors.Warning.copy(alpha = 0.14f))
             .padding(horizontal = 10.dp, vertical = 4.dp),
     )
+}
+
+/** «3 тарифа»: число и слово в правильной форме. */
+private fun tariffsWord(n: Int): String {
+    val last2 = n % 100
+    val last = n % 10
+    val word = when {
+        last2 in 11..14 -> "тарифов"
+        last == 1 -> "тариф"
+        last in 2..4 -> "тарифа"
+        else -> "тарифов"
+    }
+    return "$n $word"
+}
+
+/** Строка «Купить ещё»: раскрывает список тарифов, которых у человека нет. */
+@Composable
+private fun BuyMoreRow(count: Int, cheapest: Long?, open: Boolean, onToggle: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    GroupCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggle)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(scheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) { AquaIconView(AquaIcon.Cart, scheme.primary, size = 20.dp, stroke = 1.5f) }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Купить ещё", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    tariffsWord(count) + (cheapest?.let { " · от ${formatKopeks(it)}" } ?: ""),
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+            AquaIconView(
+                AquaIcon.Chevron,
+                scheme.onSurfaceVariant.copy(alpha = 0.7f),
+                size = 18.dp,
+                stroke = 1.6f,
+                modifier = Modifier.rotate(if (open) -90f else 90f),
+            )
+        }
+    }
+}
+
+/**
+ * Сроки строками с радио-кнопкой: название, отметка «Выгодно» и цена справа.
+ * Выбранная строка залита акцентом.
+ */
+@Composable
+private fun PeriodRows(
+    periods: List<PeriodPrice>,
+    selected: PeriodPrice?,
+    onSelect: (PeriodPrice) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .border(1.dp, ink(0.08f), shape),
+    ) {
+        periods.forEachIndexed { index, period ->
+            val isSelected = selected?.days == period.days
+            if (index > 0) androidx.compose.material3.HorizontalDivider(color = ink(0.06f))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(if (isSelected) scheme.primary.copy(alpha = 0.10f) else Color.Transparent)
+                    .clickable { onSelect(period) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .border(2.dp, if (isSelected) scheme.primary else ink(0.3f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isSelected) Box(Modifier.size(10.dp).clip(CircleShape).background(scheme.primary))
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    if (period.daily) "Посуточно" else daysLabel(period.days),
+                    fontSize = 14.5.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+                if (period.highlighted) {
+                    Spacer(Modifier.width(8.dp))
+                    Text("Выгодно", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = scheme.primary, maxLines = 1)
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (period.daily) "${formatKopeks(period.priceKopeks)} в день" else formatKopeks(period.priceKopeks),
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
 }
