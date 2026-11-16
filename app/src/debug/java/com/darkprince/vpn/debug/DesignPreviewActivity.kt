@@ -72,11 +72,23 @@ class DesignPreviewActivity : ComponentActivity() {
                     Scaffold(
                         containerColor = Color.Transparent,
                         bottomBar = {
-                            AquaNavBar(items, if (screen == "servers") 1 else 0, on, {})
+                            AquaNavBar(items, when (screen) { "servers" -> 1; "settings" -> 4; else -> 0 }, on, {})
                         },
                     ) { inner ->
                         Box(Modifier.fillMaxSize().padding(inner)) {
-                            if (screen == "servers") {
+                            if (screen == "settings") {
+                                com.darkprince.vpn.ui.screens.SettingsScreen(
+                                    user = null, guestMode = false, usingSharedSubscription = false,
+                                    onOpenReferral = {}, onOpenGifts = {}, onOpenPromo = {}, onOpenDocs = {},
+                                    onOpenApps = {}, autoConnectMode = "off", onSelectAutoConnect = {},
+                                    failover = true, onToggleFailover = {}, killSwitch = false,
+                                    onToggleKillSwitch = {}, onOpenVpnSettings = {}, onOpenShare = {},
+                                    onOpenDevices = {}, onOpenSupport = {}, onOpenDiagnostics = {},
+                                    onOpenNews = {}, newsUnreadCount = 2, supportUnreadCount = 1,
+                                    onCreateAccount = {}, onLinkEmail = {}, onDropSharedSubscription = {},
+                                    onLogout = {}, selectedThemeId = "night", onSelectTheme = {},
+                                )
+                            } else if (screen == "servers") {
                                 ServersContent(state, null, {}, {}, {})
                             } else {
                                 HomeContent(

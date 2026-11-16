@@ -23,8 +23,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -32,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -50,12 +49,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darkprince.vpn.data.api.dto.TransactionDto
+import com.darkprince.vpn.ui.theme.AquaIcon
+import com.darkprince.vpn.ui.theme.AquaIconView
 import com.darkprince.vpn.ui.theme.BrandColors
+import com.darkprince.vpn.ui.theme.glass
+import com.darkprince.vpn.ui.theme.ink
 import com.darkprince.vpn.ui.theme.GroupCard
 import com.darkprince.vpn.ui.theme.RowDivider
 import com.darkprince.vpn.ui.theme.SectionHeader
@@ -159,29 +163,36 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Spacer(Modifier.height(4.dp))
-            Text("Баланс", style = MaterialTheme.typography.headlineSmall)
+            Column(Modifier.padding(start = 4.dp, top = 12.dp)) {
+                Text("Баланс", style = MaterialTheme.typography.displaySmall)
+                Text(
+                    "Пополнение, промокоды и история операций",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
         }
 
-        // Сумма на счёте — главное на экране: крупно и по центру, без рамки.
+        // Сумма на счёте — главное на экране: крупная цифра на стеклянной плите.
         item {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth().glass().padding(horizontal = 22.dp, vertical = 20.dp),
             ) {
                 Text(
                     "На счёте",
-                    style = MaterialTheme.typography.labelMedium,
+                    fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     state.balanceKopeks?.let { formatKopeks(it) } ?: "—",
-                    style = MaterialTheme.typography.displaySmall,
+                    style = MaterialTheme.typography.displayMedium,
+                    maxLines = 1,
                 )
             }
         }
@@ -215,11 +226,16 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
 
                     OutlinedTextField(
                         value = amount,
+                        textStyle = MaterialTheme.typography.titleMedium,
                         onValueChange = { amount = it.filter(Char::isDigit).take(7) },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Своя сумма, ₽") },
                         singleLine = true,
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = ink(0.16f),
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
 
@@ -252,8 +268,8 @@ fun BalanceScreen(viewModel: BalanceViewModel) {
                         onClick = {
                             choice?.let { viewModel.topup(rubles, it.method, it.optionId) }
                         },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        shape = RoundedCornerShape(27.dp),
                         enabled = !state.creatingPayment && state.methods.isNotEmpty() && rubles > 0 &&
                             !down,
                     ) {
@@ -424,13 +440,13 @@ private fun Pill(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(22.dp)
     Box(
         modifier = modifier
             .height(44.dp)
             .clip(shape)
-            .background(if (selected) scheme.onSurface else Color.Transparent)
-            .border(1.dp, if (selected) scheme.onSurface else scheme.outline, shape)
+            .background(if (selected) scheme.primary else ink(0.05f))
+            .border(1.dp, if (selected) scheme.primary else ink(0.12f), shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
@@ -438,7 +454,7 @@ private fun Pill(
         Text(
             text,
             style = MaterialTheme.typography.labelLarge,
-            color = if (selected) scheme.surfaceContainerLowest else scheme.onSurface,
+            color = if (selected) scheme.onPrimary else scheme.onSurface,
             maxLines = 1,
         )
     }
@@ -462,11 +478,11 @@ private fun TransactionRow(tx: TransactionDto) {
                 .background(tint.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (income) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(18.dp),
+            AquaIconView(
+                if (income) AquaIcon.Down else AquaIcon.Up,
+                tint,
+                size = 18.dp,
+                stroke = 1.6f,
             )
         }
         Spacer(Modifier.width(12.dp))

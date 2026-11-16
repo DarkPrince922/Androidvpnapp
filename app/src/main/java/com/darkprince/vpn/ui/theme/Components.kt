@@ -68,15 +68,16 @@ import androidx.compose.ui.unit.sp
  * строки настроек, плитки-иконки и чипы.
  */
 
-/** Подпись над группой: обычным словом, полужирно. */
+/** Подпись над группой: мелкая, приглушённая, с воздухом по буквам. */
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onBackground,
-        modifier = modifier.padding(start = 4.dp, bottom = 8.dp),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        letterSpacing = 0.6.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(start = 8.dp, bottom = 8.dp),
     )
 }
 
@@ -98,8 +99,8 @@ fun GroupCard(
 @Composable
 fun RowDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(start = 68.dp, end = 16.dp),
-        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+        modifier = Modifier.padding(start = 70.dp),
+        color = ink(0.07f),
     )
 }
 
@@ -110,15 +111,18 @@ fun IconTile(
     tint: Color = MaterialTheme.colorScheme.primary,
     modifier: Modifier = Modifier,
 ) {
+    // Плитки нейтральные, как в строках главного экрана: цветом выделяем
+    // только особые (бонусы, выход), остальные — цветом текста.
+    val neutral = tint == MaterialTheme.colorScheme.primary
+    val iconTint = if (neutral) ink(0.8f) else tint
     Box(
         modifier = modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(tint.copy(alpha = 0.14f))
-            .border(1.dp, tint.copy(alpha = 0.35f), RoundedCornerShape(12.dp)),
+            .size(38.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(if (neutral) ink(0.08f) else tint.copy(alpha = 0.14f)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -342,18 +346,19 @@ fun SettingsRow(
         modifier = modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconTile(icon = icon, tint = tint)
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(title, fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground)
             subtitle?.let {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     it,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 12.5.sp,
+                    lineHeight = 17.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -374,10 +379,11 @@ fun SettingsRow(
             }
             if (showChevron) {
                 Spacer(Modifier.width(4.dp))
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                AquaIconView(
+                    AquaIcon.Chevron,
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    size = 18.dp,
+                    stroke = 1.6f,
                 )
             }
         }
