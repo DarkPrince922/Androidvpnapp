@@ -707,7 +707,7 @@ private fun TrafficTile(
         Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.Bottom) {
             Text(
                 value,
-                fontSize = 30.sp,
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Light,
                 letterSpacing = (-1).sp,
                 maxLines = 1,
