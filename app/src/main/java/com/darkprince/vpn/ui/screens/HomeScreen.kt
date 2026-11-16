@@ -244,7 +244,7 @@ fun HomeContent(
                 .padding(start = 24.dp, end = 24.dp, top = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PowerDisc(vpnState = vpnState, onClick = onPowerClick, size = 88.dp, rings = false)
+            PowerDisc(vpnState = vpnState, onClick = onPowerClick, discSize = 88.dp, rings = false)
             Spacer(Modifier.width(18.dp))
             AnimatedContent(
                 targetState = vpnState,
@@ -665,10 +665,10 @@ private fun daysWord(days: Int): String {
 private fun PowerDisc(
     vpnState: VpnState,
     onClick: () -> Unit,
-    size: androidx.compose.ui.unit.Dp = 180.dp,
+    discSize: androidx.compose.ui.unit.Dp = 180.dp,
     rings: Boolean = true,
 ) {
-    val k = size.value / 180f
+    val k = discSize.value / 180f
     val on = vpnState == VpnState.CONNECTED
     val busy = vpnState == VpnState.CONNECTING
     val spec = tween<Color>(500)
@@ -728,14 +728,14 @@ private fun PowerDisc(
         // свечение под включённой кнопкой
         Box(
             Modifier
-                .requiredSize(size * 1.39f)
+                .requiredSize(discSize * 1.39f)
                 .background(Brush.radialGradient(listOf(glow, Color.Transparent)), CircleShape)
         )
 
         val shape = CircleShape
         Box(
             modifier = Modifier
-                .size(size)
+                .size(discSize)
                 .clip(shape)
                 // 160° в CSS — от верхнего левого угла к нижнему правому, почти по диагонали
                 .background(Brush.linearGradient(0f to top, 0.7f to mid, 1f to bottom, start = Offset(0f, 0f), end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)))
@@ -774,7 +774,7 @@ private fun PowerDisc(
             }
         }
 
-        if (busy) ConnectingArc(size + 12.dp)
+        if (busy) ConnectingArc(discSize + 12.dp)
     }
 }
 
