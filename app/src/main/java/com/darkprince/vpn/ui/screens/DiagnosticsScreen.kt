@@ -1,5 +1,6 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -70,7 +71,7 @@ fun DiagnosticsScreen(viewModel: DiagnosticsViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (state.running) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    LoadingDots()
                     Spacer(Modifier.width(12.dp))
                 }
                 Text(

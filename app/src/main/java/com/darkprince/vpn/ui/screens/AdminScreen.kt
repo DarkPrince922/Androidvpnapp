@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import com.darkprince.vpn.ui.theme.BrandColors
 import com.darkprince.vpn.di.ServiceLocator
 import com.darkprince.vpn.data.api.dto.AdminUserDetailDto
@@ -149,7 +151,7 @@ fun AdminScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 if (state.loading) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    LoadingDots()
                 } else {
                     AquaIconView(AquaIcon.Refresh, ink(0.85f), size = 19.dp, stroke = 1.6f)
                 }
@@ -283,7 +285,7 @@ private fun TicketsSection(
 @Composable
 private fun Loader() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
+        LoadingCapsule("Загружаем", fullScreen = true)
     }
 }
 
@@ -660,7 +662,7 @@ private fun PeopleSection(
                         contentAlignment = Alignment.Center,
                     ) {
                         if (state.loadingMore) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            LoadingDots()
                         } else {
                             Text("Показать ещё", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
@@ -943,7 +945,7 @@ fun AdminTicketScreen(
             state.ticketLoading -> Box(
                 Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            ) { LoadingCapsule("Загружаем обращение", fullScreen = true) }
 
             ticket == null -> Box(
                 Modifier.fillMaxSize(),
@@ -1006,7 +1008,7 @@ fun AdminTicketScreen(
                             enabled = !state.sending && reply.isNotBlank(),
                         ) {
                             if (state.sending) {
-                                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                                LoadingDots()
                             } else {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Send,

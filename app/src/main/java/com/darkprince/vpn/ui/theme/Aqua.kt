@@ -387,7 +387,7 @@ fun GlassSearchField(
  * подписью, что именно грузится. Заменяет голый крутящийся круг.
  */
 @Composable
-fun LoadingCapsule(text: String, modifier: Modifier = Modifier) {
+fun LoadingCapsule(text: String, modifier: Modifier = Modifier, fullScreen: Boolean = false) {
     val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "loading")
     val phase by transition.animateFloat(
         initialValue = 0f,
@@ -398,7 +398,10 @@ fun LoadingCapsule(text: String, modifier: Modifier = Modifier) {
         label = "loadingPhase",
     )
     val accent = MaterialTheme.colorScheme.primary
-    Box(modifier.fillMaxWidth().padding(top = 36.dp), contentAlignment = Alignment.TopCenter) {
+    Box(
+        if (fullScreen) modifier.fillMaxSize() else modifier.fillMaxWidth().padding(top = 36.dp),
+        contentAlignment = if (fullScreen) Alignment.Center else Alignment.TopCenter,
+    ) {
         Row(
             modifier = Modifier
                 // мягкое свечение вокруг капсулы
@@ -474,6 +477,39 @@ fun <T> GlassSegments(
                     color = if (isSelected) scheme.primary else ink(0.6f),
                 )
             }
+        }
+    }
+}
+
+
+/**
+ * Маленький индикатор из трёх пульсирующих точек — для кнопок, чипов и
+ * значков, где капсула с подписью не поместится. Парный к [LoadingCapsule].
+ */
+@Composable
+fun LoadingDots(
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.primary,
+    dotSize: Dp = 5.dp,
+) {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "dots")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing),
+        ),
+        label = "dotsPhase",
+    )
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(dotSize * 0.7f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(3) { i ->
+            val x = (phase + i / 3f) % 1f
+            val a = 0.3f + 0.7f * (if (x < 0.5f) x * 2f else (1f - x) * 2f)
+            Box(Modifier.size(dotSize).clip(CircleShape).background(color.copy(alpha = a)))
         }
     }
 }

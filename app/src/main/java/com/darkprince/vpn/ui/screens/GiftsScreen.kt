@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import androidx.compose.foundation.background
 import com.darkprince.vpn.ui.theme.ink
 import com.darkprince.vpn.ui.theme.glass
@@ -98,7 +100,7 @@ fun GiftsScreen(viewModel: GiftsViewModel, onShare: (String) -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        CircularProgressIndicator(Modifier.height(24.dp))
+                        LoadingDots()
                         Text("Ждём оплату. Код подарка появится здесь, как только деньги дойдут")
                     }
                 }
@@ -162,7 +164,7 @@ fun GiftsScreen(viewModel: GiftsViewModel, onShare: (String) -> Unit) {
         if (state.loading && config == null) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    CircularProgressIndicator()
+                    LoadingCapsule("Загружаем подарки")
                 }
             }
         } else if (config != null && config.isEnabled && config.tariffs.isNotEmpty()) {

@@ -1,5 +1,6 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -383,11 +384,7 @@ fun HomeContent(
                 )
                 GlassChip(onClick = onPing) {
                     if (state.pinging) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 1.6.dp,
-                            color = scheme.primary,
-                        )
+                        LoadingDots(color = scheme.primary)
                     } else {
                         AquaIconView(AquaIcon.Speed, ink(0.8f), size = 15.dp, stroke = 1.6f)
                     }

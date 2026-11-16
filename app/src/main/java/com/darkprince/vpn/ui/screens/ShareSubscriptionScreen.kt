@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -91,7 +93,7 @@ fun ShareSubscriptionScreen(
 
         val list = targets
         when {
-            list == null -> CircularProgressIndicator()
+            list == null -> LoadingCapsule("Готовим подписку")
             list.isEmpty() -> Text(
                 "Нет активной подписки, которой можно поделиться",
                 color = MaterialTheme.colorScheme.error,

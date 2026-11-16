@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -51,7 +53,7 @@ fun DocsScreen(viewModel: DocsViewModel) {
             }
             when {
                 state.openLoading -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    CircularProgressIndicator()
+                    LoadingCapsule("Открываем документ")
                 }
                 state.error != null -> Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error)
                 else -> Text(
@@ -71,7 +73,7 @@ fun DocsScreen(viewModel: DocsViewModel) {
         Text("Вопросы и документы", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(20.dp))
         if (state.loading) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { LoadingCapsule("Загружаем документы") }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 

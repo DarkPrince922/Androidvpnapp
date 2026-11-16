@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import com.darkprince.vpn.ui.theme.serviceDown
 import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import com.darkprince.vpn.vpn.VpnStateStore
@@ -182,7 +184,7 @@ fun PlansScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    CircularProgressIndicator()
+                    LoadingCapsule("Загружаем тарифы")
                 }
             }
         }
@@ -812,7 +814,7 @@ private fun SwitchTariffDialog(
                         }
                     }
                     switch.loading -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        CircularProgressIndicator()
+                        LoadingDots()
                     }
                     switch.error != null -> Text(switch.error, color = MaterialTheme.colorScheme.error)
                     preview != null -> {

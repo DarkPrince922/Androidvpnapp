@@ -1,5 +1,7 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
+import com.darkprince.vpn.ui.theme.LoadingCapsule
 import com.darkprince.vpn.ui.theme.serviceDown
 import com.darkprince.vpn.ui.theme.ServiceDownBanner
 import androidx.compose.foundation.BorderStroke
@@ -115,7 +117,7 @@ fun SupportScreen(
         when {
             state.loading && state.tickets.isEmpty() -> {
                 Box(Modifier.fillMaxWidth().padding(36.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                    LoadingCapsule("Загружаем обращения")
                 }
             }
 
@@ -250,7 +252,7 @@ fun SupportScreen(
                     enabled = !state.sending,
                 ) {
                     if (state.sending) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        LoadingDots()
                         Spacer(Modifier.width(8.dp))
                     }
                     Text("Отправить")
@@ -311,7 +313,7 @@ fun SupportTicketScreen(
         when {
             state.loading && ticket == null -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                    LoadingCapsule("Загружаем обращение", fullScreen = true)
                 }
             }
             ticket == null -> {
@@ -373,7 +375,7 @@ fun SupportTicketScreen(
                                 (reply.isNotBlank() || state.pendingAttachment != null),
                         ) {
                             if (state.sending) {
-                                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                                LoadingDots()
                             } else {
                                 Icon(Icons.Default.Send, contentDescription = "Отправить")
                             }

@@ -315,11 +315,7 @@ fun PingPendingChip(modifier: Modifier = Modifier) {
             .height(17.dp),
         contentAlignment = Alignment.Center,
     ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(11.dp),
-            strokeWidth = 1.5.dp,
-            color = tint,
-        )
+        LoadingDots(color = tint)
     }
 }
 

@@ -1,5 +1,6 @@
 package com.darkprince.vpn.ui.screens
 
+import com.darkprince.vpn.ui.theme.LoadingDots
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -143,11 +144,7 @@ internal fun ServerRow(
                     maxLines = 1,
                 )
             }
-            pinging -> CircularProgressIndicator(
-                modifier = Modifier.size(14.dp),
-                strokeWidth = 1.5.dp,
-                color = unit,
-            )
+            pinging -> LoadingDots(color = unit)
         }
     }
 }
