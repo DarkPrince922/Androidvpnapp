@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import com.darkprince.vpn.ui.theme.AquaIcon
 import com.darkprince.vpn.ui.theme.AquaIconView
+import com.darkprince.vpn.ui.theme.GlassSegments
 import com.darkprince.vpn.ui.theme.glass
 import com.darkprince.vpn.ui.theme.ink
 import androidx.compose.ui.draw.rotate
@@ -124,16 +125,6 @@ fun AdminScreen(
                 letterSpacing = (-0.8).sp,
                 maxLines = 1,
             )
-            if (state.section == AdminSection.TICKETS && state.tickets.isNotEmpty()) {
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    state.tickets.size.toString(),
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Light,
-                    letterSpacing = (-0.8).sp,
-                    color = ink(0.35f),
-                )
-            }
             Spacer(Modifier.weight(1f))
             // роль — маленькой плашкой: нужна, чтобы понять, чьи права действуют,
             // но не заголовку
@@ -241,37 +232,31 @@ private fun TicketsSection(
     state: AdminUiState,
     onOpenTicket: (Long) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Row(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.weight(1f)) {
-            TicketFilter.entries.forEach { filter ->
-                val selected = state.filter == filter
-                Text(
-                    filter.title,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (selected) MaterialTheme.colorScheme.primary else ink(0.5f),
-                    modifier = Modifier
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null,
-                        ) { viewModel.setFilter(filter) }
-                        .padding(vertical = 4.dp),
-                )
-            }
+    GlassSegments(
+        items = TicketFilter.entries.map { it to it.title },
+        selected = state.filter,
+        onSelect = { viewModel.setFilter(it) },
+    )
+    val waiting = state.tickets.count { it.needsReply }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (state.tickets.isEmpty()) "" else "Показано ${state.tickets.size}",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (waiting > 0) {
+            Text(
+                "Ждут ответа: $waiting",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = BrandColors.Warning,
+            )
         }
     }
-    val waiting = state.tickets.count { it.needsReply }
-    if (waiting > 0) {
-        Text(
-            "Ждут ответа: $waiting",
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = BrandColors.Warning,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-    }
-
-    Spacer(Modifier.height(6.dp))
 
     when {
         state.loading && state.tickets.isEmpty() -> Loader()
@@ -280,10 +265,16 @@ private fun TicketsSection(
             AdminNotice("Обращений в этой выборке нет.")
 
         else -> LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 8.dp)) {
-            // ждущие ответа — первыми, остальные в порядке, в каком пришли
-            val sorted = state.tickets.sortedByDescending { it.needsReply }
-            items(sorted, key = { it.id }) { ticket ->
-                AdminTicketRow(ticket) { onOpenTicket(ticket.id) }
+            // ждущие ответа — первыми, остальные в порядке, в каком пришли;
+            // всё — одной стеклянной плитой, как список людей
+            item {
+                val sorted = state.tickets.sortedByDescending { it.needsReply }
+                Column(Modifier.fillMaxWidth().glass()) {
+                    sorted.forEachIndexed { index, ticket ->
+                        if (index > 0) androidx.compose.material3.HorizontalDivider(color = ink(0.07f))
+                        AdminTicketRow(ticket) { onOpenTicket(ticket.id) }
+                    }
+                }
             }
         }
     }
@@ -500,20 +491,15 @@ private fun suggestPromoCode(): String {
 
 @Composable
 private fun SummaryCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .glass()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(8.dp))
-            content()
-        }
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        content()
     }
 }
 
@@ -586,47 +572,19 @@ private fun PeopleSection(
 
     Spacer(Modifier.height(10.dp))
 
-    // Кого показывать — одной капсулой на четыре части
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .glass(RoundedCornerShape(20.dp))
-            .padding(4.dp),
-    ) {
-        PeopleFilter.entries.forEach { filter ->
-            val selected = state.peopleFilter == filter
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else Color.Transparent)
-                    .border(
-                        1.dp,
-                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else Color.Transparent,
-                        RoundedCornerShape(16.dp),
-                    )
-                    .clickable { viewModel.setPeopleFilter(filter) }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    // короткие подписи: четыре части капсулы не вмещают «С подпиской»
-                    when (filter) {
-                        PeopleFilter.ANY -> "Все"
-                        PeopleFilter.ACTIVE -> "Активные"
-                        PeopleFilter.TRIAL -> "Пробные"
-                        PeopleFilter.EXPIRED -> "Истекшие"
-                    },
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                    color = if (selected) MaterialTheme.colorScheme.primary else ink(0.6f),
-                )
+    // Кого показывать — одной капсулой
+    GlassSegments(
+        items = PeopleFilter.entries.map { filter ->
+            filter to when (filter) {
+                PeopleFilter.ANY -> "Все"
+                PeopleFilter.ACTIVE -> "Активные"
+                PeopleFilter.TRIAL -> "Пробные"
+                PeopleFilter.EXPIRED -> "Истекшие"
             }
-        }
-    }
+        },
+        selected = state.peopleFilter,
+        onSelect = viewModel::setPeopleFilter,
+    )
 
     // Счётчик слева, порядок справа: сортировка выбирается из меню
     var sortOpen by remember { mutableStateOf(false) }
@@ -825,7 +783,7 @@ private fun AdminTicketRow(ticket: AdminTicketDto, onClick: () -> Unit) {
                 ) else Modifier
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(

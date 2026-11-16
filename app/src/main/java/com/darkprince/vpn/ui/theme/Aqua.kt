@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -422,6 +423,56 @@ fun LoadingCapsule(text: String, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.width(14.dp))
             Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+
+/**
+ * Фильтр одной капсулой: части равной ширины (до четырёх) или, если их
+ * больше, по размеру подписи с прокруткой вбок. Выбранная — акцентом.
+ */
+@Composable
+fun <T> GlassSegments(
+    items: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val scrolls = items.size > 4
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .glass(RoundedCornerShape(20.dp))
+            .then(if (scrolls) Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()) else Modifier)
+            .padding(4.dp),
+    ) {
+        items.forEach { (key, label) ->
+            val isSelected = key == selected
+            Box(
+                modifier = Modifier
+                    .then(if (scrolls) Modifier else Modifier.weight(1f))
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (isSelected) scheme.primary.copy(alpha = 0.14f) else Color.Transparent)
+                    .border(
+                        1.dp,
+                        if (isSelected) scheme.primary.copy(alpha = 0.4f) else Color.Transparent,
+                        RoundedCornerShape(16.dp),
+                    )
+                    .clickable { onSelect(key) }
+                    .padding(vertical = 8.dp, horizontal = if (scrolls) 14.dp else 2.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    color = if (isSelected) scheme.primary else ink(0.6f),
+                )
+            }
         }
     }
 }

@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import com.darkprince.vpn.ui.theme.SectionHeader
+import com.darkprince.vpn.ui.theme.glass
+import com.darkprince.vpn.ui.theme.GlassSearchField
+import com.darkprince.vpn.ui.theme.GlassSegments
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -322,19 +326,13 @@ fun ColumnScope.PaymentsSection(tools: AdminToolsViewModel, admin: AdminUiState)
     val state by tools.state.collectAsStateWithLifecycle()
 
     ToolMessages(state.error, state.info)
-    OutlinedTextField(
+    GlassSearchField(
         value = state.paymentQuery,
         onValueChange = tools::setPaymentQuery,
-        label = { Text("Счёт, @ник, Telegram ID или почта") },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { tools.searchPayments() }),
-        trailingIcon = {
-            TextButton(onClick = { tools.searchPayments() }) { Text("Найти") }
-        },
-        modifier = Modifier.fillMaxWidth(),
+        placeholder = "Поиск",
+        onSearch = { tools.searchPayments() },
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(10.dp))
     Chips(
         listOf("all" to "Все", "pending" to "Ждут", "paid" to "Оплачены", "cancelled" to "Отменены"),
         selected = state.paymentStatus,
@@ -493,7 +491,7 @@ fun ColumnScope.BroadcastsSection(tools: AdminToolsViewModel, admin: AdminUiStat
             }
         }
         if (state.broadcasts.isNotEmpty()) {
-            item { Text("История", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp)) }
+            item { SectionHeader("История") }
         }
         items(state.broadcasts, key = { it.id }) { broadcast ->
             BroadcastCard(broadcast, state.filters.firstOrNull { it.key == broadcast.targetType }?.label, state.busy) {
@@ -569,28 +567,16 @@ private fun ToolMessages(error: String?, info: String?) {
 
 @Composable
 private fun <T> Chips(items: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        items.forEach { (key, label) ->
-            FilterChip(
-                selected = key == selected,
-                onClick = { onSelect(key) },
-                label = { Text(label, fontSize = 12.sp) },
-            )
-        }
-    }
+    // тот же фильтр-капсула, что в «Людях»
+    GlassSegments(items = items, selected = selected, onSelect = onSelect, modifier = Modifier.padding(bottom = 8.dp))
 }
 
 @Composable
 private fun ToolCard(onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .glass()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
