@@ -14,6 +14,7 @@ import com.darkprince.vpn.ui.theme.AquaIcon
 import com.darkprince.vpn.ui.theme.AquaIconView
 import com.darkprince.vpn.ui.theme.glass
 import com.darkprince.vpn.ui.theme.ink
+import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.BorderStroke
@@ -545,89 +546,163 @@ private fun PeopleSection(
     state: AdminUiState,
     onOpenPerson: (AdminUserDto) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = state.search,
-            onValueChange = viewModel::setSearch,
-            placeholder = { Text("Имя, @ник или Telegram ID") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(6.dp))
-        IconButton(onClick = viewModel::searchPeople, enabled = !state.loading) {
-            Icon(Icons.Default.Search, contentDescription = "Искать")
+    // Поиск: стеклянное поле, просто «Поиск». Искать можно клавишей на
+    // клавиатуре или значком слева.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .glass(RoundedCornerShape(23.dp))
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.clip(CircleShape).clickable(enabled = !state.loading, onClick = viewModel::searchPeople),
+        ) { AquaIconView(AquaIcon.Search, ink(0.6f), size = 19.dp, stroke = 1.6f) }
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (state.search.isEmpty()) {
+                Text("Поиск", fontSize = 14.sp, color = ink(0.5f))
+            }
+            androidx.compose.foundation.text.BasicTextField(
+                value = state.search,
+                onValueChange = viewModel::setSearch,
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 14.sp,
+                ),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { viewModel.searchPeople() },
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(10.dp))
 
-    // Два ряда: сперва кого показывать, потом в каком порядке. Оба
-    // прокручиваются вбок — на узком экране они не помещаются, а прятать
-    // их в меню значит спрятать сортировку, ради которой сюда и заходят.
-    ChipRow {
+    // Кого показывать — одной капсулой на четыре части
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .glass(RoundedCornerShape(20.dp))
+            .padding(4.dp),
+    ) {
         PeopleFilter.entries.forEach { filter ->
-            FilterChip(
-                selected = state.peopleFilter == filter,
-                onClick = { viewModel.setPeopleFilter(filter) },
-                label = { Text(filter.title, fontSize = 12.sp) },
-            )
-        }
-    }
-    Spacer(Modifier.height(6.dp))
-    ChipRow {
-        PeopleSort.entries.forEach { sort ->
-            FilterChip(
-                selected = state.peopleSort == sort,
-                onClick = { viewModel.setPeopleSort(sort) },
-                label = { Text(sort.title, fontSize = 12.sp) },
-            )
+            val selected = state.peopleFilter == filter
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else Color.Transparent)
+                    .border(
+                        1.dp,
+                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else Color.Transparent,
+                        RoundedCornerShape(16.dp),
+                    )
+                    .clickable { viewModel.setPeopleFilter(filter) }
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    filter.title,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    color = if (selected) MaterialTheme.colorScheme.primary else ink(0.6f),
+                )
+            }
         }
     }
 
-    Spacer(Modifier.height(8.dp))
-
-    if (state.peopleTotal > 0) {
+    // Счётчик слева, порядок справа: сортировка выбирается из меню
+    var sortOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 2.dp, top = 10.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
-            if (state.sortedLocally) {
-                "Показано ${state.people.size} из ${state.peopleTotal} — " +
-                    "панель не умеет так сортировать, порядок задан на телефоне"
-            } else {
-                "Показано ${state.people.size} из ${state.peopleTotal}"
+            when {
+                state.peopleTotal <= 0 -> ""
+                state.sortedLocally -> "Показано ${state.people.size} из ${state.peopleTotal} · порядок задан на телефоне"
+                else -> "Показано ${state.people.size} из ${state.peopleTotal}"
             },
-            style = MaterialTheme.typography.labelSmall,
+            fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(6.dp))
+        Box {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { sortOpen = true }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(state.peopleSort.title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = ink(0.8f))
+                Spacer(Modifier.width(4.dp))
+                AquaIconView(AquaIcon.Chevron, ink(0.6f), size = 14.dp, stroke = 1.6f, modifier = Modifier.rotate(90f))
+            }
+            androidx.compose.material3.DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
+                PeopleSort.entries.forEach { sort ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = {
+                            Text(
+                                sort.title,
+                                fontWeight = if (sort == state.peopleSort) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        },
+                        onClick = { sortOpen = false; viewModel.setPeopleSort(sort) },
+                    )
+                }
+            }
+        }
     }
 
     when {
         state.loading && state.people.isEmpty() -> Loader()
         state.people.isEmpty() -> AdminNotice("Никого не нашлось. Попробуйте другой запрос.")
-        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.people, key = { it.id }) { person ->
-                PersonRow(person) { onOpenPerson(person) }
+        else -> LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 8.dp)) {
+            // весь список — одной плитой, статус подписки — цветной точкой
+            item {
+                Column(Modifier.fillMaxWidth().glass()) {
+                    state.people.forEachIndexed { index, person ->
+                        if (index > 0) androidx.compose.material3.HorizontalDivider(color = ink(0.07f))
+                        PersonRow(person) { onOpenPerson(person) }
+                    }
+                }
             }
             if (state.hasMorePeople) {
                 item {
                     // Кнопкой, а не по достижению конца списка: подгрузка
                     // «сама собой» на длинном списке легко уносит человека
                     // дальше, чем он собирался, и обратно он уже не найдёт.
-                    OutlinedButton(
-                        onClick = viewModel::loadMorePeople,
-                        enabled = !state.loadingMore,
-                        modifier = Modifier.fillMaxWidth(),
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 10.dp)
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .glass(RoundedCornerShape(23.dp))
+                            .clickable(enabled = !state.loadingMore, onClick = viewModel::loadMorePeople),
+                        contentAlignment = Alignment.Center,
                     ) {
                         if (state.loadingMore) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         } else {
-                            Text("Показать ещё")
+                            Text("Показать ещё", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
             }
         }
     }
-
 }
 
 /** Ряд чипов, который прокручивается вбок, если не помещается. */
@@ -644,37 +719,46 @@ private fun ChipRow(content: @Composable RowScope.() -> Unit) {
 
 @Composable
 private fun PersonRow(person: AdminUserDto, onClick: () -> Unit) {
-    Card(
+    // цвет точки — состояние подписки: активная, пробная, истёкшая, нет
+    val dot = when {
+        !person.hasSubscription -> ink(0.35f)
+        person.subscriptionIsTrial -> BrandColors.Warning
+        person.daysRemaining > 0 -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.error
+    }
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    person.displayName,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    rubles(person.balanceKopeks),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            Spacer(Modifier.height(4.dp))
+        Box(Modifier.size(9.dp).clip(CircleShape).background(dot))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                person.displayName,
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 subscriptionSummary(person),
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            rubles(person.balanceKopeks),
+            fontSize = 13.5.sp,
+            fontWeight = if (person.balanceKopeks > 0) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (person.balanceKopeks > 0) MaterialTheme.colorScheme.onBackground else ink(0.45f),
+            maxLines = 1,
+        )
     }
 }
 

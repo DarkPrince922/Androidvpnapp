@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -541,9 +542,10 @@ private fun SubscriptionCard(
             Modifier
                 .fillMaxWidth()
                 .glass()
+                .animateContentSize()
                 .clickable {
                     when {
-                        multi -> if (locked) lockHint = true else menuOpen = true
+                        multi -> if (locked) lockHint = true else menuOpen = !menuOpen
                         else -> onOpenPlans?.invoke()
                     }
                 }
@@ -605,7 +607,22 @@ private fun SubscriptionCard(
                         scheme.onSurfaceVariant.copy(alpha = 0.7f),
                         size = 18.dp,
                         stroke = 1.6f,
-                        modifier = Modifier.rotate(90f),
+                        modifier = Modifier.rotate(if (menuOpen && !locked) -90f else 90f),
+                    )
+                }
+            }
+            // другие подписки раскрываются здесь же, под текущей
+            if (multi && menuOpen && !locked) {
+                Spacer(Modifier.height(12.dp))
+                androidx.compose.material3.HorizontalDivider(color = ink(0.08f))
+                state.subscriptions.forEach { item ->
+                    SubscriptionOption(
+                        item = item,
+                        current = item.id == state.selectedSubscription?.id,
+                        onClick = {
+                            menuOpen = false
+                            onSelectSubscription(item.id)
+                        },
                     )
                 }
             }
@@ -628,27 +645,59 @@ private fun SubscriptionCard(
                 )
             }
         }
-        DropdownMenu(expanded = menuOpen && !locked, onDismissRequest = { menuOpen = false }) {
-            state.subscriptions.forEach { item ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(item.displayName)
-                            val details = listOfNotNull(
-                                item.endDate?.take(10),
-                                if (item.isActive) null else "неактивна",
-                            ).joinToString(" · ")
-                            if (details.isNotBlank()) {
-                                Text(details, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    },
-                    onClick = {
-                        menuOpen = false
-                        onSelectSubscription(item.id)
-                    },
+    }
+}
+
+/** Строка в раскрытой карточке: название, срок и остаток цветом; галочка у текущей. */
+@Composable
+private fun SubscriptionOption(
+    item: com.darkprince.vpn.data.api.dto.SubscriptionListItem,
+    current: Boolean,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val days = item.endDate?.let(::daysUntil)
+    val (status, tint) = when {
+        !item.isActive -> "Неактивна" to scheme.error
+        days == null -> "" to scheme.onSurfaceVariant
+        days <= 0 -> "Истекла" to scheme.error
+        days <= 7 -> "$days ${daysWord(days)}" to BrandColors.Warning
+        else -> "$days ${daysWord(days)}" to scheme.primary
+    }
+    val until = untilShort(item.endDate, null)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (current) scheme.primary.copy(alpha = 0.10f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                item.displayName,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (item.isActive) scheme.onBackground else ink(0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (until != null) {
+                Text(
+                    if (days != null && days <= 0) "закончилась $until" else "до $until",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = scheme.onSurfaceVariant,
                 )
             }
+        }
+        if (status.isNotEmpty()) {
+            Text(status, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = tint, maxLines = 1)
+        }
+        Box(Modifier.width(26.dp), contentAlignment = Alignment.CenterEnd) {
+            if (current) AquaIconView(AquaIcon.Check, scheme.primary, size = 17.dp, stroke = 2.2f)
         }
     }
 }
