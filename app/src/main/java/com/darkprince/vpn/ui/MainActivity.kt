@@ -77,7 +77,6 @@ import com.darkprince.vpn.ui.screens.AdminTicketScreen
 import com.darkprince.vpn.ui.screens.NewsArticleScreen
 import com.darkprince.vpn.ui.screens.NewsScreen
 import com.darkprince.vpn.ui.screens.ReferralScreen
-import com.darkprince.vpn.ui.screens.ServersScreen
 import com.darkprince.vpn.ui.screens.ShareSubscriptionScreen
 import com.darkprince.vpn.ui.screens.SettingsScreen
 import com.darkprince.vpn.ui.screens.SetupScreen
@@ -407,13 +406,11 @@ private fun AppRoot(
     val bottomItems = if (authState.guestMode) {
         listOf(
             BottomItem("home", "Главная", AquaIcon.Home),
-            BottomItem("servers", "Серверы", AquaIcon.Servers),
             BottomItem("settings", "Ещё", AquaIcon.Gear),
         )
     } else {
         listOf(
             BottomItem("home", "Главная", AquaIcon.Home),
-            BottomItem("servers", "Серверы", AquaIcon.Servers),
             BottomItem("plans", "Тарифы", AquaIcon.Cart),
             BottomItem("balance", "Баланс", AquaIcon.Wallet),
             BottomItem("settings", "Ещё", AquaIcon.Gear),
@@ -448,6 +445,7 @@ private fun AppRoot(
     val showBottomBar = (authState.loggedIn || authState.guestMode) &&
         currentRoute in bottomItems.map { it.route }
 
+    val tabRoutes = bottomItems.map { it.route }.toSet()
     val navHidden = remember { mutableStateOf(false) }
     val navBarsBottom = androidx.compose.foundation.layout.WindowInsets.navigationBars
         .asPaddingValues().calculateBottomPadding()
@@ -469,12 +467,22 @@ private fun AppRoot(
             startDestination = startDestination,
             modifier = Modifier.padding(top = innerPadding.calculateTopPadding()),
             // мягкие переходы вместо резкой смены экранов
+            // Между вкладками панели — только мягкое появление, без сдвига: сдвиг
+            // вместе с движением панели давал рваную картинку.
             enterTransition = {
-                fadeIn(tween(280)) + slideInHorizontally(tween(320)) { it / 12 }
+                if (initialState.destination.route in tabRoutes && targetState.destination.route in tabRoutes) {
+                    fadeIn(tween(200))
+                } else {
+                    fadeIn(tween(280)) + slideInHorizontally(tween(320)) { it / 12 }
+                }
             },
-            exitTransition = { fadeOut(tween(200)) },
+            exitTransition = { fadeOut(tween(160)) },
             popEnterTransition = {
-                fadeIn(tween(280)) + slideInHorizontally(tween(320)) { -it / 12 }
+                if (initialState.destination.route in tabRoutes && targetState.destination.route in tabRoutes) {
+                    fadeIn(tween(200))
+                } else {
+                    fadeIn(tween(280)) + slideInHorizontally(tween(320)) { -it / 12 }
+                }
             },
             popExitTransition = { fadeOut(tween(200)) },
         ) {
@@ -589,10 +597,6 @@ private fun AppRoot(
                         }
                     },
                 )
-            }
-            composable("servers") {
-                val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = activity)
-                ServersScreen(viewModel = homeViewModel)
             }
             composable("plans") {
                 val plansViewModel: PlansViewModel = viewModel()

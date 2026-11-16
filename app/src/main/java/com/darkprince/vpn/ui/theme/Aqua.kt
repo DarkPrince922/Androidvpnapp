@@ -11,6 +11,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.runtime.State
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.Layout
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -156,13 +163,20 @@ val LocalNavHidden = androidx.compose.runtime.compositionLocalOf<androidx.compos
 
 data class AquaNavItem(val route: String, val label: String, val icon: AquaIcon)
 
+/** Насколько пункт «выбран» при текущей позиции: 1 — на месте, 0 — дальше чем в шаге. */
+private fun nearOf(position: Float, index: Int): Float = (1f - abs(position - index)).coerceIn(0f, 1f)
+
 /**
  * Нижняя панель: плавающий остров на плотной подложке. Выбранный пункт
  * раскрывается: рядом со значком появляется подпись, а пункт лежит на
  * прямоугольнике с мягким скруглением и тонкой рамкой акцента. Остальные
  * пункты — только значки, поэтому не тесно и при шести разделах (у админа).
- * Раскрытие плавное: одно число-позиция ведёт и ширину, и прозрачность.
- * Подключены — акцент аквамариновый, нет — белый.
+ *
+ * Движение ведёт одно число — позиция выбранного пункта, — и читается оно
+ * только в фазах раскладки и рисования: подписи постоянно на месте и меняют
+ * лишь ширину и прозрачность, поэтому на каждом кадре ничего не
+ * пересоздаётся и не перекомпоновывается. Подключены — акцент
+ * аквамариновый, нет — белый.
  */
 @Composable
 fun AquaNavBar(
@@ -174,9 +188,9 @@ fun AquaNavBar(
 ) {
     val palette = LocalPalette.current
     val scheme = MaterialTheme.colorScheme
-    val position by animateFloatAsState(
+    val position = animateFloatAsState(
         targetValue = selectedIndex.coerceAtLeast(0).toFloat(),
-        animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow),
         label = "navPosition",
     )
     val activeColor = if (connected || palette.isLight) scheme.primary else scheme.onBackground
@@ -205,55 +219,116 @@ fun AquaNavBar(
             .background(base)
             .border(1.dp, border, islandShape),
     ) {
-        Row(
+        Layout(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 6.dp),
+            content = {
+                items.forEachIndexed { index, item ->
+                    NavCell(item, index, position, inactive, activeColor, accent) { onSelect(item) }
+                }
+            },
+        ) { measurables, constraints ->
+            // ширина пункта = доля от общей, выбранный в 2,6 раза шире остальных
+            val pos = position.value
+            val weights = measurables.indices.map { 1f + 1.6f * nearOf(pos, it) }
+            val sum = weights.sum()
+            val total = constraints.maxWidth
+            val cellHeight = 54.dp.roundToPx().coerceAtMost(constraints.maxHeight)
+            var used = 0
+            val placeables = measurables.mapIndexed { i, m ->
+                val w = if (i == measurables.lastIndex) total - used
+                else (total * weights[i] / sum).roundToInt()
+                used += w
+                m.measure(Constraints.fixed(w.coerceAtLeast(0), cellHeight))
+            }
+            layout(total, constraints.maxHeight) {
+                var x = 0
+                val y = (constraints.maxHeight - cellHeight) / 2
+                placeables.forEach { p ->
+                    p.placeRelative(x, y)
+                    x += p.width
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavCell(
+    item: AquaNavItem,
+    index: Int,
+    position: State<Float>,
+    inactive: Color,
+    active: Color,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(21.dp)
+    Box(
+        modifier = Modifier
+            .clip(shape)
+            .drawBehind {
+                // подсветка и рамка растут вместе с «выбранностью»
+                val near = nearOf(position.value, index)
+                val radius = CornerRadius(21.dp.toPx())
+                drawRoundRect(accent.copy(alpha = 0.14f * near), cornerRadius = radius)
+                drawRoundRect(
+                    accent.copy(alpha = 0.45f * near),
+                    cornerRadius = radius,
+                    style = Stroke(1.dp.toPx()),
+                )
+            }
+            // без волны нажатия: прямоугольная вспышка рядом с подсветкой
+            // выглядела бы грубо
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClickLabel = item.label,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier.wrapContentSize(Alignment.Center, unbounded = true),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            items.forEachIndexed { index, item ->
-                val near = (1f - abs(position - index)).coerceIn(0f, 1f)
-                val color = lerp(inactive, activeColor, near)
-                val itemShape = RoundedCornerShape(21.dp)
-                Row(
+            // значок в двух цветах: один гаснет, другой проявляется
+            Box {
+                AquaIconView(
+                    item.icon, inactive, size = 23.dp, stroke = 1.4f,
+                    modifier = Modifier.graphicsLayer { alpha = 1f - nearOf(position.value, index) },
+                )
+                AquaIconView(
+                    item.icon, active, size = 23.dp, stroke = 1.4f,
+                    modifier = Modifier.graphicsLayer { alpha = nearOf(position.value, index) },
+                )
+            }
+            // Подпись не растёт вслед за системным масштабом шрифта дальше
+            // 1,1: раскрытый пункт и так занимает почти треть панели.
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.1f))
+            ) {
+                Text(
+                    item.label,
+                    color = active,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false,
                     modifier = Modifier
-                        .weight(1f + 1.6f * near)
-                        .height(54.dp)
-                        .clip(itemShape)
-                        .background(accent.copy(alpha = 0.14f * near))
-                        .border(1.dp, accent.copy(alpha = 0.45f * near), itemShape)
-                        // без волны нажатия: прямоугольная вспышка рядом с
-                        // подсветкой выглядела бы грубо
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClickLabel = item.label,
-                        ) { onSelect(item) },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    AquaIconView(item.icon, color, size = 23.dp, stroke = 1.4f)
-                    if (near > 0.02f) {
-                        // Подпись не растёт вслед за системным масштабом шрифта
-                        // дальше 1,1: раскрытый пункт и так занимает почти треть панели.
-                        val density = LocalDensity.current
-                        CompositionLocalProvider(
-                            LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.1f))
-                        ) {
-                            Text(
-                                item.label,
-                                color = color,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                softWrap = false,
-                                modifier = Modifier
-                                    .padding(start = 7.dp)
-                                    .graphicsLayer { alpha = ((near - 0.35f) / 0.65f).coerceIn(0f, 1f) },
-                            )
+                        // место под подпись растёт вместе с пунктом, чтобы значок
+                        // у закрытых пунктов оставался по центру
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity))
+                            val near = nearOf(position.value, index)
+                            val shown = (placeable.width * near).roundToInt()
+                            val gap = (7.dp.toPx() * near).roundToInt()
+                            layout(shown + gap, placeable.height) { placeable.placeRelative(gap, 0) }
                         }
-                    }
-                }
+                        .graphicsLayer { alpha = ((nearOf(position.value, index) - 0.35f) / 0.65f).coerceIn(0f, 1f) },
+                )
             }
         }
     }

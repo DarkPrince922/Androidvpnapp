@@ -47,6 +47,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.ui.draw.rotate
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -168,11 +170,16 @@ fun HomeScreen(
         onDismissReminder = viewModel::dismissReminder,
         onSelectSubscription = viewModel::selectSubscription,
         onOpenPlans = onOpenPlans,
+        onSelectServer = viewModel::selectServer,
+        onPing = viewModel::pingAll,
+        onRefresh = { viewModel.refresh(forceServers = true, notify = true) },
     )
 }
 
 /**
- * Главный экран «Аквы» без привязки к модели: все данные приходят параметрами,
+ * Главный экран «Аквы» — лента. Вверху компактная кнопка подключения со
+ * статусом, ниже подписка и полный список серверов: отдельной вкладки
+ * «Серверы» нет. Без привязки к модели: все данные приходят параметрами,
  * поэтому его же рисует отладочный просмотр с поддельными данными.
  */
 @Composable
@@ -189,6 +196,9 @@ fun HomeContent(
     onDismissReminder: (Long) -> Unit = {},
     onSelectSubscription: (Long) -> Unit = {},
     onOpenPlans: (() -> Unit)? = null,
+    onSelectServer: (Int) -> Unit = {},
+    onPing: () -> Unit = {},
+    onRefresh: () -> Unit = {},
 ) {
     val scheme = MaterialTheme.colorScheme
     val connected = vpnState == VpnState.CONNECTED
@@ -206,9 +216,8 @@ fun HomeContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // --- шапка: название и подписка ---
+        // --- шапка: название и, пока подключены, сервер со временем ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -223,108 +232,70 @@ fun HomeContent(
                 letterSpacing = 1.8.sp,
                 color = ink(0.8f),
             )
-            SubscriptionPill(
-                state = state,
-                sub = sub,
-                locked = locked,
-                onSelectSubscription = onSelectSubscription,
-            )
+            AnimatedVisibility(visible = connected, enter = fadeIn(), exit = fadeOut()) {
+                ConnectedSubtitle(serverLabel, connectedSince, Modifier.padding(start = 12.dp), fontSize = 13.sp)
+            }
         }
 
-        // --- кнопка подключения ---
-        Box(
+        // --- кнопка слева, статус справа ---
+        Row(
             modifier = Modifier
-                .padding(top = 10.dp)
                 .fillMaxWidth()
-                .height(290.dp),
-            contentAlignment = Alignment.Center,
+                .padding(start = 24.dp, end = 24.dp, top = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            PowerDisc(vpnState = vpnState, onClick = onPowerClick)
-        }
-
-        // --- статус одним словом и строка под ним ---
-        AnimatedContent(
-            targetState = vpnState,
-            transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) },
-            modifier = Modifier.padding(top = 2.dp),
-            label = "status",
-        ) { current ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    when (current) {
-                        VpnState.CONNECTED -> "Защищено"
-                        VpnState.CONNECTING -> "Подключение…"
-                        VpnState.ERROR -> "Не подключено"
-                        VpnState.DISCONNECTED -> "Не защищено"
-                    },
-                    style = MaterialTheme.typography.displaySmall.copy(
-                        fontSize = 38.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = (-1).sp,
-                    ),
-                    color = if (current == VpnState.ERROR) scheme.error else scheme.onBackground,
-                )
-                if (current == VpnState.CONNECTED) {
-                    ConnectedSubtitle(serverLabel, connectedSince)
-                } else {
+            PowerDisc(vpnState = vpnState, onClick = onPowerClick, size = 88.dp, rings = false)
+            Spacer(Modifier.width(18.dp))
+            AnimatedContent(
+                targetState = vpnState,
+                transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) },
+                label = "status",
+            ) { current ->
+                Column {
                     Text(
                         when (current) {
+                            VpnState.CONNECTED -> "Защищено"
+                            VpnState.CONNECTING -> "Подключение…"
+                            VpnState.ERROR -> "Не подключено"
+                            VpnState.DISCONNECTED -> "Не защищено"
+                        },
+                        style = MaterialTheme.typography.displaySmall.copy(
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = (-0.8).sp,
+                        ),
+                        color = if (current == VpnState.ERROR) scheme.error else scheme.onBackground,
+                        maxLines = 1,
+                    )
+                    Text(
+                        when (current) {
+                            VpnState.CONNECTED ->
+                                "↓ ${formatBytes(stats.downlinkBytes)} · ↑ ${formatBytes(stats.uplinkBytes)}"
                             VpnState.CONNECTING -> serverLabel ?: ""
                             VpnState.ERROR -> vpnError ?: "Не удалось подключиться"
                             else -> "Нажмите, чтобы подключиться"
                         },
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = ink(0.6f),
+                        color = if (current == VpnState.CONNECTED) scheme.primary else ink(0.6f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 24.dp),
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
             }
         }
 
-        // --- нижняя часть: плитки и группа строк ---
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            if (connected) {
-                // «Получено», «Отправлено» и «Сервер» — одной группой строк,
-                // как остальной экран, а не двумя тяжёлыми плитами
-                Column(Modifier.padding(top = 22.dp).fillMaxWidth().glass()) {
-                    val (down, downUnit) = splitBytes(stats.downlinkBytes)
-                    val (up, upUnit) = splitBytes(stats.uplinkBytes)
-                    TrafficRow(AquaIcon.Down, "Получено", down, downUnit)
-                    InfoDivider()
-                    TrafficRow(AquaIcon.Up, "Отправлено", up, upUnit)
-                    InfoDivider()
-                    val ping = server?.let { state.pings[it.key] }?.takeIf { it >= 0 }
-                    InfoRow(
-                        AquaIcon.Servers,
-                        "Сервер",
-                        listOfNotNull(serverName?.substringAfter(" · ") ?: "Нет серверов", ping?.let { "$it мс" }).joinToString(" · "),
-                    )
-                }
-            } else {
-                Column(Modifier.padding(top = 24.dp).fillMaxWidth().glass()) {
-                    InfoRow(AquaIcon.Servers, "Сервер", serverName ?: "Нет серверов")
-                    InfoDivider()
-                    InfoRow(AquaIcon.Bolt, "Протокол", server?.let(::protocolText) ?: "—")
-                    InfoDivider()
-                    InfoRow(
-                        AquaIcon.Shield,
-                        "Подписка",
-                        sub.untilShort?.let { "до $it" } ?: "Срок неизвестен",
-                        onClick = onOpenPlans,
-                    )
-                    if (sub.limitGb != null && sub.limitGb > 0) {
-                        InfoDivider()
-                        InfoRow(
-                            AquaIcon.Speed,
-                            "Трафик",
-                            String.format(Locale.getDefault(), "%.1f / %.0f ГБ", sub.usedGb ?: 0.0, sub.limitGb),
-                        )
-                    }
-                }
-            }
+            // --- подписка ---
+            SubscriptionCard(
+                state = state,
+                sub = sub,
+                locked = locked,
+                onSelectSubscription = onSelectSubscription,
+                onOpenPlans = onOpenPlans,
+                modifier = Modifier.padding(top = 18.dp),
+            )
 
             // --- то, о чём нужно сказать сейчас ---
             ServiceDownBanner(
@@ -378,12 +349,78 @@ fun HomeContent(
                     scheme.onSurfaceVariant,
                 )
             }
+
+            // --- серверы: прямо на главной ---
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 6.dp, top = 20.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (state.servers.isEmpty()) "СЕРВЕРЫ" else "СЕРВЕРЫ · ${state.servers.size}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.6.sp,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                GlassChip(onClick = onPing) {
+                    if (state.pinging) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 1.6.dp,
+                            color = scheme.primary,
+                        )
+                    } else {
+                        AquaIconView(AquaIcon.Speed, ink(0.8f), size = 15.dp, stroke = 1.6f)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Text("Пинг", fontSize = 12.sp)
+                }
+                Spacer(Modifier.width(8.dp))
+                GlassChip(onClick = onRefresh) {
+                    AquaIconView(AquaIcon.Refresh, ink(0.8f), size = 15.dp, stroke = 1.6f)
+                }
+            }
+            if (state.servers.isEmpty()) {
+                Text(
+                    "Список серверов пуст. Проверьте подписку.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+            } else {
+                Column(Modifier.fillMaxWidth().glass()) {
+                    state.servers.forEachIndexed { index, item ->
+                        if (index > 0) HorizontalDivider(color = ink(0.07f), thickness = 1.dp)
+                        ServerRow(
+                            server = item,
+                            selected = index == state.selectedServer,
+                            ping = state.pings[item.key],
+                            pinging = state.pinging,
+                            onClick = { onSelectServer(index) },
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(24.dp + LocalBottomInset.current))
         }
     }
     // итог обновления всплывает сверху и уходит сам
     NoticeToast(notice, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
     }
+}
+
+/** Небольшая стеклянная кнопка-чип: «Пинг», «Обновить». */
+@Composable
+private fun GlassChip(onClick: () -> Unit, content: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier
+            .height(32.dp)
+            .glass(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) { content() }
 }
 
 @Composable
@@ -468,17 +505,21 @@ private fun untilShort(raw: String?, expireUnix: Long?): String? {
 }
 
 /**
- * Пилюля в шапке: «Премиум · 644 дн.». Подписок несколько — нажимается и
- * открывает выбор; пока VPN поднят, менять подписку нельзя (туннель идёт по
- * серверу текущей, и смена на ходу его рвала), поэтому нажатие объясняет это.
+ * Карточка подписки: тариф, срок и остаток дней крупно. Подписок несколько —
+ * нажимается и открывает выбор; пока VPN поднят, менять подписку нельзя
+ * (туннель идёт по серверу текущей, и смена на ходу его рвала), поэтому
+ * нажатие объясняет это. Одна подписка — нажатие ведёт в «Тарифы».
  */
 @Composable
-private fun SubscriptionPill(
+private fun SubscriptionCard(
     state: HomeUiState,
     sub: SubSummary,
     locked: Boolean,
     onSelectSubscription: (Long) -> Unit,
+    onOpenPlans: (() -> Unit)?,
+    modifier: Modifier = Modifier,
 ) {
+    val scheme = MaterialTheme.colorScheme
     var menuOpen by remember { mutableStateOf(false) }
     var lockHint by remember { mutableStateOf(false) }
     LaunchedEffect(lockHint) {
@@ -488,29 +529,92 @@ private fun SubscriptionPill(
         }
     }
     val multi = state.subscriptions.size > 1
-    val label = when {
-        sub.daysLeft == null -> sub.title
-        sub.daysLeft <= 0 -> "${sub.title} · истекла"
-        else -> "${sub.title} · ${sub.daysLeft} дн."
-    }
+    val expired = sub.daysLeft != null && sub.daysLeft <= 0
+    val limited = sub.limitGb != null && sub.limitGb > 0
 
-    Box {
-        Text(
-            if (lockHint) "Отключите VPN, чтобы сменить" else label,
-            fontSize = 12.sp,
-            color = if (sub.daysLeft != null && sub.daysLeft <= 0) MaterialTheme.colorScheme.error
-                else ink(0.8f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .widthIn(max = 220.dp)
-                .glass(RoundedCornerShape(50))
-                .then(
-                    if (multi) Modifier.clickable { if (locked) lockHint = true else menuOpen = true }
-                    else Modifier
+    Box(modifier) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .glass()
+                .clickable {
+                    when {
+                        multi -> if (locked) lockHint = true else menuOpen = true
+                        else -> onOpenPlans?.invoke()
+                    }
+                }
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(34.dp).clip(RoundedCornerShape(12.dp)).background(ink(0.08f)),
+                    contentAlignment = Alignment.Center,
+                ) { AquaIconView(AquaIcon.Shield, ink(0.8f), size = 18.dp, stroke = 1.5f) }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        sub.title,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        when {
+                            lockHint -> "Отключите VPN, чтобы сменить"
+                            sub.untilShort != null -> "до ${sub.untilShort}"
+                            else -> "Срок неизвестен"
+                        },
+                        fontSize = 12.sp,
+                        color = if (lockHint) BrandColors.Warning else scheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                when {
+                    sub.daysLeft == null -> Unit
+                    expired -> Text("Истекла", fontSize = 15.sp, color = scheme.error)
+                    else -> Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            sub.daysLeft.toString(),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Light,
+                            letterSpacing = (-0.5).sp,
+                            maxLines = 1,
+                        )
+                        Text(daysWord(sub.daysLeft), fontSize = 11.sp, color = scheme.onSurfaceVariant)
+                    }
+                }
+                if (multi) {
+                    Spacer(Modifier.width(8.dp))
+                    AquaIconView(
+                        AquaIcon.Chevron,
+                        scheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        size = 18.dp,
+                        stroke = 1.6f,
+                        modifier = Modifier.rotate(90f),
+                    )
+                }
+            }
+            if (limited) {
+                Spacer(Modifier.height(12.dp))
+                Row {
+                    Text("Трафик", fontSize = 12.sp, color = scheme.onSurfaceVariant)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        String.format(Locale.getDefault(), "%.1f / %.0f ГБ", sub.usedGb ?: 0.0, sub.limitGb),
+                        fontSize = 12.sp,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { ((sub.usedGb ?: 0.0) / (sub.limitGb ?: 1.0)).coerceIn(0.0, 1.0).toFloat() },
+                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                    color = scheme.primary,
+                    trackColor = ink(0.10f),
                 )
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        )
+            }
+        }
         DropdownMenu(expanded = menuOpen && !locked, onDismissRequest = { menuOpen = false }) {
             state.subscriptions.forEach { item ->
                 DropdownMenuItem(
@@ -536,6 +640,18 @@ private fun SubscriptionPill(
     }
 }
 
+/** «день», «дня», «дней» — подпись под числом. */
+private fun daysWord(days: Int): String {
+    val last2 = days % 100
+    val last = days % 10
+    return when {
+        last2 in 11..14 -> "дней"
+        last == 1 -> "день"
+        last in 2..4 -> "дня"
+        else -> "дней"
+    }
+}
+
 // ------------------------------------------------------------------
 // Кнопка подключения
 // ------------------------------------------------------------------
@@ -546,7 +662,13 @@ private fun SubscriptionPill(
  * Идёт подключение — вокруг диска бежит дуга. Цвет проявляется плавно.
  */
 @Composable
-private fun PowerDisc(vpnState: VpnState, onClick: () -> Unit) {
+private fun PowerDisc(
+    vpnState: VpnState,
+    onClick: () -> Unit,
+    size: androidx.compose.ui.unit.Dp = 180.dp,
+    rings: Boolean = true,
+) {
+    val k = size.value / 180f
     val on = vpnState == VpnState.CONNECTED
     val busy = vpnState == VpnState.CONNECTING
     val spec = tween<Color>(500)
@@ -598,20 +720,22 @@ private fun PowerDisc(vpnState: VpnState, onClick: () -> Unit) {
 
     Box(contentAlignment = Alignment.Center) {
         // кольца ничего не зажимают: они крупнее самой полосы
-        Box(Modifier.requiredSize(300.dp).border(1.dp, ringColor, CircleShape))
-        Box(Modifier.requiredSize(244.dp).border(1.dp, ringColor, CircleShape))
+        if (rings) {
+            Box(Modifier.requiredSize(300.dp).border(1.dp, ringColor, CircleShape))
+            Box(Modifier.requiredSize(244.dp).border(1.dp, ringColor, CircleShape))
+        }
 
         // свечение под включённой кнопкой
         Box(
             Modifier
-                .requiredSize(250.dp)
+                .requiredSize(size * 1.39f)
                 .background(Brush.radialGradient(listOf(glow, Color.Transparent)), CircleShape)
         )
 
         val shape = CircleShape
         Box(
             modifier = Modifier
-                .size(180.dp)
+                .size(size)
                 .clip(shape)
                 // 160° в CSS — от верхнего левого угла к нижнему правому, почти по диагонали
                 .background(Brush.linearGradient(0f to top, 0.7f to mid, 1f to bottom, start = Offset(0f, 0f), end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)))
@@ -643,20 +767,20 @@ private fun PowerDisc(vpnState: VpnState, onClick: () -> Unit) {
                 label = "discIcon",
             ) { connected ->
                 if (connected) {
-                    AquaIconView(AquaIcon.ShieldCheck, iconColor, size = 72.dp, stroke = 1.5f)
+                    AquaIconView(AquaIcon.ShieldCheck, iconColor, size = (72 * k).dp, stroke = 1.5f)
                 } else {
-                    AquaIconView(AquaIcon.Power, iconColor, size = 66.dp, stroke = 1.4f)
+                    AquaIconView(AquaIcon.Power, iconColor, size = (66 * k).dp, stroke = 1.4f)
                 }
             }
         }
 
-        if (busy) ConnectingArc()
+        if (busy) ConnectingArc(size + 12.dp)
     }
 }
 
 /** Бегущая дуга вокруг диска, пока идёт подключение. */
 @Composable
-private fun ConnectingArc() {
+private fun ConnectingArc(diameter: androidx.compose.ui.unit.Dp) {
     val accent = MaterialTheme.colorScheme.primary
     val turn by rememberInfiniteTransition(label = "connecting").animateFloat(
         initialValue = 0f,
@@ -664,7 +788,7 @@ private fun ConnectingArc() {
         animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
         label = "turn",
     )
-    androidx.compose.foundation.Canvas(Modifier.requiredSize(190.dp)) {
+    androidx.compose.foundation.Canvas(Modifier.requiredSize(diameter)) {
         drawArc(
             color = accent,
             startAngle = turn,
@@ -684,7 +808,12 @@ private fun ConnectingArc() {
  * секунду меняется одна строка, и перерисовывать ради неё весь экран незачем.
  */
 @Composable
-private fun ConnectedSubtitle(serverName: String?, since: Long?) {
+private fun ConnectedSubtitle(
+    serverName: String?,
+    since: Long?,
+    modifier: Modifier = Modifier,
+    fontSize: androidx.compose.ui.unit.TextUnit = 15.sp,
+) {
     var now by remember { mutableStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(since) {
         while (since != null) {
@@ -699,12 +828,12 @@ private fun ConnectedSubtitle(serverName: String?, since: Long?) {
     ).joinToString(" · ")
     Text(
         label,
-        fontSize = 15.sp,
+        fontSize = fontSize,
         fontWeight = FontWeight.Medium,
         color = MaterialTheme.colorScheme.primary,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.padding(horizontal = 24.dp),
+        modifier = modifier,
     )
 }
 

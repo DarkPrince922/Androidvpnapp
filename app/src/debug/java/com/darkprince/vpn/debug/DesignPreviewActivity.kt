@@ -14,7 +14,6 @@ import androidx.compose.ui.graphics.Color
 import com.darkprince.vpn.core.model.Protocol
 import com.darkprince.vpn.core.model.ProxyProfile
 import com.darkprince.vpn.ui.screens.HomeContent
-import com.darkprince.vpn.ui.screens.ServersContent
 import com.darkprince.vpn.ui.theme.AnimatedBackground
 import com.darkprince.vpn.ui.theme.AppTheme
 import com.darkprince.vpn.ui.theme.AquaIcon
@@ -36,7 +35,7 @@ class DesignPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val screen = intent.getStringExtra("screen") ?: "home_off"
-        val on = screen == "home_on" || screen == "home_light"
+        val on = screen == "home_on" || screen == "home_light" || screen == "servers"
         VpnStateStore.setState(if (on) VpnState.CONNECTED else VpnState.DISCONNECTED)
 
         fun node(name: String, protocol: Protocol, security: String, network: String) =
@@ -60,7 +59,6 @@ class DesignPreviewActivity : ComponentActivity() {
         val state = HomeUiState(servers = servers, selectedServer = 0, pings = pings)
         val items = listOf(
             AquaNavItem("home", "Главная", AquaIcon.Home),
-            AquaNavItem("servers", "Серверы", AquaIcon.Servers),
             AquaNavItem("plans", "Тарифы", AquaIcon.Cart),
             AquaNavItem("balance", "Баланс", AquaIcon.Wallet),
             AquaNavItem("settings", "Ещё", AquaIcon.Gear),
@@ -72,7 +70,7 @@ class DesignPreviewActivity : ComponentActivity() {
                     Scaffold(
                         containerColor = Color.Transparent,
                         bottomBar = {
-                            AquaNavBar(items, when (screen) { "servers" -> 1; "settings" -> 4; else -> 0 }, on, {})
+                            AquaNavBar(items, when (screen) { "settings" -> 3; else -> 0 }, on, {})
                         },
                     ) { inner ->
                         Box(Modifier.fillMaxSize().padding(inner)) {
@@ -88,8 +86,6 @@ class DesignPreviewActivity : ComponentActivity() {
                                     onCreateAccount = {}, onLinkEmail = {}, onDropSharedSubscription = {},
                                     onLogout = {}, selectedThemeId = "night", onSelectTheme = {},
                                 )
-                            } else if (screen == "servers") {
-                                ServersContent(state, null, {}, {}, {})
                             } else {
                                 HomeContent(
                                     state = state,
