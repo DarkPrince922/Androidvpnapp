@@ -57,46 +57,57 @@ data class AppPalette(
     val glowAlpha: Float,
     val panel: Color,
     val scheme: ColorScheme,
+    /** Третье световое пятно фона (внизу слева). */
+    val glowC: Color = glowB,
+    /**
+     * Стекло: заливка и контур карточек и панели. На тёмных темах это белый
+     * с малой непрозрачностью, на светлых — почти белый: так сквозь карточку
+     * просвечивают пятна фона, а текст остаётся читаемым.
+     */
+    val glassFill: Color = Color.White.copy(alpha = 0.065f),
+    val glassBorder: Color = Color.White.copy(alpha = 0.10f),
 )
 
 // --- Ночь: исходная тема под логотип ---------------------------------------
 
 private val NightScheme = darkColorScheme(
-    primary = Color(0xFFCFAA62),
-    onPrimary = Color(0xFF14100A),
-    primaryContainer = Color(0xFFB8924C),
-    onPrimaryContainer = Color(0xFF14100A),
-    secondary = Color(0xFF5E8BFF),
-    onSecondary = Color.White,
+    primary = Color(0xFF5FF0DF),
+    onPrimary = Color(0xFF04201D),
+    primaryContainer = Color(0xFF1F8F86),
+    onPrimaryContainer = Color(0xFFE6FFFB),
+    secondary = Color(0xFF7C9BFF),
+    onSecondary = Color(0xFF0B1433),
     background = Color.Transparent,
-    onBackground = Color(0xFFEDF0F7),
-    surface = Color(0xFF121A29).copy(alpha = 0.82f),
-    onSurface = Color(0xFFEDF0F7),
-    surfaceVariant = Color(0xFF1A2438),
-    onSurfaceVariant = Color(0xFF9AA6BD),
-    outline = Color(0xFF2A3650),
+    onBackground = Color(0xFFEAF6F6),
+    // стекло: белый с малой непрозрачностью, сквозь него видны пятна фона
+    surface = Color.White.copy(alpha = 0.065f),
+    onSurface = Color(0xFFEAF6F6),
+    surfaceVariant = Color(0xFF14222A),
+    onSurfaceVariant = Color(0xFF8E9A9E),
+    outline = Color.White.copy(alpha = 0.10f),
+    outlineVariant = Color.White.copy(alpha = 0.07f),
     error = BrandColors.Danger,
     onError = Color.White,
-    // Карточки, диалоги и меню берут цвет из «контейнеров». Без них Material
-    // подставлял свой нейтрально-серый, и карточки выглядели чужими —
-    // серыми плитами на тёмно-синем фоне.
-    surfaceContainerLowest = Color(0xFF0D131E),
-    surfaceContainerLow = Color(0xFF111827),
-    surfaceContainer = Color(0xFF131C2C),
-    surfaceContainerHigh = Color(0xFF162032),
-    surfaceContainerHighest = Color(0xFF172133),
+    // Окна, меню и листы рисуются сплошным цветом: прозрачными им быть нельзя.
+    surfaceContainerLowest = Color(0xFF070D12),
+    surfaceContainerLow = Color(0xFF0B1319),
+    surfaceContainer = Color(0xFF0F1A21),
+    surfaceContainerHigh = Color(0xFF14212A),
+    surfaceContainerHighest = Color(0xFF192934),
 )
 
+/** «Аква»: тёмное стекло и водяные пятна — фирменный вид приложения. */
 val NightPalette = AppPalette(
     id = "night",
-    title = "Ночь",
-    subtitle = "Тёмно-синяя, золотой акцент",
+    title = "Аква",
+    subtitle = "Тёмное стекло, аквамариновый акцент",
     isLight = false,
-    background = Color(0xFF06080F),
-    glowA = Color(0xFFCFAA62),
-    glowB = Color(0xFF5E8BFF),
-    glowAlpha = 0.15f,
-    panel = Color(0xFF121A29),
+    background = Color(0xFF050A0F),
+    glowA = Color(0xFF00D6C4),
+    glowB = Color(0xFF466EFF),
+    glowC = Color(0xFF00AADC),
+    glowAlpha = 0.40f,
+    panel = Color(0xFF0B1319),
     scheme = NightScheme,
 )
 
@@ -174,6 +185,8 @@ val IndigoPalette = AppPalette(
     glowAlpha = 0.10f,
     panel = Color(0xFFFFFFFF),
     scheme = IndigoScheme,
+    glassFill = Color.White.copy(alpha = 0.62f),
+    glassBorder = Color.White.copy(alpha = 0.95f),
 )
 
 // --- Графит: почти без цвета -----------------------------------------------
@@ -212,6 +225,8 @@ val GraphitePalette = AppPalette(
     glowAlpha = 0.14f,
     panel = Color(0xFFFFFFFF),
     scheme = GraphiteScheme,
+    glassFill = Color.White.copy(alpha = 0.62f),
+    glassBorder = Color.White.copy(alpha = 0.95f),
 )
 
 /** Все темы в том порядке, в каком они показываются в настройках. */
@@ -228,63 +243,64 @@ fun paletteById(id: String?): AppPalette =
 val LocalPalette = staticCompositionLocalOf { NightPalette }
 
 /**
- * Шрифты. Заголовки и крупные числа — Unbounded: широкий, геометричный,
- * он и делает интерфейс «новым». Всё остальное — Manrope: спокойный и
- * хорошо читается мелко. Оба под лицензией OFL (тексты в licenses/), в
- * приложение положены только нужные начертания и только латиница с
- * кириллицей — так они весят около 370 КБ вместо полутора мегабайт.
+ * Шрифт один — Inter: нейтральный, хорошо читается мелко и красиво
+ * выглядит тонким на крупных числах. Начертания: Light для заголовков и
+ * цифр, Regular, Medium и SemiBold для текста. Лицензия OFL (licenses/),
+ * в приложение положены только нужные начертания и только латиница с
+ * кириллицей.
+ *
+ * `DisplayFont` и `TextFont` — прежние имена для старого кода: теперь они
+ * указывают на тот же шрифт. Начертания, которых нет (Bold), подбираются
+ * ближайшие.
  */
-val DisplayFont = FontFamily(
-    Font(R.font.unbounded_500, FontWeight.Medium),
-    Font(R.font.unbounded_700, FontWeight.Bold),
+val InterFont = FontFamily(
+    Font(R.font.inter_light, FontWeight.Light),
+    Font(R.font.inter_regular, FontWeight.Normal),
+    Font(R.font.inter_medium, FontWeight.Medium),
+    Font(R.font.inter_semibold, FontWeight.SemiBold),
 )
 
-val TextFont = FontFamily(
-    Font(R.font.manrope_400, FontWeight.Normal),
-    Font(R.font.manrope_500, FontWeight.Medium),
-    Font(R.font.manrope_600, FontWeight.SemiBold),
-    Font(R.font.manrope_700, FontWeight.Bold),
-)
+val DisplayFont = InterFont
+val TextFont = InterFont
 
-private fun TextStyle.text(weight: FontWeight) = copy(fontFamily = TextFont, fontWeight = weight)
+private fun TextStyle.text(weight: FontWeight) = copy(fontFamily = InterFont, fontWeight = weight)
 
-private fun TextStyle.display(size: Int) = copy(
-    fontFamily = DisplayFont,
-    fontWeight = FontWeight.Bold,
+/** Заголовки и крупные числа: тонкие и чуть сжатые по трекингу. */
+private fun TextStyle.display(size: Int, tracking: Float) = copy(
+    fontFamily = InterFont,
+    fontWeight = FontWeight.Light,
     fontSize = size.sp,
-    lineHeight = (size * 1.25f).sp,
-    letterSpacing = 0.sp,
+    lineHeight = (size * 1.15f).sp,
+    letterSpacing = tracking.sp,
 )
 
 private val AppTypography = Typography().run {
     copy(
-        displayLarge = displayLarge.display(48),
-        displayMedium = displayMedium.display(40),
-        displaySmall = displaySmall.display(32),
-        // Unbounded широкий: при стандартных размерах заголовки экранов
-        // переносились бы, поэтому они на ступень мельче обычного
-        headlineLarge = headlineLarge.display(28),
-        headlineMedium = headlineMedium.display(26),
-        headlineSmall = headlineSmall.display(21),
-        titleLarge = titleLarge.text(FontWeight.Bold),
-        titleMedium = titleMedium.text(FontWeight.Bold),
-        titleSmall = titleSmall.text(FontWeight.SemiBold),
+        displayLarge = displayLarge.display(52, -1.5f),
+        displayMedium = displayMedium.display(44, -1.2f),
+        displaySmall = displaySmall.display(36, -1f),
+        headlineLarge = headlineLarge.display(34, -0.9f),
+        headlineMedium = headlineMedium.display(30, -0.8f),
+        headlineSmall = headlineSmall.display(26, -0.6f),
+        titleLarge = titleLarge.text(FontWeight.Medium).copy(fontSize = 20.sp, letterSpacing = (-0.3).sp),
+        titleMedium = titleMedium.text(FontWeight.Medium).copy(fontSize = 16.sp),
+        titleSmall = titleSmall.text(FontWeight.Medium).copy(fontSize = 14.5.sp),
         bodyLarge = bodyLarge.text(FontWeight.Normal),
         bodyMedium = bodyMedium.text(FontWeight.Normal),
         bodySmall = bodySmall.text(FontWeight.Normal),
-        labelLarge = labelLarge.text(FontWeight.Bold),
-        labelMedium = labelMedium.text(FontWeight.SemiBold),
-        labelSmall = labelSmall.text(FontWeight.SemiBold),
+        labelLarge = labelLarge.text(FontWeight.Medium),
+        labelMedium = labelMedium.text(FontWeight.Medium),
+        labelSmall = labelSmall.text(FontWeight.Medium),
     )
 }
 
-/** Скругления крупнее стандартных: мягкие «стеклянные» карточки. */
+/** Скругления крупные: стеклянные карточки у «Аквы» почти таблетки. */
 private val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(10.dp),
-    small = RoundedCornerShape(14.dp),
-    medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    extraSmall = RoundedCornerShape(12.dp),
+    small = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(22.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(32.dp),
 )
 
 @Composable

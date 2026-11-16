@@ -82,8 +82,8 @@ import androidx.compose.ui.unit.dp
 import com.darkprince.vpn.ui.theme.AppTheme
 import com.darkprince.vpn.ui.theme.LocalPalette
 import com.darkprince.vpn.ui.theme.paletteById
-import com.darkprince.vpn.ui.theme.NavPillItem
-import com.darkprince.vpn.ui.theme.navLamp
+import com.darkprince.vpn.ui.theme.AquaIcon
+import com.darkprince.vpn.ui.theme.AquaNavBar
 import com.darkprince.vpn.ui.vm.AppsViewModel
 import com.darkprince.vpn.ui.vm.AuthViewModel
 import com.darkprince.vpn.ui.vm.BalanceViewModel
@@ -333,7 +333,7 @@ class MainActivity : FragmentActivity() {
     }
 }
 
-private data class BottomItem(val route: String, val label: String, val icon: ImageVector)
+private typealias BottomItem = com.darkprince.vpn.ui.theme.AquaNavItem
 
 @Composable
 private fun AppRoot(
@@ -400,23 +400,23 @@ private fun AppRoot(
     // в гостевом режиме кабинет недоступен: покупок и баланса нет
     val bottomItems = if (authState.guestMode) {
         listOf(
-            BottomItem("home", "Главная", Icons.Default.Home),
-            BottomItem("servers", "Серверы", Icons.Default.Dns),
-            BottomItem("settings", "Ещё", Icons.Default.Settings),
+            BottomItem("home", "Главная", AquaIcon.Home),
+            BottomItem("servers", "Серверы", AquaIcon.Servers),
+            BottomItem("settings", "Ещё", AquaIcon.Gear),
         )
     } else {
         listOf(
-            BottomItem("home", "Главная", Icons.Default.Home),
-            BottomItem("servers", "Серверы", Icons.Default.Dns),
-            BottomItem("plans", "Тарифы", Icons.Default.ShoppingCart),
-            BottomItem("balance", "Баланс", Icons.Default.AccountBalanceWallet),
-            BottomItem("settings", "Ещё", Icons.Default.Settings),
+            BottomItem("home", "Главная", AquaIcon.Home),
+            BottomItem("servers", "Серверы", AquaIcon.Servers),
+            BottomItem("plans", "Тарифы", AquaIcon.Cart),
+            BottomItem("balance", "Баланс", AquaIcon.Wallet),
+            BottomItem("settings", "Ещё", AquaIcon.Gear),
         )
     }.let { items ->
         // Пятый пункт появляется только у админа: у всех остальных панель
         // остаётся прежней.
         if (adminState.isAdmin) {
-            items + BottomItem("admin", "Панель", Icons.Default.AdminPanelSettings)
+            items + BottomItem("admin", "Панель", AquaIcon.Shield)
         } else {
             items
         }
@@ -447,72 +447,27 @@ private fun AppRoot(
         containerColor = Color.Transparent,
         bottomBar = {
             if (showBottomBar) {
-                // Плавающая панель: скруглённый блок, активный раздел —
-                // «жетон», приподнятый над ней. Фон задан формой, а не обрезкой:
-                // обрезка срезала бы жетону верх.
-                val panelFill = LocalPalette.current.panel.copy(alpha = 0.95f)
-                val panelLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
-                // Лампа одна и плавно едет к выбранному разделу: пружина с едва
-                // заметным перелётом. Первый показ панели — без анимации.
                 val selectedIndex = bottomItems.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
-                val lampPosition by androidx.compose.animation.core.animateFloatAsState(
-                    targetValue = selectedIndex.toFloat(),
-                    animationSpec = androidx.compose.animation.core.spring(
-                        dampingRatio = 0.8f,
-                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
-                    ),
-                    label = "navLamp",
-                )
-                val lampColor = MaterialTheme.colorScheme.primary
-                androidx.compose.foundation.layout.Row(
-                    modifier = Modifier
-                        // системные кнопки навигации рисуются поверх приложения,
-                        // поэтому панель приподнимаем над ними
-                        .navigationBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
-                        .fillMaxWidth()
-                        // Фон и рамку рисуем под содержимым. `border` рисует поверх
-                        // детей, и линия рамки шла прямо по золотому кругу.
-                        .drawBehind {
-                            val corner = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx())
-                            drawRoundRect(panelFill, cornerRadius = corner)
-                            drawRoundRect(
-                                panelLine,
-                                cornerRadius = corner,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()),
-                            )
+                val vpnNow by com.darkprince.vpn.vpn.VpnStateStore.state.collectAsState()
+                AquaNavBar(
+                    items = bottomItems,
+                    selectedIndex = selectedIndex,
+                    connected = vpnNow == com.darkprince.vpn.vpn.VpnState.CONNECTED,
+                    onSelect = { item ->
+                        if (item.route == "home") {
+                            // «Главная» всегда возвращает на корневой экран
+                            if (!navController.popBackStack("home", inclusive = false)) {
+                                navController.navigate("home") { launchSingleTop = true }
+                            }
+                        } else {
+                            navController.navigate(item.route) {
+                                popUpTo("home") { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
-                        // золотой круг и свет — под значками, см. navLamp
-                        .navLamp(position = { lampPosition }, count = bottomItems.size, accent = lampColor)
-                        // отступ по бокам небольшой: у шести пунктов (у админа)
-                        // каждая ячейка должна быть как можно шире
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(0.dp),
-                ) {
-                    bottomItems.forEachIndexed { index, item ->
-                        NavPillItem(
-                            index = index,
-                            lampPosition = { lampPosition },
-                            icon = item.icon,
-                            label = item.label,
-                            onClick = {
-                                if (item.route == "home") {
-                                    // «Главная» всегда возвращает на корневой экран
-                                    if (!navController.popBackStack("home", inclusive = false)) {
-                                        navController.navigate("home") { launchSingleTop = true }
-                                    }
-                                } else {
-                                    navController.navigate(item.route) {
-                                        popUpTo("home") { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
+                    },
+                )
             }
         }
     ) { innerPadding ->

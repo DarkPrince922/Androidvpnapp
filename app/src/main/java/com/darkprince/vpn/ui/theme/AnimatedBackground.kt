@@ -1,33 +1,33 @@
 package com.darkprince.vpn.ui.theme
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import kotlin.math.cos
-import kotlin.math.sin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.dp
+import com.darkprince.vpn.vpn.VpnState
+import com.darkprince.vpn.vpn.VpnStateStore
 
 /**
- * Живой фон приложения: холодное сияние сверху и второе, слабее, у правого
- * края. Оба чуть дышат и покачиваются. Рисуется на Canvas, поэтому не создаёт
- * дополнительных слоёв композиции и почти не нагружает отрисовку.
+ * Фон «Аквы»: три мягких цветных пятна на тёмной основе, как водяные
+ * разводы. Цвет живёт вместе с VPN: пока он выключен, пятна холодные и
+ * серые, при подключении оживают и становятся аквамариновыми и синими;
+ * переход плавный.
  *
- * Раньше по экрану плыли два пятна — золотое и синее. Золото, размазанное по
- * тёмно-синему фону, давало бурую муть по краям. Теперь фон почти чёрный,
- * холодный свет едва заметен, а золото осталось там, где оно что-то значит:
- * в кольце кнопки подключения и её отсвете.
+ * Пятно — большой круг, размытый на 56 dp. Размытие здесь не вычисляется:
+ * оно заменено радиальным градиентом с теми же значениями на расстояниях,
+ * которые дало бы размытие, — выходит тот же мягкий край и ноль нагрузки.
  */
 @Composable
 fun AnimatedBackground(
@@ -35,62 +35,61 @@ fun AnimatedBackground(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalPalette.current
-    val transition = rememberInfiniteTransition(label = "background")
-
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 28_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "phase",
+    val vpnState by VpnStateStore.state.collectAsState()
+    val live by animateFloatAsState(
+        targetValue = if (vpnState == VpnState.CONNECTED) 1f else 0f,
+        animationSpec = tween(900),
+        label = "backgroundLive",
     )
 
-    val breath by transition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 9_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "breath",
-    )
+    // Без подключения пятна серо-голубые; на светлых темах — те же цвета,
+    // что и с подключением, но вдвое бледнее: серый на светлом выглядит грязью.
+    val offColors = listOf(Color(0xFF6E8CA0), Color(0xFF5A6E96), Color(0xFF5A8296))
+    val onColors = listOf(palette.glowA, palette.glowB, palette.glowC)
+    val onAlphas = listOf(1f, 0.8f, 0.6f).map { it * palette.glowAlpha }
+    val offAlphas = if (palette.isLight) onAlphas.map { it * 0.5f } else listOf(0.20f, 0.16f, 0.14f)
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .drawBehind {
                 drawRect(palette.background)
-
                 val w = size.width
                 val h = size.height
-                // верхнее сияние — широкое, центр чуть выше края экрана
-                val topRadius = maxOf(w, h) * 0.62f * breath
-                val top = Offset(x = w * (0.5f + 0.08f * cos(phase)), y = -h * 0.04f)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(palette.glowB.copy(alpha = palette.glowAlpha * 0.8f), Color.Transparent),
-                        center = top,
-                        radius = topRadius,
-                    ),
-                    radius = topRadius,
-                    center = top,
+                val blobs = listOf(
+                    Triple(Offset(50.dp.toPx(), h * 0.100f), 150.dp.toPx(), 0),
+                    Triple(Offset(w - 35.dp.toPx(), h * 0.519f), 165.dp.toPx(), 1),
+                    Triple(Offset(80.dp.toPx(), h * 0.963f), 140.dp.toPx(), 2),
                 )
-
-                // боковое — слабее, у правого края ниже середины
-                val sideRadius = maxOf(w, h) * 0.42f
-                val side = Offset(x = w * 1.02f, y = h * (0.62f + 0.05f * sin(phase)))
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(palette.glowB.copy(alpha = palette.glowAlpha * 0.4f), Color.Transparent),
-                        center = side,
-                        radius = sideRadius,
-                    ),
-                    radius = sideRadius,
-                    center = side,
-                )
+                for ((center, core, i) in blobs) {
+                    val color = if (palette.isLight) onColors[i] else lerp(offColors[i], onColors[i], live)
+                    val alpha = offAlphas[i] + (onAlphas[i] - offAlphas[i]) * live
+                    blob(center, core, color, alpha)
+                }
             },
         content = content,
+    )
+}
+
+/**
+ * Пятно: круг радиуса [core], размытый с σ = 56 dp. У такого размытия край
+ * круга светит вполовину, у центра — почти полностью, а за двумя σ от края
+ * гаснет; пять опорных точек градиента повторяют эту кривую.
+ */
+private fun DrawScope.blob(center: Offset, core: Float, color: Color, alpha: Float) {
+    val sigma = 56.dp.toPx()
+    val reach = core + 2f * sigma
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to color.copy(alpha = alpha * 0.97f),
+            (core * 0.78f) / reach to color.copy(alpha = alpha * 0.92f),
+            core / reach to color.copy(alpha = alpha * 0.50f),
+            (core + sigma) / reach to color.copy(alpha = alpha * 0.16f),
+            1f to Color.Transparent,
+            center = center,
+            radius = reach,
+        ),
+        radius = reach,
+        center = center,
     )
 }
