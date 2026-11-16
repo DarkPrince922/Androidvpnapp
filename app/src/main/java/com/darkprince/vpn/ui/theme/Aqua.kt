@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -155,10 +156,12 @@ val LocalNavHidden = androidx.compose.runtime.compositionLocalOf<androidx.compos
 data class AquaNavItem(val route: String, val label: String, val icon: AquaIcon)
 
 /**
- * Нижняя панель: плавающая стеклянная таблетка. Выбранный раздел лежит на
- * светлой «пузырьковой» подложке, которая плавно переезжает от раздела к
- * разделу; значок и подпись перекрашиваются от того же числа, что и движение.
- * Подключены — выбранный раздел аквамариновый, нет — белый.
+ * Нижняя панель: плавающий остров на плотной подложке. Выбранный пункт
+ * раскрывается: рядом со значком появляется подпись, а пункт лежит на
+ * прямоугольнике с мягким скруглением и тонкой рамкой акцента. Остальные
+ * пункты — только значки, поэтому не тесно и при шести разделах (у админа).
+ * Раскрытие плавное: одно число-позиция ведёт и ширину, и прозрачность.
+ * Подключены — акцент аквамариновый, нет — белый.
  */
 @Composable
 fun AquaNavBar(
@@ -172,24 +175,25 @@ fun AquaNavBar(
     val scheme = MaterialTheme.colorScheme
     val position by animateFloatAsState(
         targetValue = selectedIndex.coerceAtLeast(0).toFloat(),
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
-        label = "navBubble",
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+        label = "navPosition",
     )
     val activeColor = if (connected || palette.isLight) scheme.primary else scheme.onBackground
-    val bubble = if (palette.isLight) scheme.primary.copy(alpha = 0.12f) else ink(0.12f)
+    val accent = scheme.primary
     val inactive = scheme.onSurfaceVariant
 
-    val islandShape = RoundedCornerShape(35.dp)
+    val islandShape = RoundedCornerShape(28.dp)
     // Остров должен читаться как отдельный предмет, а не как полоса внизу:
-    // плотная подложка под стеклом, мягкая тень и воздух вокруг.
-    val base = if (palette.isLight) Color.White.copy(alpha = 0.94f) else palette.panel.copy(alpha = 0.92f)
+    // плотная подложка, тонкая рамка и мягкая тень.
+    val base = if (palette.isLight) Color.White.copy(alpha = 0.96f) else palette.panel.copy(alpha = 0.96f)
+    val border = if (palette.isLight) ink(0.09f) else accent.copy(alpha = 0.20f)
     Box(
         modifier = modifier
             // системные кнопки навигации рисуются поверх приложения
             .navigationBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
             .fillMaxWidth()
-            .height(70.dp)
+            .height(68.dp)
             .shadow(
                 elevation = 18.dp,
                 shape = islandShape,
@@ -198,56 +202,55 @@ fun AquaNavBar(
             )
             .clip(islandShape)
             .background(base)
-            .glass(islandShape),
+            .border(1.dp, border, islandShape),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 4.dp)
-                .drawBehind {
-                    if (items.isEmpty()) return@drawBehind
-                    val cell = size.width / items.size
-                    val h = 54.dp.toPx()
-                    drawRoundRect(
-                        color = bubble,
-                        topLeft = Offset(position * cell, (size.height - h) / 2f),
-                        size = Size(cell, h),
-                        cornerRadius = CornerRadius(h / 2f),
-                    )
-                },
+                .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEachIndexed { index, item ->
                 val near = (1f - abs(position - index)).coerceIn(0f, 1f)
                 val color = lerp(inactive, activeColor, near)
-                Column(
+                val itemShape = RoundedCornerShape(21.dp)
+                Row(
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(1f + 1.6f * near)
                         .height(54.dp)
+                        .clip(itemShape)
+                        .background(accent.copy(alpha = 0.14f * near))
+                        .border(1.dp, accent.copy(alpha = 0.45f * near), itemShape)
                         // без волны нажатия: прямоугольная вспышка рядом с
-                        // круглой подложкой выглядела бы грубо
+                        // подсветкой выглядела бы грубо
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
+                            onClickLabel = item.label,
                         ) { onSelect(item) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
                 ) {
-                    AquaIconView(item.icon, color, size = 22.dp, stroke = 1.4f)
-                    // Подпись не растёт вслед за системным масштабом шрифта дальше
-                    // 1,1: при шести пунктах (у админа) крупная подпись не влезала.
-                    val density = LocalDensity.current
-                    CompositionLocalProvider(
-                        LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.1f))
-                    ) {
-                        Text(
-                            item.label,
-                            color = color,
-                            fontSize = if (items.size >= 6) 9.sp else 10.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            softWrap = false,
-                        )
+                    AquaIconView(item.icon, color, size = 23.dp, stroke = 1.4f)
+                    if (near > 0.02f) {
+                        // Подпись не растёт вслед за системным масштабом шрифта
+                        // дальше 1,1: раскрытый пункт и так занимает почти треть панели.
+                        val density = LocalDensity.current
+                        CompositionLocalProvider(
+                            LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.1f))
+                        ) {
+                            Text(
+                                item.label,
+                                color = color,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier
+                                    .padding(start = 7.dp)
+                                    .graphicsLayer { alpha = ((near - 0.35f) / 0.65f).coerceIn(0f, 1f) },
+                            )
+                        }
                     }
                 }
             }
